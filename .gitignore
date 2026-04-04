@@ -4,10 +4,10 @@ node_modules/
 .pnp.js
 
 # Environment variables (QUAN TRỌNG - không up key lên git)
-# .env
-# .env.local
-# .env.development
-# .env.production
+.env
+.env.local
+.env.development
+.env.production
 
 # Build output
 dist/
