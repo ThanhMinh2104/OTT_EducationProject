@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables (QUAN TRỌNG - không up key lên git)
+# .env
+# .env.local
+# .env.development
+# .env.production
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# React Native
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/ios/build/
+mobile/ios/Pods/
+mobile/.expo/
+
+# Uploads tạm
+uploads/
