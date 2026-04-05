@@ -27,4 +27,20 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// Cập nhật trạng thái
+router.post('/updateStatus', async (req: Request, res: Response) => {
+  const { userID, trangThai } = req.body;
+  try {
+    const user = await Users.findOneAndUpdate(
+      { userID },
+      { $set: { trangThai } },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' }) as any;
+    res.status(200).json({ success: true, user });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
