@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Users from '../models/User';
+import Otp from '../models/Otp';
+import sendOtpEmail from '../services/emailService';
 
 const router = Router();
 
@@ -35,10 +37,12 @@ router.post('/registerUser', async (req: Request, res: Response) => {
     name,
     userID: userid,
     email,
-    anhDaiDien: 'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
+    anhDaiDien:
+      'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
     trangThai: 'offline',
     ngaysinh: ngaySinhDate,
-    anhBia: 'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
+    anhBia:
+      'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
     gioTinh,
     sdt,
     matKhau: hashedPassword,
@@ -108,6 +112,53 @@ router.post('/users/email', async (req: Request, res: Response) => {
     res.json({ exists: !!userExists });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Gửi OTP
+router.post('/send-otp', async (req: Request, res: Response) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ message: 'Thiếu địa chỉ email' }) as any;
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  try {
+    // Xóa OTP cũ của email này (nếu có)
+    await Otp.deleteMany({ email });
+
+    // Lưu OTP mới vào database
+    await Otp.create({ email, otp });
+
+    // Gửi email
+    await sendOtpEmail(email, otp);
+
+    res.status(200).json({ message: 'Gửi OTP thành công' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Gửi OTP thất bại', error: error.message });
+  }
+});
+
+// Xác thực OTP
+router.post('/verify-otp', async (req: Request, res: Response) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ message: 'Thiếu email hoặc mã OTP' }) as any;
+  }
+
+  try {
+    // Tìm OTP trong database
+    const otpRecord = await Otp.findOne({ email, otp });
+
+    if (!otpRecord) {
+      return res.status(400).json({ message: 'Mã OTP không đúng hoặc đã hết hạn' }) as any;
+    }
+
+    await Otp.deleteOne({ _id: otpRecord._id });
+
+    res.status(200).json({ message: 'Xác thực OTP thành công', verified: true });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi xác thực OTP', error: error.message });
   }
 });
 
