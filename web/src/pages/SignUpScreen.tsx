@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import toast, { Toaster } from 'react-hot-toast';
 
 const SignUpScreen = () => {
   const navigate = useNavigate();
@@ -17,20 +18,23 @@ const SignUpScreen = () => {
       const responseSDT = await axios.post('http://localhost:5000/api/users/checksdt', { sdt });
       if (responseSDT.data.exists) {
         setError('Số điện thoại đã được đăng ký!');
+        toast.error('Số điện thoại đã được đăng ký!', { duration: 3000, position: 'top-center', style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
         return;
       }
 
       const responseEmail = await axios.post('http://localhost:5000/api/users/email', { email });
       if (responseEmail.data.exists) {
         setError('Email đã được đăng ký!');
+        toast.error('Email đã được đăng ký!', { duration: 3000, position: 'top-center', style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
         return;
       }
 
-      //Post email and sdt for Page VerifyOTP
       await axios.post('http://localhost:5000/api/send-otp', { email });
-      navigate('/verify-otp', { state: { email, sdt } });
+      toast.success('Mã OTP đã được gửi đến email của bạn! 📧', { duration: 2000, position: 'top-center', style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
+      setTimeout(() => navigate('/verify-otp', { state: { email, sdt } }), 1000);
     } catch (_err) {
       setError('Có lỗi xảy ra: ' + (_err as Error).message);
+      toast.error('Có lỗi xảy ra, vui lòng thử lại!', { duration: 3000, position: 'top-center', style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
     } finally {
       setLoading(false);
     }
@@ -43,7 +47,9 @@ const SignUpScreen = () => {
   }, [sdt, email]);
 
   return (
-    <div className="min-h-screen flex bg-linear-to-br from-primary-50 via-white to-primary-100">
+    <>
+      <Toaster />
+      <div className="min-h-screen flex bg-linear-to-br from-primary-50 via-white to-primary-100">
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:flex-1 relative overflow-hidden">
         <div className="absolute inset-0 bg-linear-to-br from-primary-400 via-primary-500 to-primary-700" />
@@ -276,6 +282,7 @@ const SignUpScreen = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

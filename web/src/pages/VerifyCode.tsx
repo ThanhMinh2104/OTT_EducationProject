@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import toast, { Toaster } from 'react-hot-toast';
 
 const VerifyCode = () => {
   const navigate = useNavigate();
@@ -30,13 +31,28 @@ const VerifyCode = () => {
       const res = await axios.post('http://localhost:5000/api/verify-otp', { email, otp });
 
       if (res.data.verified) {
-        // OTP đúng → chuyển sang màn đặt mật khẩu mới
-        navigate('/confirm-password');
+        toast.success('Xác thực OTP thành công! ✅', {
+          duration: 2000,
+          position: 'top-center',
+          style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+          iconTheme: { primary: '#fff', secondary: '#10b981' },
+        });
+        setTimeout(() => navigate('/confirm-password'), 1000);
       } else {
         setError('Mã OTP không đúng hoặc đã hết hạn!');
+        toast.error('Mã OTP không đúng hoặc đã hết hạn!', {
+          duration: 3000,
+          position: 'top-center',
+          style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+        });
       }
     } catch {
       setError('Có lỗi xảy ra, vui lòng thử lại!');
+      toast.error('Có lỗi xảy ra, vui lòng thử lại!', {
+        duration: 3000,
+        position: 'top-center',
+        style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+      });
     } finally {
       setIsLoading(false);
     }
@@ -50,15 +66,27 @@ const VerifyCode = () => {
       // Gửi lại OTP về email đã lưu
       await axios.post('http://localhost:5000/api/send-otp', { email });
       setResendSuccess(true);
+      toast.success('Đã gửi lại mã OTP thành công! 📧', {
+        duration: 3000,
+        position: 'top-center',
+        style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+      });
     } catch {
       setError('Gửi lại OTP thất bại, vui lòng thử lại!');
+      toast.error('Gửi lại OTP thất bại!', {
+        duration: 3000,
+        position: 'top-center',
+        style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+      });
     } finally {
       setIsResending(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-primary-50 via-white to-primary-100">
+    <>
+      <Toaster />
+      <div className="min-h-screen flex bg-gradient-to-br from-primary-50 via-white to-primary-100">
 
       {/* ===== Cột trái - Branding (ẩn trên mobile) ===== */}
       <div className="hidden lg:flex lg:flex-1 relative overflow-hidden">
@@ -228,6 +256,7 @@ const VerifyCode = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
