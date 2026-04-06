@@ -3,6 +3,7 @@ import LoginPassword from './pages/LoginPassword';
 import SignUpScreen from './pages/SignUpScreen';
 import SignUpInfoScreen from './pages/SignUpInfoScreen';
 import VerifyOTPDK from './pages/VerifyOtpDK';
+import HomePage from './pages/HomePage';
 
 function App() {
   return (
@@ -12,10 +13,10 @@ function App() {
         <Route path="/login" element={<LoginPassword />} />
         <Route path="/signup" element={<SignUpScreen />} />
         <Route path="/signup-info" element={<SignUpInfoScreen />} />
-        {/* Add more routes here */}
-        <Route path="/home" element={<div>Home Page (Coming Soon)</div>} />
-        <Route path="/forgot-password" element={<div>Forgot Password Page (Coming Soon)</div>} />
         <Route path="/verify-otp" element={<VerifyOTPDK />} />
+        <Route path="/home" element={<HomePage />} />
+        <Route path="/forgot-password" element={<div>Forgot Password Page (Coming Soon)</div>} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
   );
