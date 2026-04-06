@@ -184,4 +184,21 @@ router.post('/users/doimatkhau', async (req: Request, res: Response) => {
   }
 });
 
+
+// Lấy email từ số điện thoại (dùng cho luồng quên mật khẩu)
+router.post('/users/get-email-by-phone', async (req: Request, res: Response) => {
+  const { sdt } = req.body;
+  try {
+    const user = await Users.findOne({ sdt });
+    if (!user) {
+      return res.status(404).json({ message: 'Số điện thoại không tồn tại' }) as any;
+    }
+    // Chỉ trả về email để frontend gọi API gửi OTP
+    res.status(200).json({ email: user.email });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+});
+
 export default router;
+
