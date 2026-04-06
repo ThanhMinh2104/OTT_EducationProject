@@ -7,6 +7,7 @@ import Otp from '../models/Otp';
 import sendOtpEmail from '../services/emailService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { log } from 'console';
+import { uploadToCloudinary } from '../services/uploadService';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -201,6 +202,17 @@ router.put('/users/:userID', authMiddleware, async (req: AuthRequest, res: Respo
   }
 });
 
+// Upload ảnh (yêu cầu JWT)
+router.post('/upload', authMiddleware, upload.array('files'), async (req: AuthRequest, res: Response) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) return res.status(400).json({ error: 'No files uploaded' }) as any;
 
+    const urls = await Promise.all(files.map((file) => uploadToCloudinary(file)));
+    res.json({ urls });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Upload failed' });
+  }
+});
 
 export default router;
