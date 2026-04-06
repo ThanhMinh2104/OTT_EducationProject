@@ -6,6 +6,7 @@ import SignUpInfoScreen from "../screens/SignUpInfoScreen";
 import VerifyOtpDK from "../screens/VerifyOtpDK";
 import ForgotPasswordScreen from "../screens/ForgotPassword";
 import VerifyOtpResetScreen from "../screens/VerifyOtpReset";
+import ConfirmPasswordScreen from "../screens/ConfirmPassword";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -23,7 +24,7 @@ const Stack = createStackNavigator<RootStackParamList>();
 const AppNavigator = () => (
   <NavigationContainer>
     <Stack.Navigator
-      initialRouteName="ForgotPassword"
+      initialRouteName="SignUp"
       screenOptions={{ headerShown: false }}
     >
       <Stack.Screen name="SignUp" component={SignUpScreen} />
@@ -31,6 +32,8 @@ const AppNavigator = () => (
       <Stack.Screen name="VerifyOtp" component={VerifyOtpDK} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="VerifyOtpReset" component={VerifyOtpResetScreen} />
+      <Stack.Screen name="ConfirmPassword" component={ConfirmPasswordScreen} />
+
 
 
     </Stack.Navigator>
