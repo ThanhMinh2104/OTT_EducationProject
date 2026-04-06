@@ -1,30 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity,
-  StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
-  ActivityIndicator, StatusBar, Animated, Dimensions,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
-import { io } from 'socket.io-client';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
-import { API_URL } from '../utils/config';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  ActivityIndicator,
+  StatusBar,
+  Animated,
+  Dimensions,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+import { io } from "socket.io-client";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { RootStackParamList } from "../navigation/AppNavigator";
+import { API_URL } from "../utils/config";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 
 const socket = io(API_URL);
 
 const isValidPhoneNumber = (p: string) => /^(0[35789])[0-9]{8}$/.test(p);
-const isValidPassword = (p: string) => /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(p);
+const isValidPassword = (p: string) =>
+  /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(p);
 
-type Props = { navigation: StackNavigationProp<RootStackParamList, 'Login'> };
+type Props = { navigation: StackNavigationProp<RootStackParamList, "Login"> };
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
 const LoginPassword = ({ navigation }: Props) => {
-  const [sdt, setSDT] = useState('');
-  const [matKhau, setPassword] = useState('');
+  const [sdt, setSDT] = useState("");
+  const [matKhau, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -59,32 +69,39 @@ const LoginPassword = ({ navigation }: Props) => {
     setError(null);
 
     if (!isValidPhoneNumber(sdt)) {
-      setError('Số điện thoại không hợp lệ! (Bắt đầu 03, 05, 07, 08, 09 và có 10 chữ số)');
+      setError(
+        "Số điện thoại không hợp lệ! (Bắt đầu 03, 05, 07, 08, 09 và có 10 chữ số)",
+      );
       return;
     }
     if (!isValidPassword(matKhau)) {
-      setError('Mật khẩu không hợp lệ! (Tối thiểu 8 ký tự, bao gồm cả chữ cái và chữ số)');
+      setError(
+        "Mật khẩu không hợp lệ! (Tối thiểu 8 ký tự, bao gồm cả chữ cái và chữ số)",
+      );
       return;
     }
 
     try {
       setLoading(true);
-      const response = await axios.post(`${API_URL}/api/login`, { sdt, matKhau });
+      const response = await axios.post(`${API_URL}/api/login`, {
+        sdt,
+        matKhau,
+      });
       const { token, user: loginUser } = response.data;
 
-      await AsyncStorage.setItem('token', token);
+      await AsyncStorage.setItem("token", token);
 
       const res = await axios.post(`${API_URL}/api/updateStatus`, {
         userID: loginUser.userID,
-        trangThai: 'online',
+        trangThai: "online",
       });
 
-      await AsyncStorage.setItem('userID', res.data.user.userID);
-      await AsyncStorage.setItem('user', JSON.stringify(res.data.user));
-      socket.emit('updateStatus', res.data.user);
-      navigation.replace('Home');
+      await AsyncStorage.setItem("userID", res.data.user.userID);
+      await AsyncStorage.setItem("user", JSON.stringify(res.data.user));
+      socket.emit("updateStatus", res.data.user);
+      navigation.replace("Home");
     } catch {
-      setError('Sai số điện thoại hoặc mật khẩu');
+      setError("Sai số điện thoại hoặc mật khẩu");
     } finally {
       setLoading(false);
     }
@@ -95,7 +112,7 @@ const LoginPassword = ({ navigation }: Props) => {
       <StatusBar barStyle="light-content" backgroundColor="#2572e9" />
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -104,7 +121,7 @@ const LoginPassword = ({ navigation }: Props) => {
         >
           {/* Background gradient top section */}
           <LinearGradient
-            colors={['#60aef8', '#3b90f4', '#2572e9']}
+            colors={["#60aef8", "#3b90f4", "#2572e9"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.headerGradient}
@@ -115,7 +132,12 @@ const LoginPassword = ({ navigation }: Props) => {
             <View style={styles.circle3} />
 
             {/* Branding area */}
-            <Animated.View style={[styles.brandingContainer, { transform: [{ scale: logoScale }] }]}>
+            <Animated.View
+              style={[
+                styles.brandingContainer,
+                { transform: [{ scale: logoScale }] },
+              ]}
+            >
               {/* Logo */}
               <View style={styles.logoContainer}>
                 <Ionicons name="school-outline" size={32} color="#fff" />
@@ -137,13 +159,15 @@ const LoginPassword = ({ navigation }: Props) => {
               {
                 opacity: fadeAnim,
                 transform: [{ translateY: slideAnim }],
-              }
+              },
             ]}
           >
             {/* Card Header */}
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Đăng nhập</Text>
-              <Text style={styles.cardSubtitle}>Chào mừng bạn quay trở lại! 👋</Text>
+              <Text style={styles.cardSubtitle}>
+                Chào mừng bạn quay trở lại! 👋
+              </Text>
             </View>
 
             {/* Phone Input */}
@@ -151,7 +175,11 @@ const LoginPassword = ({ navigation }: Props) => {
               <Text style={styles.label}>Số điện thoại</Text>
               <View style={styles.inputWrapper}>
                 <View style={styles.inputIconContainer}>
-                  <Ionicons name="phone-portrait-outline" size={20} color="#9ca3af" />
+                  <Ionicons
+                    name="phone-portrait-outline"
+                    size={20}
+                    color="#9ca3af"
+                  />
                 </View>
                 <TextInput
                   style={styles.input}
@@ -170,7 +198,11 @@ const LoginPassword = ({ navigation }: Props) => {
               <Text style={styles.label}>Mật khẩu</Text>
               <View style={styles.inputWrapper}>
                 <View style={styles.inputIconContainer}>
-                  <Ionicons name="lock-closed-outline" size={20} color="#9ca3af" />
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={20}
+                    color="#9ca3af"
+                  />
                 </View>
                 <TextInput
                   style={styles.input}
@@ -187,7 +219,7 @@ const LoginPassword = ({ navigation }: Props) => {
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Ionicons
-                    name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                    name={showPassword ? "eye-outline" : "eye-off-outline"}
                     size={20}
                     color="#9ca3af"
                   />
@@ -198,7 +230,11 @@ const LoginPassword = ({ navigation }: Props) => {
             {/* Error Message */}
             {error && (
               <View style={styles.errorContainer}>
-                <Ionicons name="alert-circle-outline" size={20} color="#dc2626" />
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={20}
+                  color="#dc2626"
+                />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             )}
@@ -210,7 +246,7 @@ const LoginPassword = ({ navigation }: Props) => {
               activeOpacity={0.85}
             >
               <LinearGradient
-                colors={['#60aef8', '#3b90f4', '#2572e9']}
+                colors={["#60aef8", "#3b90f4", "#2572e9"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={[styles.btnPrimary, loading && styles.btnDisabled]}
@@ -228,7 +264,7 @@ const LoginPassword = ({ navigation }: Props) => {
 
             {/* Forgot Password Link */}
             <TouchableOpacity
-              onPress={() => navigation.navigate('ForgotPassword')}
+              onPress={() => navigation.navigate("ForgotPassword")}
               style={styles.forgotContainer}
             >
               <Text style={styles.forgotLink}>Quên mật khẩu?</Text>
@@ -244,14 +280,16 @@ const LoginPassword = ({ navigation }: Props) => {
             {/* Signup Link */}
             <View style={styles.signupContainer}>
               <Text style={styles.signupText}>Chưa có tài khoản? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+              <TouchableOpacity onPress={() => navigation.navigate("SignUp")}>
                 <Text style={styles.signupLink}>Đăng ký ngay</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
 
           {/* Footer */}
-          <Text style={styles.footer}>© 2025 OTT Education. All rights reserved.</Text>
+          <Text style={styles.footer}>
+            © 2025 OTT Education. All rights reserved.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </>
@@ -261,7 +299,7 @@ const LoginPassword = ({ navigation }: Props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f7ff',
+    backgroundColor: "#f0f7ff",
   },
   scrollContent: {
     flexGrow: 1,
@@ -269,107 +307,107 @@ const styles = StyleSheet.create({
 
   // ── Header gradient ──
   headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingTop: Platform.OS === "ios" ? 60 : 50,
     paddingBottom: 60,
     paddingHorizontal: 24,
-    alignItems: 'center',
-    overflow: 'hidden',
+    alignItems: "center",
+    overflow: "hidden",
   },
 
   // ── Decorative circles (matching web) ──
   circle1: {
-    position: 'absolute',
+    position: "absolute",
     top: -40,
     left: -40,
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
   circle2: {
-    position: 'absolute',
-    top: '35%' as unknown as number,
+    position: "absolute",
+    top: "35%" as unknown as number,
     right: -30,
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
   circle3: {
-    position: 'absolute',
+    position: "absolute",
     bottom: -20,
-    left: '25%' as unknown as number,
+    left: "25%" as unknown as number,
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
 
   // ── Branding ──
   brandingContainer: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   logoContainer: {
     width: 56,
     height: 56,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 16,
   },
   appTitle: {
     fontSize: 36,
-    fontWeight: '800',
-    color: '#ffffff',
+    fontWeight: "800",
+    color: "#ffffff",
     letterSpacing: 1,
     lineHeight: 40,
   },
   appTitleAccent: {
     fontSize: 36,
-    fontWeight: '800',
-    color: '#67e8f9',
+    fontWeight: "800",
+    color: "#67e8f9",
     marginBottom: 8,
     letterSpacing: 1,
     lineHeight: 40,
   },
   appSubtitle: {
     fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.9)',
-    textAlign: 'center',
+    color: "rgba(255, 255, 255, 0.9)",
+    textAlign: "center",
     paddingHorizontal: 16,
     lineHeight: 20,
   },
 
   // ── Login Card ──
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     borderRadius: 24,
     padding: 28,
     marginHorizontal: 20,
     marginTop: -30,
     marginBottom: 20,
-    shadowColor: '#3b90f4',
+    shadowColor: "#3b90f4",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 24,
     elevation: 10,
     borderWidth: 1,
-    borderColor: 'rgba(59, 144, 244, 0.08)',
+    borderColor: "rgba(59, 144, 244, 0.08)",
   },
   cardHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 28,
   },
   cardTitle: {
     fontSize: 26,
-    fontWeight: '700',
-    color: '#1f2937',
+    fontWeight: "700",
+    color: "#1f2937",
     marginBottom: 6,
   },
   cardSubtitle: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: "#9ca3af",
   },
 
   // ── Input Fields ──
@@ -378,18 +416,18 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
     marginBottom: 8,
   },
   inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f9fafb',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f9fafb",
     borderWidth: 2,
-    borderColor: '#e5e7eb',
+    borderColor: "#e5e7eb",
     borderRadius: 14,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   inputIconContainer: {
     paddingLeft: 14,
@@ -397,10 +435,10 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    paddingVertical: Platform.OS === 'ios' ? 16 : 14,
+    paddingVertical: Platform.OS === "ios" ? 16 : 14,
     paddingHorizontal: 8,
     fontSize: 15,
-    color: '#1f2937',
+    color: "#1f2937",
   },
   eyeIcon: {
     paddingHorizontal: 14,
@@ -409,19 +447,19 @@ const styles = StyleSheet.create({
 
   // ── Error ──
   errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    backgroundColor: '#fef2f2',
+    backgroundColor: "#fef2f2",
     borderWidth: 1,
-    borderColor: '#fecaca',
+    borderColor: "#fecaca",
     borderRadius: 14,
     padding: 12,
     marginBottom: 16,
   },
   errorText: {
     flex: 1,
-    color: '#dc2626',
+    color: "#dc2626",
     fontSize: 13,
     lineHeight: 18,
   },
@@ -430,9 +468,9 @@ const styles = StyleSheet.create({
   btnPrimary: {
     borderRadius: 14,
     paddingVertical: 16,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 4,
-    shadowColor: '#3b90f4',
+    shadowColor: "#3b90f4",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 12,
@@ -442,66 +480,66 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   btnText: {
-    color: '#ffffff',
-    fontWeight: '600',
+    color: "#ffffff",
+    fontWeight: "600",
     fontSize: 15,
   },
 
   // ── Forgot Password ──
   forgotContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 16,
   },
   forgotLink: {
-    color: '#3b90f4',
+    color: "#3b90f4",
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
 
   // ── Divider ──
   dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginVertical: 20,
   },
   divider: {
     flex: 1,
     height: 1,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: "#e5e7eb",
   },
   dividerText: {
-    color: '#9ca3af',
+    color: "#9ca3af",
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
     paddingHorizontal: 14,
     letterSpacing: 1.5,
   },
 
   // ── Signup ──
   signupContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
   },
   signupText: {
-    color: '#9ca3af',
+    color: "#9ca3af",
     fontSize: 14,
   },
   signupLink: {
-    color: '#3b90f4',
+    color: "#3b90f4",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 
   // ── Footer ──
   footer: {
-    textAlign: 'center',
-    color: '#9ca3af',
+    textAlign: "center",
+    color: "#9ca3af",
     fontSize: 11,
     marginTop: 4,
     marginBottom: 30,

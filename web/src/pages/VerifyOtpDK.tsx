@@ -1,46 +1,33 @@
-import { useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-const SignUpScreen = () => {
+export default function VerifyOTPDK() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [sdt, setSDT] = useState('');
-  const [enabled, setEnabled] = useState(false);
-  const [error, setError] = useState('');
+  const location = useLocation();
+  const { email, sdt } = location.state;
+  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
+  const [log, setLog] = useState('');
 
-  const handleSignUp = async () => {
+  const handleVerifyOtp = async () => {
     try {
       setLoading(true);
-      setError('');
-      const responseSDT = await axios.post('http://localhost:5000/api/users/checksdt', { sdt });
-      if (responseSDT.data.exists) {
-        setError('Số điện thoại đã được đăng ký!');
+      const responseData = await axios.post('http://localhost:5000/api/verify-otp', { email, otp });
+
+      const verified: boolean = responseData.data.verified;
+      if (!verified) {
+        setLog('Mã OTP không chính xác');
         return;
       }
 
-      const responseEmail = await axios.post('http://localhost:5000/api/users/email', { email });
-      if (responseEmail.data.exists) {
-        setError('Email đã được đăng ký!');
-        return;
-      }
-
-      //Post email and sdt for Page VerifyOTP
-      await axios.post('http://localhost:5000/api/send-otp', { email });
-      navigate('/verify-otp', { state: { email, sdt } });
-    } catch (_err) {
-      setError('Có lỗi xảy ra: ' + (_err as Error).message);
+      navigate('/signup-info', { state: { email, sdt } });
+    } catch (error) {
+      console.log(error);
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^(0[35789])[0-9]{8}$/;
-    setEnabled(phoneRegex.test(sdt) && emailRegex.test(email));
-  }, [sdt, email]);
 
   return (
     <div className="min-h-screen flex bg-linear-to-br from-primary-50 via-white to-primary-100">
@@ -54,7 +41,6 @@ const SignUpScreen = () => {
         <div className="absolute -bottom-10 left-1/4 w-48 h-48 rounded-full bg-white/10 animate-float [animation-delay:4s]" />
         <div className="absolute top-1/2 left-1/3 w-32 h-32 rounded-full bg-accent-400/20 animate-float [animation-delay:3s]" />
 
-        {/* Content */}
         <div className="relative z-10 flex flex-col justify-center items-center px-12 xl:px-20 w-full">
           <div className="max-w-md animate-slide-in-left">
             <div className="mb-8">
@@ -69,41 +55,41 @@ const SignUpScreen = () => {
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z"
+                    d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
                   />
                 </svg>
               </div>
             </div>
 
             <h1 className="text-4xl xl:text-5xl font-extrabold text-white mb-4 leading-tight tracking-tight">
-              Tham gia
-              <span className="block text-accent-400">OTT Education</span>
+              Hoàn tất
+              <span className="block text-accent-400">đăng ký</span>
             </h1>
             <p className="text-primary-100 text-lg mb-10 leading-relaxed">
-              Tạo tài khoản để bắt đầu hành trình học tập và kết nối cùng bạn bè, giảng viên.
+              Chỉ thêm vài bước nữa để bạn có thể bắt đầu trải nghiệm OTT Education.
             </p>
 
-            <div className="space-y-4">
-              {[
-                { icon: '🚀', text: 'Đăng ký nhanh chóng, dễ dàng' },
-                { icon: '🔒', text: 'Bảo mật thông tin cá nhân' },
-                { icon: '🎓', text: 'Kết nối với cộng đồng giáo dục' },
-              ].map((feature, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 transition-all duration-300 hover:bg-white/20 hover:translate-x-1 animate-slide-in-left"
-                  style={{ animationDelay: `${0.2 + i * 0.1}s`, opacity: 0 }}
-                >
-                  <span className="text-xl shrink-0">{feature.icon}</span>
-                  <span className="text-white/90 text-sm font-medium">{feature.text}</span>
+            {/* Progress indicator */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-primary-600 text-sm font-bold">
+                  1
                 </div>
-              ))}
+                <span className="text-white text-sm">Xác thực</span>
+              </div>
+              <div className="w-8 border-t border-white/30" />
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-white/30 flex items-center justify-center text-primary-600 text-sm font-bold">
+                  2
+                </div>
+                <span className="text-white/70 text-sm font-medium">Thông tin</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Right Panel - Sign Up Form */}
+      {/* OTP Form */}
       <div className="flex-1 flex items-center justify-center px-6 py-12 lg:px-12">
         <div className="w-full max-w-md animate-fade-in-up">
           {/* Mobile branding */}
@@ -126,78 +112,30 @@ const SignUpScreen = () => {
             <h2 className="text-2xl font-bold text-gray-800">OTT Education</h2>
           </div>
 
-          {/* Signup Card */}
+          {/* OTP Card */}
           <div className="bg-white rounded-3xl shadow-xl shadow-primary-200/50 border border-primary-100/50 p-8 sm:p-10 animate-pulse-glow">
             <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Đăng ký</h2>
-              <p className="text-gray-400 text-sm">Tạo tài khoản mới để bắt đầu 🎉</p>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Xác nhận mã OTP</h2>
+              <p className="text-gray-400 text-sm">Mã OTP đã được gửi đến {email}</p>
             </div>
 
             <div className="space-y-5">
-              {/* Phone */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Số điện thoại
-                </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <svg
-                      className="w-5 h-5 text-gray-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3"
-                      />
-                    </svg>
-                  </div>
                   <input
                     id="phone-input"
                     type="text"
-                    placeholder="Nhập số điện thoại của bạn"
-                    className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-800 text-sm placeholder-gray-400 transition-all duration-300 focus:outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 hover:border-gray-300"
-                    value={sdt}
-                    onChange={(e) => setSDT(e.target.value)}
+                    placeholder="Nhập mã OTP của bạn"
+                    maxLength={6}
+                    minLength={6}
+                    className="w-full text-center text-3xl py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 transition-all duration-300 focus:outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 hover:border-gray-300"
+                    value={otp.toString()}
+                    onChange={(e) => setOtp(e.target.value)}
                   />
                 </div>
               </div>
 
-              {/* Email */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <svg
-                      className="w-5 h-5 text-gray-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75"
-                      />
-                    </svg>
-                  </div>
-                  <input
-                    id="email-input"
-                    type="email"
-                    placeholder="Nhập email của bạn"
-                    className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-800 text-sm placeholder-gray-400 transition-all duration-300 focus:outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 hover:border-gray-300"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Error */}
-              {error && (
+              {log && (
                 <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm animate-fade-in-up">
                   <svg
                     className="w-5 h-5 shrink-0"
@@ -212,15 +150,15 @@ const SignUpScreen = () => {
                       d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"
                     />
                   </svg>
-                  <span>{error}</span>
+                  <span>{log}</span>
                 </div>
               )}
 
               {/* Submit */}
               <button
                 id="signup-button"
-                onClick={handleSignUp}
-                disabled={!enabled || loading}
+                onClick={handleVerifyOtp}
+                disabled={loading}
                 className="w-full bg-linear-to-r from-primary-400 via-primary-500 to-primary-600 text-white py-3.5 rounded-xl font-semibold text-sm shadow-lg shadow-primary-300/40 transition-all duration-300 hover:shadow-xl hover:shadow-primary-400/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg cursor-pointer"
               >
                 {loading ? (
@@ -240,10 +178,10 @@ const SignUpScreen = () => {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
                     </svg>
-                    Đang xử lý...
+                    Đang xác thực...
                   </span>
                 ) : (
-                  'Tiếp tục'
+                  'Xác nhận'
                 )}
               </button>
             </div>
@@ -258,13 +196,13 @@ const SignUpScreen = () => {
             {/* Login link */}
             <div className="text-center">
               <p className="text-gray-400 text-sm">
-                Bạn đã có tài khoản?{' '}
+                Chưa nhận được mã?{' '}
                 <button
                   id="login-link"
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/signup')}
                   className="text-primary-500 hover:text-primary-700 font-semibold transition-colors duration-200 hover:underline underline-offset-2 cursor-pointer"
                 >
-                  Đăng nhập
+                  Đăng ký
                 </button>
               </p>
             </div>
@@ -277,6 +215,4 @@ const SignUpScreen = () => {
       </div>
     </div>
   );
-};
-
-export default SignUpScreen;
+}

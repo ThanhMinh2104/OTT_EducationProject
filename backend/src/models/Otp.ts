@@ -12,4 +12,4 @@ const OtpSchema = new Schema<IOtp>({
   createdAt: { type: Date, default: Date.now, expires: 300 }, // Tự động xóa sau 5 phút
 });
 
-export default mongoose.model<IOtp>('Otp', OtpSchema);
+export default mongoose.model<IOtp>('Otps', OtpSchema, 'Otps');
