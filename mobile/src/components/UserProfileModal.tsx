@@ -12,7 +12,8 @@ const socket = io(API_URL);
 
 const isValidPhone = (p: string) => /^(0[35789][0-9]{8}|(\+84)[35789][0-9]{8})$/.test(p);
 const isValidEmail = (e: string) => /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(e);
-const validateName = (name: string) => /^([A-ZÀ-Ỵ][a-zà-ỹ]*)(\s[A-ZÀ-Ỵ][a-zà-ỹ]*)+$/.test(name.trim().replace(/\s+/g, ' '));
+const validateName = (name: string) =>
+  /^([A-ZÀ-Ỵ][a-zà-ỹ]*)(\s[A-ZÀ-Ỵ][a-zà-ỹ]*)+$/.test(name.trim().replace(/\s+/g, ' '));
 const isValidDOB = (dob: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return false;
   const birth = new Date(dob);
@@ -73,7 +74,10 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
   }, [user, visible]);
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
       setProfile((prev) => ({ ...prev, avatar: result.assets[0].uri }));
@@ -134,25 +138,55 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalBox}>
+          {/* Handle bar */}
+          <View style={styles.handleBar} />
+
+          {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Thông tin tài khoản</Text>
-            <TouchableOpacity onPress={onClose}><Text style={styles.closeBtn}>✕</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtnWrap}>
+              <Text style={styles.closeBtn}>✕</Text>
+            </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={styles.body}>
-            <TouchableOpacity onPress={isEditing ? pickImage : undefined}>
-              <Image source={{ uri: profile.avatar || 'https://via.placeholder.com/90' }} style={styles.avatar} />
-              {isEditing && <Text style={styles.changePhoto}>Đổi ảnh</Text>}
+
+          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+            {/* Avatar */}
+            <TouchableOpacity onPress={isEditing ? pickImage : undefined} activeOpacity={isEditing ? 0.7 : 1}>
+              <View style={styles.avatarWrap}>
+                <Image
+                  source={{ uri: profile.avatar || 'https://via.placeholder.com/90' }}
+                  style={styles.avatar}
+                />
+                {isEditing && (
+                  <View style={styles.avatarEditBadge}>
+                    <Text style={styles.avatarEditIcon}>✏</Text>
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
             <Text style={styles.profileName}>{profile.name}</Text>
 
             {isEditing ? (
+              /* ===== EDIT FORM ===== */
               <View style={styles.editForm}>
-                <Text style={styles.fieldLabel}>Tên</Text>
-                <TextInput style={styles.input} value={profile.name} onChangeText={(v) => setProfile((p) => ({ ...p, name: v }))} />
-                <Text style={styles.fieldLabel}>Email</Text>
-                <TextInput style={styles.input} value={profile.email} keyboardType="email-address" autoCapitalize="none" onChangeText={(v) => setProfile((p) => ({ ...p, email: v }))} />
-                <Text style={styles.fieldLabel}>Số điện thoại</Text>
-                <TextInput style={styles.input} value={profile.phone} keyboardType="phone-pad" onChangeText={(v) => setProfile((p) => ({ ...p, phone: v }))} />
+                {[
+                  { label: 'Tên', key: 'name', keyboard: 'default' as const },
+                  { label: 'Email', key: 'email', keyboard: 'email-address' as const },
+                  { label: 'Số điện thoại', key: 'phone', keyboard: 'phone-pad' as const },
+                ].map(({ label, key, keyboard }) => (
+                  <View key={key} style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{label}</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={(profile as any)[key]}
+                      keyboardType={keyboard}
+                      autoCapitalize="none"
+                      onChangeText={(v) => setProfile((p) => ({ ...p, [key]: v }))}
+                      placeholderTextColor="#bbb"
+                    />
+                  </View>
+                ))}
+
                 <Text style={styles.fieldLabel}>Ngày sinh</Text>
                 <View style={styles.dateRow}>
                   {[
@@ -160,7 +194,7 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
                     { key: 'dobMonth', label: 'Tháng', options: months },
                     { key: 'dobYear', label: 'Năm', options: years },
                   ].map(({ key, label, options }) => (
-                    <ScrollView key={key} style={styles.datePicker} nestedScrollEnabled>
+                    <ScrollView key={key} style={styles.datePicker} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                       <Text style={styles.datePickerLabel}>{label}</Text>
                       {options.map((opt) => (
                         <TouchableOpacity
@@ -168,12 +202,15 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
                           style={(profile as any)[key] === opt ? styles.dateOptSelected : styles.dateOpt}
                           onPress={() => setProfile((p) => ({ ...p, [key]: opt }))}
                         >
-                          <Text style={(profile as any)[key] === opt ? styles.dateOptTextSelected : styles.dateOptText}>{opt}</Text>
+                          <Text style={(profile as any)[key] === opt ? styles.dateOptTextSelected : styles.dateOptText}>
+                            {opt}
+                          </Text>
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
                   ))}
                 </View>
+
                 <Text style={styles.fieldLabel}>Giới tính</Text>
                 <View style={styles.genderRow}>
                   {['Nam', 'Nữ', 'Khác'].map((g) => (
@@ -186,17 +223,27 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
                     </TouchableOpacity>
                   ))}
                 </View>
-                {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+
+                {errorMessage ? (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                  </View>
+                ) : null}
+
                 <View style={styles.actionRow}>
-                  <TouchableOpacity style={styles.btnCancel} onPress={() => { setIsEditing(false); setErrorMessage(''); }}>
+                  <TouchableOpacity
+                    style={styles.btnCancel}
+                    onPress={() => { setIsEditing(false); setErrorMessage(''); }}
+                  >
                     <Text style={styles.btnCancelText}>Hủy</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.btnSave} onPress={handleSave}>
-                    <Text style={styles.btnSaveText}>Lưu</Text>
+                    <Text style={styles.btnSaveText}>Lưu thay đổi</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ) : (
+              /* ===== INFO VIEW ===== */
               <View style={styles.infoView}>
                 {[
                   ['Tên', profile.name],
@@ -206,12 +253,12 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
                   ['Giới tính', profile.gender],
                 ].map(([label, value]) => (
                   <View key={label} style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>{label}:</Text>
+                    <Text style={styles.infoLabel}>{label}</Text>
                     <Text style={styles.infoValue}>{value}</Text>
                   </View>
                 ))}
-                <TouchableOpacity style={styles.btnUpdate} onPress={() => setIsEditing(true)}>
-                  <Text style={styles.btnUpdateText}>✏ Cập nhật</Text>
+                <TouchableOpacity style={styles.btnUpdate} onPress={() => setIsEditing(true)} activeOpacity={0.8}>
+                  <Text style={styles.btnUpdateText}>✏  Cập nhật thông tin</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -222,43 +269,277 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
   );
 };
 
+const PRIMARY = '#0e9de8';
+const PRIMARY_DARK = '#0077c2';
+
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalBox: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  headerTitle: { fontSize: 17, fontWeight: 'bold', color: '#333' },
-  closeBtn: { fontSize: 18, color: '#888', padding: 4 },
-  body: { alignItems: 'center', padding: 20 },
-  avatar: { width: 90, height: 90, borderRadius: 45, marginBottom: 4 },
-  changePhoto: { color: '#1a73e8', textAlign: 'center', fontSize: 13, marginBottom: 8 },
-  profileName: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 16 },
-  editForm: { width: '100%' },
-  fieldLabel: { fontSize: 13, color: '#666', marginBottom: 4, marginTop: 8 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 14, backgroundColor: '#fafafa', marginBottom: 4 },
-  dateRow: { flexDirection: 'row', height: 120, gap: 8, marginBottom: 8 },
-  datePicker: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8 },
-  datePickerLabel: { textAlign: 'center', fontSize: 11, color: '#888', padding: 4, backgroundColor: '#f5f5f5' },
-  dateOpt: { padding: 6, alignItems: 'center' },
-  dateOptSelected: { padding: 6, alignItems: 'center', backgroundColor: '#1a73e8', borderRadius: 4 },
-  dateOptText: { fontSize: 13, color: '#333' },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    maxHeight: '92%',
+    paddingBottom: 20,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#ddd',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+
+  /* Header */
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  closeBtnWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtn: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '600',
+  },
+
+  /* Body */
+  body: {
+    alignItems: 'center',
+    padding: 20,
+    paddingBottom: 8,
+  },
+
+  /* Avatar */
+  avatarWrap: {
+    position: 'relative',
+    marginBottom: 6,
+  },
+  avatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 3,
+    borderColor: PRIMARY,
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  avatarEditIcon: {
+    fontSize: 11,
+    color: '#fff',
+  },
+  profileName: {
+    fontSize: 19,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 18,
+    marginTop: 4,
+  },
+
+  /* Info view */
+  infoView: {
+    width: '100%',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  infoLabel: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  infoValue: {
+    color: '#1a1a1a',
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: 12,
+  },
+  btnUpdate: {
+    backgroundColor: PRIMARY,
+    margin: 14,
+    borderRadius: 10,
+    padding: 13,
+    alignItems: 'center',
+  },
+  btnUpdateText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+
+  /* Edit form */
+  editForm: {
+    width: '100%',
+  },
+  fieldGroup: {
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 5,
+    marginTop: 4,
+  },
+  input: {
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    padding: 11,
+    fontSize: 14,
+    backgroundColor: '#fafafa',
+    color: '#333',
+  },
+
+  /* Date picker */
+  dateRow: {
+    flexDirection: 'row',
+    height: 120,
+    gap: 8,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  datePicker: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    backgroundColor: '#fafafa',
+  },
+  datePickerLabel: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: '#888',
+    paddingVertical: 5,
+    backgroundColor: '#f0f0f0',
+    fontWeight: '600',
+  },
+  dateOpt: { padding: 7, alignItems: 'center' },
+  dateOptSelected: {
+    padding: 7,
+    alignItems: 'center',
+    backgroundColor: PRIMARY,
+    borderRadius: 6,
+    margin: 2,
+  },
+  dateOptText: { fontSize: 13, color: '#444' },
   dateOptTextSelected: { fontSize: 13, color: '#fff', fontWeight: 'bold' },
-  genderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  genderBtn: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 8, alignItems: 'center' },
-  genderSelected: { backgroundColor: '#1a73e8', borderColor: '#1a73e8' },
-  genderText: { color: '#555', fontSize: 13 },
+
+  /* Gender */
+  genderRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+    marginTop: 4,
+  },
+  genderBtn: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    backgroundColor: '#fafafa',
+  },
+  genderSelected: {
+    backgroundColor: PRIMARY,
+    borderColor: PRIMARY,
+  },
+  genderText: { color: '#555', fontSize: 14, fontWeight: '500' },
   genderTextSelected: { color: '#fff', fontWeight: 'bold' },
-  error: { color: '#e53e3e', textAlign: 'center', marginBottom: 8, fontSize: 13 },
-  actionRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  btnCancel: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, alignItems: 'center' },
-  btnCancelText: { color: '#555', fontWeight: '600' },
-  btnSave: { flex: 1, backgroundColor: '#1a73e8', borderRadius: 8, padding: 12, alignItems: 'center' },
-  btnSaveText: { color: '#fff', fontWeight: 'bold' },
-  infoView: { width: '100%' },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  infoLabel: { color: '#888', fontSize: 14 },
-  infoValue: { color: '#333', fontSize: 14, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
-  btnUpdate: { backgroundColor: '#1a73e8', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 16 },
-  btnUpdateText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+
+  /* Error */
+  errorBox: {
+    backgroundColor: '#fff5f5',
+    borderWidth: 1,
+    borderColor: '#fed7d7',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  errorText: {
+    color: '#e53e3e',
+    textAlign: 'center',
+    fontSize: 13,
+  },
+
+  /* Action buttons */
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  btnCancel: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    padding: 13,
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+  },
+  btnCancelText: {
+    color: '#555',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  btnSave: {
+    flex: 2,
+    backgroundColor: PRIMARY,
+    borderRadius: 10,
+    padding: 13,
+    alignItems: 'center',
+  },
+  btnSaveText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
 });
 
 export default UserProfileModal;
