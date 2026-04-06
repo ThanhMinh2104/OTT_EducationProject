@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { FaUser, FaSignOutAlt, FaComments } from 'react-icons/fa';
 import { io } from 'socket.io-client';
 import UserProfileModal from '../components/UserProfileModal';
+import ChatList from '../components/ChatList';
+import ChatWindow from '../components/ChatWindow';
 import { getToken } from '../utils/auth';
 import '../styles/home.css';
 
@@ -19,6 +21,15 @@ interface User {
   gioTinh?: string;
 }
 
+interface Chat {
+  id: string;
+  name: string;
+  avatar?: string;
+  lastMessage?: string;
+  time?: string;
+  unread?: number;
+}
+
 const HomePage = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(() => {
@@ -27,6 +38,7 @@ const HomePage = () => {
   });
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
 
   useEffect(() => {
     if (!user || !getToken()) { navigate('/login'); return; }
@@ -67,7 +79,6 @@ const HomePage = () => {
             <FaComments />
           </div>
         </div>
-
         <div className="bottom-icons">
           <div className="sidebar-icon" onClick={openProfile} title="Hồ sơ cá nhân">
             <FaUser />
@@ -86,25 +97,22 @@ const HomePage = () => {
             <span>{user?.name}</span>
           </div>
           <div className="profile-quick-item" onClick={openProfile}>
-            <FaUser />
-            <span>Hồ sơ của bạn</span>
+            <FaUser /><span>Hồ sơ của bạn</span>
           </div>
           <div className="profile-quick-item logout" onClick={handleLogout}>
-            <FaSignOutAlt />
-            <span>Đăng xuất</span>
+            <FaSignOutAlt /><span>Đăng xuất</span>
           </div>
         </div>
       )}
 
-      {/* Main content */}
-      <div className="home-content" onClick={() => setShowQuickMenu(false)}>
-        <div className="home-placeholder">
-          <FaComments style={{ fontSize: 64, color: '#ccc', display: 'block', margin: '0 auto 16px' }} />
-          <p>Chào mừng, <strong>{user?.name}</strong>!</p>
-          <p style={{ marginTop: 8, fontSize: 14, color: '#bbb' }}>
-            Click vào avatar hoặc icon hồ sơ để xem thông tin cá nhân.
-          </p>
-        </div>
+      {/* Main content: ChatList + ChatWindow */}
+      <div className="chat-container" onClick={() => setShowQuickMenu(false)}>
+        <ChatList
+          user={user}
+          onSelectChat={setSelectedChat}
+          selectedChatId={selectedChat?.id ?? null}
+        />
+        <ChatWindow selectedChat={selectedChat} user={user} />
       </div>
 
       {/* Profile Modal */}

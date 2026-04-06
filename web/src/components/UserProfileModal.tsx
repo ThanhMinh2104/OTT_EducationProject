@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { FaTimes, FaPen } from 'react-icons/fa';
 import { io } from 'socket.io-client';
 import { authHeaders } from '../utils/auth';
+import '../styles/UserProfileModal.css';
 
 const socket = io('http://localhost:5000');
 
