@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import Users from '../models/User';
 import Otp from '../models/Otp';
 import sendOtpEmail from '../services/emailService';
+import { log } from 'console';
 
 const router = Router();
 
@@ -63,13 +64,12 @@ router.post('/login', async (req: Request, res: Response) => {
     if (!user) return res.status(400).json({ message: 'Sai số điện thoại hoặc mật khẩu!' }) as any;
 
     const isMatch = await bcrypt.compare(matKhau, user.matKhau);
-    if (!isMatch) return res.status(400).json({ message: 'Sai số điện thoại hoặc mật khẩu!' }) as any;
+    if (!isMatch)
+      return res.status(400).json({ message: 'Sai số điện thoại hoặc mật khẩu!' }) as any;
 
-    const token = jwt.sign(
-      { userID: user.userID },
-      process.env.JWT_SECRET as string,
-      { expiresIn: (process.env.JWT_EXPIRES || '7d') as jwt.SignOptions['expiresIn'] }
-    );
+    const token = jwt.sign({ userID: user.userID }, process.env.JWT_SECRET as string, {
+      expiresIn: (process.env.JWT_EXPIRES || '7d') as jwt.SignOptions['expiresIn'],
+    });
 
     res.status(200).json({ message: 'Đăng nhập thành công!', token, user });
   } catch (error: any) {
@@ -81,11 +81,7 @@ router.post('/login', async (req: Request, res: Response) => {
 router.post('/updateStatus', async (req: Request, res: Response) => {
   const { userID, trangThai } = req.body;
   try {
-    const user = await Users.findOneAndUpdate(
-      { userID },
-      { $set: { trangThai } },
-      { new: true }
-    );
+    const user = await Users.findOneAndUpdate({ userID }, { $set: { trangThai } }, { new: true });
     if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' }) as any;
     res.status(200).json({ success: true, user });
   } catch (error: any) {
@@ -141,17 +137,14 @@ router.post('/send-otp', async (req: Request, res: Response) => {
 // Xác thực OTP
 router.post('/verify-otp', async (req: Request, res: Response) => {
   const { email, otp } = req.body;
-
-  if (!email || !otp) {
-    return res.status(400).json({ message: 'Thiếu email hoặc mã OTP' }) as any;
-  }
-
   try {
     // Tìm OTP trong database
     const otpRecord = await Otp.findOne({ email, otp });
 
+    console.log(otpRecord);
+
     if (!otpRecord) {
-      return res.status(400).json({ message: 'Mã OTP không đúng hoặc đã hết hạn' }) as any;
+      return res.json({ message: 'Mã OTP không đúng hoặc đã hết hạn', verified: false }) as any;
     }
 
     await Otp.deleteOne({ _id: otpRecord._id });
