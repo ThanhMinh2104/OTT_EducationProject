@@ -155,4 +155,33 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
   }
 });
 
+// Đặt lại mật khẩu sau khi người dùng xác thực OTP thành công
+router.post('/users/doimatkhau', async (req: Request, res: Response) => {
+  const { sdt, matKhauMoi } = req.body;
+
+  // Kiểm tra đầu vào
+  if (!sdt || !matKhauMoi) {
+    return res.status(400).json({ message: 'Thiếu số điện thoại hoặc mật khẩu mới' }) as any;
+  }
+
+  try {
+    // Tìm người dùng theo số điện thoại
+    const user = await Users.findOne({ sdt });
+    if (!user) {
+      return res.status(404).json({ message: 'Số điện thoại không tồn tại' }) as any;
+    }
+
+    // Mã hóa mật khẩu mới trước khi lưu
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(matKhauMoi, salt);
+
+    // Cập nhật mật khẩu mới vào database
+    await Users.findOneAndUpdate({ sdt }, { $set: { matKhau: hashedPassword } });
+
+    res.status(200).json({ message: 'Đổi mật khẩu thành công' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi server khi đổi mật khẩu', error: error.message });
+  }
+});
+
 export default router;
