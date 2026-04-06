@@ -4,7 +4,6 @@ import {
   FaComments, FaUser, FaCloud, FaCog, FaSignOutAlt,
 } from 'react-icons/fa';
 import UserProfileModal from './UserProfileModal';
-import '../styles/Sidebar.css';
 
 interface User {
   userID: string;
@@ -46,42 +45,45 @@ const Sidebar = ({ user, onChangeView }: Props) => {
   };
 
   return (
-    <div className="sidebar">
-      <div className="top-icons">
+    <div className="w-[70px] h-screen bg-[#79DFFF] flex flex-col items-center py-4 flex-shrink-0">
+      <div className="flex flex-col items-center gap-7">
         {/* Avatar */}
-        <div className="avatar" onClick={() => setShowProfileModal(true)}>
-          <img src={currentUser?.anhDaiDien || 'https://via.placeholder.com/48'} alt="Avatar" />
+        <div
+          className="w-12 h-12 rounded-full bg-gray-300 overflow-hidden cursor-pointer"
+          onClick={() => setShowProfileModal(true)}
+        >
+          <img src={currentUser?.anhDaiDien || 'https://via.placeholder.com/48'} alt="Avatar" className="w-full h-full object-cover rounded-full" />
         </div>
 
         {/* Icon group */}
-        <div className="icon-group">
+        <div className="flex flex-col gap-7">
           <div
-            className={`icon ${activeButton === 'chat' ? 'active' : ''}`}
+            className={`w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white transition-colors ${activeButton === 'chat' ? 'bg-blue-800' : 'hover:bg-blue-800'}`}
             onClick={() => handleButtonClick('chat')}
             title="Tin nhắn"
           >
-            <FaComments className="iconn" />
+            <FaComments className="w-[30px] h-[30px]" />
           </div>
           <div
-            className={`icon ${activeButton === 'friend' ? 'active' : ''}`}
+            className={`w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white transition-colors ${activeButton === 'friend' ? 'bg-blue-800' : 'hover:bg-blue-800'}`}
             onClick={() => handleButtonClick('friend')}
             title="Danh bạ"
           >
-            <FaUser className="iconn" />
+            <FaUser className="w-[30px] h-[30px]" />
           </div>
         </div>
       </div>
 
       {/* Bottom icons */}
-      <div className="bottom-icons">
-        <div className="icon" title="Cloud">
-          <FaCloud className="iconn" />
+      <div className="mt-auto flex flex-col gap-7">
+        <div className="w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white hover:bg-blue-800 transition-colors" title="Cloud">
+          <FaCloud className="w-[30px] h-[30px]" />
         </div>
-        <div className="icon" title="Cài đặt">
-          <FaCog className="iconn" />
+        <div className="w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white hover:bg-blue-800 transition-colors" title="Cài đặt">
+          <FaCog className="w-[30px] h-[30px]" />
         </div>
-        <div className="icon" onClick={handleLogout} title="Đăng xuất">
-          <FaSignOutAlt className="iconn" />
+        <div className="w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white hover:bg-blue-800 transition-colors" onClick={handleLogout} title="Đăng xuất">
+          <FaSignOutAlt className="w-[30px] h-[30px]" />
         </div>
       </div>
 

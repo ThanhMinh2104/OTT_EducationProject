@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { FaTimes, FaPen } from 'react-icons/fa';
 import { io } from 'socket.io-client';
 import { authHeaders } from '../utils/auth';
-import '../styles/UserProfileModal.css';
 
 const socket = io('http://localhost:5000');
 
@@ -125,80 +124,129 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="profile-modal-box" onClick={(e) => e.stopPropagation()}>
-        <div className="profile-modal-header">
-          <h2>Thông tin tài khoản</h2>
-          <button className="close-btn" onClick={onClose}><FaTimes /></button>
+    <div className="fixed inset-0 w-screen h-screen bg-black/45 flex justify-center items-center z-[1000] backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-white rounded-[14px] w-[460px] max-h-[88vh] overflow-y-auto shadow-[0_8px_32px_rgba(0,0,0,0.18)] animate-modal-pop [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-[1]">
+          <h2 className="text-base font-bold m-0 text-gray-900">Thông tin tài khoản</h2>
+          <button
+            className="bg-none border-none text-lg cursor-pointer text-gray-400 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 hover:text-gray-700 transition-colors"
+            onClick={onClose}
+          >
+            <FaTimes />
+          </button>
         </div>
 
-        <div className="profile-modal-body">
-          <img src={profile.avatar || 'https://via.placeholder.com/90'} alt="avatar" className="profile-modal-avatar" />
-          {isEditing && (
-            <input type="file" accept="image/*" onChange={handleImageChange} className="text-sm mb-2" />
-          )}
-          <p className="profile-modal-name">{profile.name}</p>
+        {/* Body */}
+        <div className="px-5 pt-6 pb-5 flex flex-col items-center">
+          <label className={`relative mb-2.5 ${isEditing ? 'cursor-pointer' : ''}`}>
+            <img
+              src={profile.avatar || 'https://via.placeholder.com/90'}
+              alt="avatar"
+              className="w-[88px] h-[88px] rounded-full object-cover border-[3px] border-[#0e9de8] shadow-[0_2px_10px_rgba(14,157,232,0.25)]"
+            />
+            {isEditing && (
+              <>
+                <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                  <FaPen className="text-white text-lg" />
+                </div>
+                <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+              </>
+            )}
+          </label>
+          <p className="text-lg font-bold mb-5 text-gray-900">{profile.name}</p>
 
           {isEditing ? (
-            <div className="profile-edit-form">
-              <div className="field">
-                <label>Tên</label>
-                <input type="text" name="name" value={profile.name} onChange={handleChange} />
+            <div className="w-full text-left">
+              {/* Name */}
+              <div className="mb-3.5">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Tên</label>
+                <input type="text" name="name" value={profile.name} onChange={handleChange}
+                  className="w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors box-border" />
               </div>
-              <div className="field">
-                <label>Email</label>
-                <input type="text" name="email" value={profile.email} onChange={handleChange} />
+              {/* Email */}
+              <div className="mb-3.5">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Email</label>
+                <input type="text" name="email" value={profile.email} onChange={handleChange}
+                  className="w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors box-border" />
               </div>
-              <div className="field">
-                <label>Số điện thoại</label>
-                <input type="text" name="phone" value={profile.phone} onChange={handleChange} />
+              {/* Phone */}
+              <div className="mb-3.5">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Số điện thoại</label>
+                <input type="text" name="phone" value={profile.phone} onChange={handleChange}
+                  className="w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors box-border" />
               </div>
-              <div className="field">
-                <label>Ngày sinh</label>
-                <div className="date-row">
-                  <select name="dobDay" value={profile.dobDay} onChange={handleChange}>
+              {/* DOB */}
+              <div className="mb-3.5">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Ngày sinh</label>
+                <div className="flex gap-2">
+                  <select name="dobDay" value={profile.dobDay} onChange={handleChange}
+                    className="flex-1 px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors">
                     <option value="">Ngày</option>
                     {days.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
-                  <select name="dobMonth" value={profile.dobMonth} onChange={handleChange}>
+                  <select name="dobMonth" value={profile.dobMonth} onChange={handleChange}
+                    className="flex-1 px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors">
                     <option value="">Tháng</option>
                     {months.map((m) => <option key={m} value={m}>{m}</option>)}
                   </select>
-                  <select name="dobYear" value={profile.dobYear} onChange={handleChange}>
+                  <select name="dobYear" value={profile.dobYear} onChange={handleChange}
+                    className="flex-1 px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors">
                     <option value="">Năm</option>
                     {years.map((y) => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
               </div>
-              <div className="field">
-                <label>Giới tính</label>
-                <div className="gender-row">
+              {/* Gender */}
+              <div className="mb-3.5">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Giới tính</label>
+                <div className="flex gap-3 mt-1">
                   {['Nam', 'Nữ', 'Khác'].map((g) => (
-                    <label key={g}>
+                    <label key={g} className="flex items-center gap-1.5 font-medium text-sm cursor-pointer text-gray-600">
                       <input type="radio" name="gender" value={g} checked={profile.gender === g} onChange={handleChange} />
                       {g}
                     </label>
                   ))}
                 </div>
               </div>
-              {errorMessage && <p className="error-msg">{errorMessage}</p>}
-              <div className="profile-modal-actions">
-                <button className="btn-cancel-profile" onClick={() => { setIsEditing(false); setErrorMessage(''); }}>Hủy</button>
-                <button className="btn-save-profile" onClick={handleSave}>Lưu</button>
+              {errorMessage && (
+                <p className="text-red-500 text-[13px] mt-2 text-center bg-red-50 px-3 py-2 rounded-md border border-red-200 w-full">
+                  {errorMessage}
+                </p>
+              )}
+              <div className="flex gap-2.5 mt-5 w-full justify-end">
+                <button
+                  className="bg-gray-100 text-gray-600 border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-medium hover:bg-gray-200 transition-colors"
+                  onClick={() => { setIsEditing(false); setErrorMessage(''); }}
+                >
+                  Hủy
+                </button>
+                <button
+                  className="bg-gradient-to-br from-green-500 to-green-700 text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity"
+                  onClick={handleSave}
+                >
+                  Lưu
+                </button>
               </div>
             </div>
           ) : (
             <>
-              <div className="profile-modal-info">
-                <h4>Thông tin cá nhân</h4>
-                <p><span>Tên:</span><span>{profile.name}</span></p>
-                <p><span>Email:</span><span>{profile.email}</span></p>
-                <p><span>Số điện thoại:</span><span>{profile.phone}</span></p>
-                <p><span>Ngày sinh:</span><span>{profile.dobDay}/{profile.dobMonth}/{profile.dobYear}</span></p>
-                <p><span>Giới tính:</span><span>{profile.gender}</span></p>
+              <div className="w-full text-left bg-gray-50 rounded-[10px] px-4 py-3.5">
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Thông tin cá nhân</h4>
+                <p className="text-sm text-gray-600 mb-2.5 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Tên:</span><span>{profile.name}</span></p>
+                <p className="text-sm text-gray-600 mb-2.5 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Email:</span><span>{profile.email}</span></p>
+                <p className="text-sm text-gray-600 mb-2.5 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Số điện thoại:</span><span>{profile.phone}</span></p>
+                <p className="text-sm text-gray-600 mb-2.5 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Ngày sinh:</span><span>{profile.dobDay}/{profile.dobMonth}/{profile.dobYear}</span></p>
+                <p className="text-sm text-gray-600 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Giới tính:</span><span>{profile.gender}</span></p>
               </div>
-              <div className="profile-modal-actions">
-                <button className="btn-update" onClick={() => setIsEditing(true)}>
+              <div className="flex gap-2.5 mt-5 w-full justify-end">
+                <button
+                  className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 hover:-translate-y-px transition-all"
+                  onClick={() => setIsEditing(true)}
+                >
                   <FaPen /> Cập nhật
                 </button>
               </div>

@@ -17,7 +17,7 @@ function App() {
         <Route path="/signup" element={<SignUpScreen />} />
         <Route path="/signup-info" element={<SignUpInfoScreen />} />
         {/* Add more routes here */}
-        <Route path="/home" element={<div>Home Page (Coming Soon)</div>} />
+        <Route path="/home" element={<HomePage/>} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/verify-code" element={<VerifyCode />} />
         <Route path="/confirm-password" element={<ConfirmPassword />} />

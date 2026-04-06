@@ -6,7 +6,6 @@ import UserProfileModal from '../components/UserProfileModal';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
 import { getToken } from '../utils/auth';
-import '../styles/home.css';
 
 const socket = io('http://localhost:5000');
 
@@ -68,22 +67,33 @@ const HomePage = () => {
   };
 
   return (
-    <div className="main">
+    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif]">
       {/* Sidebar */}
-      <div className="sidebar">
-        <div className="top-icons">
-          <div className="sidebar-avatar" onClick={() => setShowQuickMenu((v) => !v)}>
-            <img src={user?.anhDaiDien || 'https://via.placeholder.com/48'} alt="avatar" />
+      <div className="w-[68px] h-screen bg-linear-to-b from-[#0e9de8] to-[#0077c2] flex flex-col items-center py-3.5 shrink-0 shadow-[2px_0_8px_rgba(0,0,0,0.12)]">
+        <div className="flex flex-col items-center gap-6">
+          <div
+            className="w-11 h-11 rounded-full overflow-hidden cursor-pointer border-2 border-white/60 hover:border-white hover:scale-105 transition-all"
+            onClick={() => setShowQuickMenu((v) => !v)}
+          >
+            <img src={user?.anhDaiDien || 'https://via.placeholder.com/48'} alt="avatar" className="w-full h-full object-cover" />
           </div>
-          <div className="sidebar-icon">
+          <div className="w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-white/85 text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all">
             <FaComments />
           </div>
         </div>
-        <div className="bottom-icons">
-          <div className="sidebar-icon" onClick={openProfile} title="Hồ sơ cá nhân">
+        <div className="mt-auto flex flex-col gap-2">
+          <div
+            className="w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-white/85 text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all"
+            onClick={openProfile}
+            title="Hồ sơ cá nhân"
+          >
             <FaUser />
           </div>
-          <div className="sidebar-icon" onClick={handleLogout} title="Đăng xuất">
+          <div
+            className="w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-white/85 text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all"
+            onClick={handleLogout}
+            title="Đăng xuất"
+          >
             <FaSignOutAlt />
           </div>
         </div>
@@ -91,22 +101,22 @@ const HomePage = () => {
 
       {/* Quick menu khi click avatar */}
       {showQuickMenu && (
-        <div className="profile-quick-menu">
-          <div className="profile-quick-header">
-            <img src={user?.anhDaiDien || 'https://via.placeholder.com/40'} alt="avatar" />
-            <span>{user?.name}</span>
+        <div className="fixed top-3.5 left-[76px] bg-white rounded-[10px] shadow-[0_4px_20px_rgba(0,0,0,0.15)] min-w-[210px] z-[999] overflow-hidden animate-fade-slide-in">
+          <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-gray-100 bg-gray-50">
+            <img src={user?.anhDaiDien || 'https://via.placeholder.com/40'} alt="avatar" className="w-[38px] h-[38px] rounded-full object-cover border-2 border-[#0e9de8]" />
+            <span className="font-semibold text-sm text-gray-800">{user?.name}</span>
           </div>
-          <div className="profile-quick-item" onClick={openProfile}>
-            <FaUser /><span>Hồ sơ của bạn</span>
+          <div className="flex items-center gap-2.5 px-4 py-3 cursor-pointer text-sm text-gray-700 hover:bg-blue-50 transition-colors" onClick={openProfile}>
+            <FaUser className="text-[15px] text-gray-500" /><span>Hồ sơ của bạn</span>
           </div>
-          <div className="profile-quick-item logout" onClick={handleLogout}>
-            <FaSignOutAlt /><span>Đăng xuất</span>
+          <div className="flex items-center gap-2.5 px-4 py-3 cursor-pointer text-sm text-red-500 border-t border-gray-100 hover:bg-blue-50 transition-colors" onClick={handleLogout}>
+            <FaSignOutAlt className="text-[15px] text-red-500" /><span>Đăng xuất</span>
           </div>
         </div>
       )}
 
       {/* Main content: ChatList + ChatWindow */}
-      <div className="chat-container" onClick={() => setShowQuickMenu(false)}>
+      <div className="flex-1 flex flex-row overflow-hidden" onClick={() => setShowQuickMenu(false)}>
         <ChatList
           user={user}
           onSelectChat={setSelectedChat}

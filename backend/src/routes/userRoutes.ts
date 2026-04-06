@@ -212,7 +212,8 @@ router.post('/upload', authMiddleware, upload.array('files'), async (req: AuthRe
     res.json({ urls });
   } catch (error: any) {
     res.status(500).json({ error: 'Upload failed' });
-
+  }
+})
 // Đặt lại mật khẩu sau khi người dùng xác thực OTP thành công
 router.post('/users/doimatkhau', async (req: Request, res: Response) => {
   const { sdt, matKhauMoi } = req.body;
@@ -260,4 +261,6 @@ router.post('/users/get-email-by-phone', async (req: Request, res: Response) => 
 });
 
 export default router;
+
+
 

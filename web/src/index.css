@@ -92,3 +92,21 @@
 @utility animate-pulse-glow {
   animation: pulse-glow 3s ease-in-out infinite;
 }
+
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@utility animate-modal-pop {
+  animation: modalPop 0.2s ease;
+}
+
+@utility animate-fade-slide-in {
+  animation: fadeSlideIn 0.15s ease;
+}
