@@ -1,10 +1,14 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
 import Users from '../models/User';
 import Otp from '../models/Otp';
 import sendOtpEmail from '../services/emailService';
+import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { log } from 'console';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -154,5 +158,49 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Lỗi xác thực OTP', error: error.message });
   }
 });
+
+// Lấy user theo userID
+router.post('/usersID', async (req: Request, res: Response) => {
+  const { userID } = req.body;
+  try {
+    const user = await Users.findOne({ userID });
+    if (!user) return res.status(404).json({ message: 'User not found' }) as any;
+    res.json(user);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Cập nhật thông tin người dùng (yêu cầu JWT)
+router.put('/users/:userID', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const { userID } = req.params;
+
+  // Chỉ cho phép cập nhật chính mình
+  if (req.userID !== userID) {
+    return res.status(403).json({ message: 'Không có quyền cập nhật tài khoản này' }) as any;
+  }
+
+  const { name, email, sdt, ngaysinh, gioTinh, anhDaiDien, anhBia } = req.body;
+  try {
+    const user = await Users.findOne({ userID });
+    if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại!' }) as any;
+
+    if (name) user.name = name;
+    if (email) user.email = email;
+    if (sdt) user.sdt = sdt;
+    if (ngaysinh) user.ngaysinh = new Date(ngaysinh);
+    if (gioTinh && ['Nam', 'Nữ', 'Khác'].includes(gioTinh)) user.gioTinh = gioTinh;
+    if (anhDaiDien) user.anhDaiDien = anhDaiDien;
+    if (anhBia) user.anhBia = anhBia;
+    user.ngaySuaDoi = new Date();
+
+    await user.save();
+    res.status(200).json({ message: 'Cập nhật thành công!', user });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi hệ thống', error: error.message });
+  }
+});
+
+
 
 export default router;
