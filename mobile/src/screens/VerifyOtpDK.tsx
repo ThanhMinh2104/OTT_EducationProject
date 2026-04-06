@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { RootStackParamList } from "../navigation/AppNavigator";
+import { RouteProp } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -8,48 +10,62 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useState } from "react";
 import axios from "axios";
-import { StackNavigationProp } from "@react-navigation/stack";
-import { RootStackParamList } from "../navigation/AppNavigator";
 import { API_URL } from "../utils/config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-type Props = { navigation: StackNavigationProp<RootStackParamList, "SignUp"> };
+type Props = {
+  navigation: StackNavigationProp<RootStackParamList, "VerifyOtp">;
+  route: RouteProp<RootStackParamList, "VerifyOtp">;
+};
 
-const SignUpScreen = ({ navigation }: Props) => {
+const VerifyOtpDK = ({ navigation }: Props) => {
+  const [otp, setOtp] = useState("");
   const [email, setEmail] = useState("");
-  const [sdt, setSDT] = useState("");
-  const [enabled, setEnabled] = useState(false);
+  const [sdt, setSdt] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<boolean>();
 
   useEffect(() => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^(0[35789])[0-9]{8}$/;
-    setEnabled(phoneRegex.test(sdt) && emailRegex.test(email));
-  }, [sdt, email]);
-
-  const handleSignUp = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      const responseSDT = await axios.post(`${API_URL}/api/users/checksdt`, {
-        sdt,
-      });
-      if (responseSDT.data.exists) {
-        setError("Số điện thoại đã được đăng ký!");
-        return;
+    const loadData = async () => {
+      try {
+        const storedEmail = await AsyncStorage.getItem("emailForSignIn");
+        const storedSdt = await AsyncStorage.getItem("sdt");
+        if (storedEmail) setEmail(storedEmail);
+        if (storedSdt) setSdt(storedSdt);
+      } catch (error) {
+        console.log("Loi khi lay du lieu");
       }
+    };
+    loadData();
+  }, []);
 
-      await axios.post(`${API_URL}/api/send-otp`, { email });
-      await AsyncStorage.setItem("emailForSignIn", email);
-      await AsyncStorage.setItem("sdt", sdt);
-      navigation.navigate("VerifyOtp");
-    } catch (err) {
-      setError("Có lỗi xảy ra: " + (err as Error).message);
-    } finally {
-      setLoading(false);
+  const handleVerifyOtp = async () => {
+    try {
+      const otpResponse = await axios.post(`${API_URL}/api/verify-otp`, {
+        email,
+        otp,
+      });
+
+      console.log(email);
+
+      const verified = otpResponse.data.verified;
+      console.log(verified);
+
+      if (verified)
+        Alert.alert("Thành công", "Xác thực OTP thành công!", [
+          {
+            text: "OK",
+            onPress: () => navigation.navigate("SignUpInfo", { email, sdt }),
+          },
+        ]);
+
+      setError("Mã OTP không chính xác");
+    } catch (error) {
+      console.log("Loi: ", error);
     }
   };
 
@@ -61,39 +77,29 @@ const SignUpScreen = ({ navigation }: Props) => {
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.appTitle}>OTT Education</Text>
         <View style={styles.card}>
-          <Text style={styles.title}>Đăng ký</Text>
+          <Text style={styles.title}>Xác nhận mã OTP</Text>
           <TextInput
             style={styles.input}
-            placeholder="Số điện thoại"
+            placeholder="Nhập mã OTP của bạn"
             keyboardType="phone-pad"
-            value={sdt}
-            onChangeText={setSDT}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
+            value={otp}
+            onChangeText={setOtp}
+            maxLength={6}
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <TouchableOpacity
-            style={[
-              styles.btnPrimary,
-              (!enabled || loading) && styles.btnDisabled,
-            ]}
-            onPress={handleSignUp}
-            disabled={!enabled || loading}
+            style={[styles.btnPrimary, loading && styles.btnDisabled]}
+            onPress={handleVerifyOtp}
+            disabled={loading}
           >
             <Text style={styles.btnText}>
               {loading ? "Đang gửi..." : "Tiếp tục"}
             </Text>
           </TouchableOpacity>
           <View style={styles.row}>
-            <Text style={styles.gray}>Bạn đã có tài khoản? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-              <Text style={styles.link}>Đăng nhập</Text>
+            <Text style={styles.gray}>Chưa nhận được mã? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate("SignUp")}>
+              <Text style={styles.link}>Đăng ký</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -129,12 +135,13 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 18, fontWeight: "bold", marginBottom: 16, color: "#333" },
   input: {
+    textAlign: "center",
     borderWidth: 1,
     borderColor: "#ddd",
     borderRadius: 8,
     padding: 12,
     marginBottom: 12,
-    fontSize: 15,
+    fontSize: 25,
     backgroundColor: "#fafafa",
   },
   error: {
@@ -157,4 +164,4 @@ const styles = StyleSheet.create({
   gray: { color: "#666", fontSize: 14 },
 });
 
-export default SignUpScreen;
+export default VerifyOtpDK;
