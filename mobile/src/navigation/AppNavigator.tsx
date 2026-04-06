@@ -6,6 +6,9 @@ import SignUpScreen from '../screens/SignUpScreen';
 import SignUpInfoScreen from '../screens/SignUpInfoScreen';
 import HomeScreen from '../screens/HomeScreen';
 import VerifyOtpDK from "../screens/VerifyOtpDK";
+import ForgotPasswordScreen from "../screens/ForgotPassword";
+import VerifyOtpResetScreen from "../screens/VerifyOtpReset";
+import ConfirmPasswordScreen from "../screens/ConfirmPassword";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -28,6 +31,12 @@ const AppNavigator = () => (
       <Stack.Screen name="SignUpInfo" component={SignUpInfoScreen} />
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="VerifyOtp" component={VerifyOtpDK} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="VerifyOtpReset" component={VerifyOtpResetScreen} />
+      <Stack.Screen name="ConfirmPassword" component={ConfirmPasswordScreen} />
+
+
+
     </Stack.Navigator>
   </NavigationContainer>
 );

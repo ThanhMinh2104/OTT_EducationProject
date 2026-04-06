@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
@@ -32,6 +32,35 @@ const ConfirmPassword = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // State cho Modal thông báo thành công
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [countdown, setCountdown] = useState(5);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Xử lý đếm ngược khi Modal hiện lên
+  useEffect(() => {
+    if (showSuccessModal) {
+      timerRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            handleGoToLogin();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [showSuccessModal]);
+
+  const handleGoToLogin = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setShowSuccessModal(false);
+    navigate('/login');
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -60,8 +89,8 @@ const ConfirmPassword = () => {
       sessionStorage.removeItem('resetSdt');
       sessionStorage.removeItem('resetEmail');
 
-      // Chuyển về trang đăng nhập
-      navigate('/login');
+      // Hiển thị Modal thành công thay vì chuyển trang ngay
+      setShowSuccessModal(true);
     } catch {
       setError('Đổi mật khẩu thất bại, vui lòng thử lại!');
     } finally {
@@ -261,6 +290,37 @@ const ConfirmPassword = () => {
           </p>
         </div>
       </div>
+
+      {/* MODAL THÔNG BÁO THÀNH CÔNG (WEB) */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-[2rem] p-10 max-w-sm w-full shadow-2xl animate-fade-in-up text-center border border-primary-50">
+            {/* Icon thành công */}
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+              <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+
+            <h3 className="text-2xl font-bold text-gray-800 mb-3">Thành công!</h3>
+            <p className="text-gray-500 text-[15px] leading-relaxed mb-6">
+              Mật khẩu của bạn đã được thay đổi. Hệ thống sẽ tự động chuyển hướng sau:
+            </p>
+
+            {/* Bộ đếm ngược */}
+            <div className="text-4xl font-extrabold text-primary-500 mb-8 bg-primary-50 w-20 h-20 flex items-center justify-center rounded-full mx-auto border-2 border-primary-100">
+              {countdown}
+            </div>
+
+            <button
+              onClick={handleGoToLogin}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold text-sm transition-all shadow-lg hover:shadow-xl active:scale-[0.98] cursor-pointer"
+            >
+              Đăng nhập ngay
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
