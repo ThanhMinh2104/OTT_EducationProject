@@ -235,27 +235,25 @@ const SignUpInfoScreen = () => {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Ngày sinh</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <svg
-                      className="w-5 h-5 text-gray-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
-                      />
+                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
                     </svg>
                   </div>
                   <input
                     id="birth-input"
-                    type="text"
-                    placeholder="dd/mm/yyyy"
+                    type="date"
                     className={inputClass}
-                    value={birth}
-                    onChange={(e) => setBirth(e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                    value={birth ? birth.split('/').reverse().join('-') : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) {
+                        const [y, m, d] = val.split('-');
+                        setBirth(`${d}/${m}/${y}`);
+                      } else {
+                        setBirth('');
+                      }
+                    }}
                   />
                 </div>
               </div>
