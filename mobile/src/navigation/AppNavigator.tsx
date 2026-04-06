@@ -4,6 +4,8 @@ import { createStackNavigator } from "@react-navigation/stack";
 import SignUpScreen from "../screens/SignUpScreen";
 import SignUpInfoScreen from "../screens/SignUpInfoScreen";
 import VerifyOtpDK from "../screens/VerifyOtpDK";
+import ForgotPasswordScreen from "../screens/ForgotPassword";
+import VerifyOtpResetScreen from "../screens/VerifyOtpReset";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -21,12 +23,16 @@ const Stack = createStackNavigator<RootStackParamList>();
 const AppNavigator = () => (
   <NavigationContainer>
     <Stack.Navigator
-      initialRouteName="SignUp"
+      initialRouteName="ForgotPassword"
       screenOptions={{ headerShown: false }}
     >
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="SignUpInfo" component={SignUpInfoScreen} />
       <Stack.Screen name="VerifyOtp" component={VerifyOtpDK} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="VerifyOtpReset" component={VerifyOtpResetScreen} />
+
+
     </Stack.Navigator>
   </NavigationContainer>
 );
