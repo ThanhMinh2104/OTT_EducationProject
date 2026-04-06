@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import SignUpScreen from '../screens/SignUpScreen';
 import SignUpInfoScreen from '../screens/SignUpInfoScreen';
+import HomeScreen from '../screens/HomeScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -22,6 +23,7 @@ const AppNavigator = () => (
     <Stack.Navigator initialRouteName="SignUp" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="SignUpInfo" component={SignUpInfoScreen} />
+      <Stack.Screen name="Home" component={HomeScreen} />
     </Stack.Navigator>
   </NavigationContainer>
 );
