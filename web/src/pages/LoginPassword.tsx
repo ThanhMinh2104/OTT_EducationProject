@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
+import toast, { Toaster } from 'react-hot-toast';
 
 const socket = io('http://localhost:5000');
 
@@ -42,16 +43,50 @@ const LoginPassword = () => {
       sessionStorage.setItem('userID', res.data.user.userID);
       sessionStorage.setItem('user', JSON.stringify(res.data.user));
       socket.emit('updateStatus', res.data.user);
-      navigate('/home');
+      
+      // Show success toast
+      toast.success(`Chào mừng ${loginUser.name}! Đăng nhập thành công 🎉`, {
+        duration: 2000,
+        position: 'top-center',
+        style: {
+          background: '#10b981',
+          color: '#fff',
+          fontWeight: '600',
+          padding: '16px',
+          borderRadius: '12px',
+        },
+        iconTheme: {
+          primary: '#fff',
+          secondary: '#10b981',
+        },
+      });
+      
+      // Navigate after a short delay to show toast
+      setTimeout(() => {
+        navigate('/home');
+      }, 1000);
     } catch {
       setError('Sai số điện thoại hoặc mật khẩu');
+      toast.error('Đăng nhập thất bại! Vui lòng kiểm tra lại thông tin.', {
+        duration: 3000,
+        position: 'top-center',
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+          fontWeight: '600',
+          padding: '16px',
+          borderRadius: '12px',
+        },
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-primary-50 via-white to-primary-100">
+    <>
+      <Toaster />
+      <div className="min-h-screen flex bg-gradient-to-br from-primary-50 via-white to-primary-100">
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:flex-1 relative overflow-hidden">
         {/* Background gradient */}
@@ -248,6 +283,7 @@ const LoginPassword = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
