@@ -3,6 +3,9 @@ import LoginPassword from './pages/LoginPassword';
 import SignUpScreen from './pages/SignUpScreen';
 import SignUpInfoScreen from './pages/SignUpInfoScreen';
 import VerifyOTPDK from './pages/VerifyOtpDK';
+import ForgotPassword from './pages/ForgotPassword';
+import VerifyCode from './pages/VerifyCode';
+import ConfirmPassword from './pages/ConfirmPassword';
 
 function App() {
   return (
@@ -14,7 +17,9 @@ function App() {
         <Route path="/signup-info" element={<SignUpInfoScreen />} />
         {/* Add more routes here */}
         <Route path="/home" element={<div>Home Page (Coming Soon)</div>} />
-        <Route path="/forgot-password" element={<div>Forgot Password Page (Coming Soon)</div>} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/verify-code" element={<VerifyCode />} />
+        <Route path="/confirm-password" element={<ConfirmPassword />} />
         <Route path="/verify-otp" element={<VerifyOTPDK />} />
       </Routes>
     </Router>
