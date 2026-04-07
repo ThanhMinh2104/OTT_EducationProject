@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Image, StatusBar,
+  Image, StatusBar, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +18,7 @@ type Props = { navigation: StackNavigationProp<RootStackParamList, 'Home'> };
 const HomeScreen = ({ navigation }: Props) => {
   const [user, setUser] = useState<User | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'contacts' | 'profile'>('chat');
 
   useEffect(() => {
@@ -70,7 +71,7 @@ const HomeScreen = ({ navigation }: Props) => {
 
         <Text style={styles.appTitle}>OTT Education</Text>
 
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => setShowLogoutModal(true)} style={styles.logoutBtn} activeOpacity={0.7}>
           <Text style={styles.logoutText}>Đăng xuất</Text>
         </TouchableOpacity>
       </View>
@@ -117,6 +118,24 @@ const HomeScreen = ({ navigation }: Props) => {
         user={user}
         setUser={updateUser}
       />
+
+      {/* Logout Confirm Modal */}
+      <Modal transparent visible={showLogoutModal} animationType="fade" onRequestClose={() => setShowLogoutModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Đăng xuất</Text>
+            <Text style={styles.modalMessage}>Bạn có chắc chắn muốn đăng xuất khỏi tài khoản không?</Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.btnCancel} onPress={() => setShowLogoutModal(false)} activeOpacity={0.8}>
+                <Text style={styles.btnCancelText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.btnConfirm} onPress={handleLogout} activeOpacity={0.8}>
+                <Text style={styles.btnConfirmText}>Đăng xuất</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -250,6 +269,83 @@ const styles = StyleSheet.create({
     backgroundColor: '#0e9de8',
     borderBottomLeftRadius: 3,
     borderBottomRightRadius: 3,
+  },
+
+  /* Logout Modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalBox: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#fef2f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalIcon: {
+    fontSize: 30,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  btnCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+  },
+  btnCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  btnConfirm: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+  },
+  btnConfirmText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 

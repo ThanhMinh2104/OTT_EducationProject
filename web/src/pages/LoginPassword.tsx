@@ -68,7 +68,7 @@ const LoginPassword = () => {
     } catch {
       setError('Sai số điện thoại hoặc mật khẩu');
       toast.error('Đăng nhập thất bại! Vui lòng kiểm tra lại thông tin.', {
-        duration: 3000,
+        duration: 1500,
         position: 'top-center',
         style: {
           background: '#ef4444',
