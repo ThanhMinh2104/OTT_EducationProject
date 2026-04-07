@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { FaTimes, FaPen } from 'react-icons/fa';
 import { io } from 'socket.io-client';
 import { authHeaders } from '../utils/auth';
+import toast, { Toaster } from 'react-hot-toast';
 
 const socket = io('http://localhost:5000');
 
@@ -116,15 +117,27 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
       socket.emit('updateUser', data.user);
       setUser(data.user);
       setIsEditing(false);
-      alert('Cập nhật thông tin thành công!');
-      onClose();
+      toast.success('Cập nhật thông tin thành công! ✅', {
+        duration: 2000,
+        position: 'top-center',
+        style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+        iconTheme: { primary: '#fff', secondary: '#10b981' },
+      });
+      setTimeout(() => onClose(), 1500);
     } catch {
       setErrorMessage('Lỗi hệ thống khi cập nhật thông tin.');
+      toast.error('Lỗi hệ thống khi cập nhật thông tin!', {
+        duration: 3000,
+        position: 'top-center',
+        style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+      });
     }
   };
 
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-black/45 flex justify-center items-center z-[1000] backdrop-blur-sm" onClick={onClose}>
+    <>
+      <Toaster />
+      <div className="fixed inset-0 w-screen h-screen bg-black/45 flex justify-center items-center z-[1000] backdrop-blur-sm" onClick={onClose}>
       <div
         className="bg-white rounded-[14px] w-[460px] max-h-[88vh] overflow-y-auto shadow-[0_8px_32px_rgba(0,0,0,0.18)] animate-modal-pop [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded"
         onClick={(e) => e.stopPropagation()}
@@ -255,6 +268,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
