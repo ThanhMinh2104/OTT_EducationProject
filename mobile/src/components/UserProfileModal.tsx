@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Modal,
-  StyleSheet, Image, ScrollView, Alert,
+  StyleSheet, Image, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { io } from 'socket.io-client';
@@ -47,6 +47,7 @@ const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0
 const years = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
 
 const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
+  const [activeTab, setActiveTab] = useState<'info' | 'password'>('info');
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -54,6 +55,9 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
     userID: '', name: '', email: '', phone: '',
     avatar: '', dobDay: '', dobMonth: '', dobYear: '', gender: 'Nam',
   });
+  const [pwForm, setPwForm] = useState({ matKhauCu: '', matKhauMoi: '', xacNhan: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -71,6 +75,9 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
     });
     setIsEditing(false);
     setImageUri(null);
+    setActiveTab('info');
+    setPwForm({ matKhauCu: '', matKhauMoi: '', xacNhan: '' });
+    setPwError('');
   }, [user, visible]);
 
   const pickImage = async () => {
@@ -134,8 +141,47 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
     }
   };
 
+  const handleChangePassword = async () => {
+    setPwError('');
+    if (!pwForm.matKhauCu || !pwForm.matKhauMoi || !pwForm.xacNhan) {
+      setPwError('Vui lòng điền đầy đủ thông tin.'); return;
+    }
+    if (!/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(pwForm.matKhauMoi)) {
+      setPwError('Mật khẩu mới tối thiểu 8 ký tự, gồm cả chữ và số.'); return;
+    }
+    if (pwForm.matKhauMoi !== pwForm.xacNhan) {
+      setPwError('Xác nhận mật khẩu không khớp.'); return;
+    }
+    try {
+      setPwLoading(true);
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${API_URL}/api/users/${user?.userID}/password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ matKhauCu: pwForm.matKhauCu, matKhauMoi: pwForm.matKhauMoi }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwError(data.message); return; }
+      await AsyncStorage.clear();
+      Alert.alert('Thành công', 'Đổi mật khẩu thành công! Vui lòng đăng nhập lại.');
+      onClose();
+    } catch {
+      setPwError('Lỗi hệ thống, vui lòng thử lại.');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
       <View style={styles.overlay}>
         <View style={styles.modalBox}>
           {/* Handle bar */}
@@ -149,7 +195,25 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
             </TouchableOpacity>
           </View>
 
+          {/* Tabs */}
+          <View style={styles.tabRow}>
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'info' && styles.tabBtnActive]}
+              onPress={() => { setActiveTab('info'); setErrorMessage(''); }}
+            >
+              <Text style={[styles.tabText, activeTab === 'info' && styles.tabTextActive]}>Thông tin</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'password' && styles.tabBtnActive]}
+              onPress={() => { setActiveTab('password'); setIsEditing(false); setPwError(''); }}
+            >
+              <Text style={[styles.tabText, activeTab === 'password' && styles.tabTextActive]}>Đổi mật khẩu</Text>
+            </TouchableOpacity>
+          </View>
+
           <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+            {activeTab === 'info' ? (
+            <>
             {/* Avatar */}
             <TouchableOpacity onPress={isEditing ? pickImage : undefined} activeOpacity={isEditing ? 0.7 : 1}>
               <View style={styles.avatarWrap}>
@@ -262,9 +326,45 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
                 </TouchableOpacity>
               </View>
             )}
+            </>) : (
+              /* ===== TAB ĐỔI MẬT KHẨU ===== */
+              <View style={styles.pwForm}>
+                {[
+                  { key: 'matKhauCu', label: 'Mật khẩu hiện tại' },
+                  { key: 'matKhauMoi', label: 'Mật khẩu mới' },
+                  { key: 'xacNhan', label: 'Xác nhận mật khẩu mới' },
+                ].map(({ key, label }) => (
+                  <View key={key} style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>{label}</Text>
+                    <TextInput
+                      style={styles.input}
+                      secureTextEntry
+                      placeholder={`Nhập ${label.toLowerCase()}`}
+                      placeholderTextColor="#bbb"
+                      value={pwForm[key as keyof typeof pwForm]}
+                      onChangeText={(v) => setPwForm((p) => ({ ...p, [key]: v }))}
+                    />
+                  </View>
+                ))}
+                {pwError ? (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{pwError}</Text>
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  style={[styles.btnSave, pwLoading && { opacity: 0.6 }]}
+                  onPress={handleChangePassword}
+                  disabled={pwLoading}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.btnSaveText}>{pwLoading ? 'Đang lưu...' : '🔒  Cập nhật mật khẩu'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </ScrollView>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -506,6 +606,37 @@ const styles = StyleSheet.create({
     color: '#e53e3e',
     textAlign: 'center',
     fontSize: 13,
+  },
+
+  /* Tabs */
+  tabRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabBtnActive: {
+    borderBottomColor: PRIMARY,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#888',
+  },
+  tabTextActive: {
+    color: PRIMARY,
+    fontWeight: '700',
+  },
+
+  /* Password form */
+  pwForm: {
+    width: '100%',
   },
 
   /* Action buttons */

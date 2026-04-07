@@ -107,13 +107,13 @@ const ConfirmPasswordScreen = ({ navigation, route }: ConfirmPasswordProps) => {
 
     setLoading(true);
     try {
-      await axios.post(`${API_URL}/api/users/doimatkhau`, { 
-        sdt, 
-        matKhauMoi 
+      await axios.post(`${API_URL}/api/users/doimatkhau`, {
+        sdt,
+        matKhauMoi,
       });
       setShowSuccessModal(true);
-    } catch (err) {
-      setError('Đổi mật khẩu thất bại, vui lòng thử lại!');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Đổi mật khẩu thất bại, vui lòng thử lại!');
     } finally {
       setLoading(false);
     }

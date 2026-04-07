@@ -79,20 +79,18 @@ const ConfirmPassword = () => {
 
     setIsLoading(true);
     try {
-      // Gọi API đổi mật khẩu với SĐT và mật khẩu mới
-      await axios.post('http://localhost:5000/api/users/doimatkhau', {
+      const res = await axios.post('http://localhost:5000/api/users/doimatkhau', {
         sdt,
         matKhauMoi,
       });
 
-      // Xóa dữ liệu tạm khỏi sessionStorage sau khi đổi thành công
-      sessionStorage.removeItem('resetSdt');
-      sessionStorage.removeItem('resetEmail');
-
-      // Hiển thị Modal thành công thay vì chuyển trang ngay
-      setShowSuccessModal(true);
-    } catch {
-      setError('Đổi mật khẩu thất bại, vui lòng thử lại!');
+      if (res.status === 200) {
+        sessionStorage.removeItem('resetSdt');
+        sessionStorage.removeItem('resetEmail');
+        setShowSuccessModal(true);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Đổi mật khẩu thất bại, vui lòng thử lại!');
     } finally {
       setIsLoading(false);
     }

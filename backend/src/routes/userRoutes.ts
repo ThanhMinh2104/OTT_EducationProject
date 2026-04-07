@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import Users from '../models/User';
 import Otp from '../models/Otp';
+import Chat from "../models/Chat";
 import sendOtpEmail from '../services/emailService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { log } from 'console';
@@ -218,23 +219,25 @@ router.post('/upload', authMiddleware, upload.array('files'), async (req: AuthRe
 router.post('/users/doimatkhau', async (req: Request, res: Response) => {
   const { sdt, matKhauMoi } = req.body;
 
-  // Kiểm tra đầu vào
   if (!sdt || !matKhauMoi) {
     return res.status(400).json({ message: 'Thiếu số điện thoại hoặc mật khẩu mới' }) as any;
   }
 
   try {
-    // Tìm người dùng theo số điện thoại
     const user = await Users.findOne({ sdt });
     if (!user) {
       return res.status(404).json({ message: 'Số điện thoại không tồn tại' }) as any;
     }
 
-    // Mã hóa mật khẩu mới trước khi lưu
+    // Check không được trùng mật khẩu cũ
+    const isSame = await bcrypt.compare(matKhauMoi, user.matKhau);
+    if (isSame) {
+      return res.status(400).json({ message: 'Mật khẩu mới không được trùng mật khẩu cũ' }) as any;
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(matKhauMoi, salt);
 
-    // Cập nhật mật khẩu mới vào database
     await Users.findOneAndUpdate({ sdt }, { $set: { matKhau: hashedPassword } });
 
     res.status(200).json({ message: 'Đổi mật khẩu thành công' });
@@ -243,6 +246,44 @@ router.post('/users/doimatkhau', async (req: Request, res: Response) => {
   }
 });
 
+
+// Đổi mật khẩu khi đã đăng nhập (yêu cầu JWT, check trùng mật khẩu cũ)
+router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const { userID } = req.params;
+
+  if (req.userID !== userID) {
+    return res.status(403).json({ message: 'Không có quyền thực hiện thao tác này' }) as any;
+  }
+
+  const { matKhauCu, matKhauMoi } = req.body;
+  if (!matKhauCu || !matKhauMoi) {
+    return res.status(400).json({ message: 'Vui lòng nhập đầy đủ mật khẩu cũ và mới' }) as any;
+  }
+
+  try {
+    const user = await Users.findOne({ userID });
+    if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' }) as any;
+
+    const isMatch = await bcrypt.compare(matKhauCu, user.matKhau);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Mật khẩu cũ không đúng' }) as any;
+    }
+
+    const isSame = await bcrypt.compare(matKhauMoi, user.matKhau);
+    if (isSame) {
+      return res.status(400).json({ message: 'Mật khẩu mới không được trùng mật khẩu cũ' }) as any;
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.matKhau = await bcrypt.hash(matKhauMoi, salt);
+    user.ngaySuaDoi = new Date();
+    await user.save();
+
+    res.status(200).json({ message: 'Đổi mật khẩu thành công' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+});
 
 // Lấy email từ số điện thoại (dùng cho luồng quên mật khẩu)
 router.post('/users/get-email-by-phone', async (req: Request, res: Response) => {

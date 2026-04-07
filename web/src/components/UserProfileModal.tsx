@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FaTimes, FaPen } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
+import { FaTimes, FaPen, FaLock } from 'react-icons/fa';
 import { io } from 'socket.io-client';
 import { authHeaders } from '../utils/auth';
 import toast, { Toaster } from 'react-hot-toast';
@@ -37,9 +38,14 @@ interface Props {
 }
 
 const UserProfileModal = ({ onClose, user, setUser }: Props) => {
+  const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'info' | 'password'>('info');
   const [errorMessage, setErrorMessage] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [pwForm, setPwForm] = useState({ matKhauCu: '', matKhauMoi: '', xacNhan: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
   const [profile, setProfile] = useState({
     userID: '', name: '', email: '', phone: '',
     avatar: '', anhBia: '',
@@ -134,6 +140,42 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
     }
   };
 
+  const handleChangePassword = async () => {
+    setPwError('');
+    if (!pwForm.matKhauCu || !pwForm.matKhauMoi || !pwForm.xacNhan) {
+      setPwError('Vui lòng điền đầy đủ thông tin.'); return;
+    }
+    if (!/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(pwForm.matKhauMoi)) {
+      setPwError('Mật khẩu mới tối thiểu 8 ký tự, gồm cả chữ và số.'); return;
+    }
+    if (pwForm.matKhauMoi !== pwForm.xacNhan) {
+      setPwError('Xác nhận mật khẩu không khớp.'); return;
+    }
+    try {
+      setPwLoading(true);
+      const res = await fetch(`http://localhost:5000/api/users/${user?.userID}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ matKhauCu: pwForm.matKhauCu, matKhauMoi: pwForm.matKhauMoi }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwError(data.message); return; }
+      setPwForm({ matKhauCu: '', matKhauMoi: '', xacNhan: '' });
+      toast.success('Đổi mật khẩu thành công! Vui lòng đăng nhập lại.', {
+        duration: 2000, position: 'top-center',
+        style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+      });
+      setTimeout(() => {
+        sessionStorage.clear();
+        navigate('/login');
+      }, 1500);
+    } catch {
+      setPwError('Lỗi hệ thống, vui lòng thử lại.');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   return (
     <>
       <Toaster />
@@ -143,18 +185,36 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex justify-between items-center px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-[1]">
-          <h2 className="text-base font-bold m-0 text-gray-900">Thông tin tài khoản</h2>
-          <button
-            className="bg-none border-none text-lg cursor-pointer text-gray-400 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 hover:text-gray-700 transition-colors"
-            onClick={onClose}
-          >
-            <FaTimes />
-          </button>
+        <div className="sticky top-0 bg-white z-[1] border-b border-gray-100">
+          <div className="flex justify-between items-center px-5 py-4">
+            <h2 className="text-base font-bold m-0 text-gray-900">Thông tin tài khoản</h2>
+            <button
+              className="bg-none border-none text-lg cursor-pointer text-gray-400 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              onClick={onClose}
+            >
+              <FaTimes />
+            </button>
+          </div>
+          <div className="flex px-5 gap-1">
+            <button
+              onClick={() => { setActiveTab('info'); setErrorMessage(''); }}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'info' ? 'text-[#0e9de8] border-b-2 border-[#0e9de8]' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <FaPen className="text-xs" /> Thông tin
+            </button>
+            <button
+              onClick={() => { setActiveTab('password'); setIsEditing(false); setPwError(''); }}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'password' ? 'text-[#0e9de8] border-b-2 border-[#0e9de8]' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <FaLock className="text-xs" /> Đổi mật khẩu
+            </button>
+          </div>
         </div>
 
         {/* Body */}
         <div className="px-5 pt-6 pb-5 flex flex-col items-center">
+          {activeTab === 'info' ? (
+          <>
           <label className={`relative mb-2.5 ${isEditing ? 'cursor-pointer' : ''}`}>
             <img
               src={profile.avatar || 'https://via.placeholder.com/90'}
@@ -264,6 +324,43 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                 </button>
               </div>
             </>
+          )}
+          </>
+          ) : (
+            /* Tab đổi mật khẩu */
+            <div className="w-full">
+              {[
+                { key: 'matKhauCu', label: 'Mật khẩu hiện tại' },
+                { key: 'matKhauMoi', label: 'Mật khẩu mới' },
+                { key: 'xacNhan', label: 'Xác nhận mật khẩu mới' },
+              ].map(({ key, label }) => (
+                <div key={key} className="mb-3.5">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">{label}</label>
+                  <input
+                    type="password"
+                    value={pwForm[key as keyof typeof pwForm]}
+                    onChange={(e) => setPwForm((p) => ({ ...p, [key]: e.target.value }))}
+                    className="w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors box-border"
+                    placeholder={`Nhập ${label.toLowerCase()}`}
+                  />
+                </div>
+              ))}
+              {pwError && (
+                <p className="text-red-500 text-[13px] mt-1 mb-3 text-center bg-red-50 px-3 py-2 rounded-md border border-red-200">
+                  {pwError}
+                </p>
+              )}
+              <div className="flex justify-end mt-5">
+                <button
+                  disabled={pwLoading}
+                  onClick={handleChangePassword}
+                  className="bg-linear-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity disabled:opacity-60"
+                >
+                  <FaLock className="text-xs" />
+                  {pwLoading ? 'Đang lưu...' : 'Cập nhật mật khẩu'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
