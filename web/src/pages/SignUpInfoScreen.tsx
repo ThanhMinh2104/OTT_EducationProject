@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import toast, { Toaster } from 'react-hot-toast';
 
 const validateName = (name: string) => /^([A-ZÀ-Ỵ][a-zà-ỹ]*)(\s[A-ZÀ-Ỵ][a-zà-ỹ]*)+$/.test(name);
 const validateDateFormat = (date: string) =>
@@ -72,9 +73,20 @@ const SignUpInfoScreen = () => {
         }),
       });
       if (!response.ok) throw new Error('Đăng ký thất bại');
-      navigate('/login');
+      toast.success('Đăng ký thành công! Chào mừng bạn đến với OTT Education 🎉', {
+        duration: 2000,
+        position: 'top-center',
+        style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+        iconTheme: { primary: '#fff', secondary: '#10b981' },
+      });
+      setTimeout(() => navigate('/login'), 1500);
     } catch {
       setError('Đăng ký thất bại. Vui lòng thử lại.');
+      toast.error('Đăng ký thất bại! Vui lòng thử lại.', {
+        duration: 3000,
+        position: 'top-center',
+        style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+      });
     } finally {
       setLoading(false);
     }
@@ -106,7 +118,9 @@ const SignUpInfoScreen = () => {
     'w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-800 text-sm placeholder-gray-400 transition-all duration-300 focus:outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 hover:border-gray-300';
 
   return (
-    <div className="min-h-screen flex bg-linear-to-br from-primary-50 via-white to-primary-100">
+    <>
+      <Toaster />
+      <div className="min-h-screen flex bg-linear-to-br from-primary-50 via-white to-primary-100">
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:flex-1 relative overflow-hidden">
         <div className="absolute inset-0 bg-linear-to-br from-primary-400 via-primary-500 to-primary-700" />
@@ -424,6 +438,7 @@ const SignUpInfoScreen = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
