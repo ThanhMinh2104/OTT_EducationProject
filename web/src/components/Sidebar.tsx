@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  FaComments, FaUser, FaCloud, FaCog, FaSignOutAlt,
-} from 'react-icons/fa';
+import { FaUser, FaSignOutAlt, FaComments } from 'react-icons/fa';
 import UserProfileModal from './UserProfileModal';
 
 interface User {
@@ -18,27 +16,26 @@ interface User {
 
 interface Props {
   user: User | null;
-  onChangeView: (view: 'chat' | 'friend') => void;
+  setUser: (u: User) => void;
 }
 
-const Sidebar = ({ user, onChangeView }: Props) => {
+const Sidebar = ({ user, setUser }: Props) => {
   const navigate = useNavigate();
-  const [activeButton, setActiveButton] = useState<string>('chat');
+  const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(user);
 
-  const handleButtonClick = (name: 'chat' | 'friend') => {
-    setActiveButton(name);
-    onChangeView(name);
+  const openProfile = () => {
+    setShowQuickMenu(false);
+    setShowProfileModal(true);
   };
 
   const handleLogout = async () => {
-    if (currentUser) {
+    if (user) {
       await fetch('http://localhost:5000/api/updateStatus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userID: currentUser.userID, trangThai: 'offline' }),
+        body: JSON.stringify({ userID: user.userID, trangThai: 'offline' }),
       });
     }
     sessionStorage.clear();
@@ -46,62 +43,69 @@ const Sidebar = ({ user, onChangeView }: Props) => {
   };
 
   return (
-    <div className="w-[70px] h-screen bg-[#79DFFF] flex flex-col items-center py-4 flex-shrink-0">
-      <div className="flex flex-col items-center gap-7">
-        {/* Avatar */}
-        <div
-          className="w-12 h-12 rounded-full bg-gray-300 overflow-hidden cursor-pointer"
-          onClick={() => setShowProfileModal(true)}
-        >
-          <img src={currentUser?.anhDaiDien || 'https://via.placeholder.com/48'} alt="Avatar" className="w-full h-full object-cover rounded-full" />
-        </div>
-
-        {/* Icon group */}
-        <div className="flex flex-col gap-7">
+    <>
+      <div className="w-[68px] h-screen bg-linear-to-b from-[#0e9de8] to-[#0077c2] flex flex-col items-center py-3.5 shrink-0 shadow-[2px_0_8px_rgba(0,0,0,0.12)]">
+        <div className="flex flex-col items-center gap-6">
           <div
-            className={`w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white transition-colors ${activeButton === 'chat' ? 'bg-blue-800' : 'hover:bg-blue-800'}`}
-            onClick={() => handleButtonClick('chat')}
-            title="Tin nhắn"
+            className="w-11 h-11 rounded-full overflow-hidden cursor-pointer border-2 border-white/60 hover:border-white hover:scale-105 transition-all"
+            onClick={() => setShowQuickMenu((v) => !v)}
           >
-            <FaComments className="w-[30px] h-[30px]" />
+            <img src={user?.anhDaiDien || 'https://via.placeholder.com/48'} alt="avatar" className="w-full h-full object-cover" />
+          </div>
+          <div className="w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-white/85 text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all">
+            <FaComments />
+          </div>
+        </div>
+        <div className="mt-auto flex flex-col gap-2">
+          <div
+            className="w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-white/85 text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all"
+            onClick={openProfile}
+            title="Hồ sơ cá nhân"
+          >
+            <FaUser />
           </div>
           <div
-            className={`w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white transition-colors ${activeButton === 'friend' ? 'bg-blue-800' : 'hover:bg-blue-800'}`}
-            onClick={() => handleButtonClick('friend')}
-            title="Danh bạ"
+            className="w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-white/85 text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all"
+            onClick={() => setShowLogoutModal(true)}
+            title="Đăng xuất"
           >
-            <FaUser className="w-[30px] h-[30px]" />
+            <FaSignOutAlt />
           </div>
         </div>
       </div>
 
-      {/* Bottom icons */}
-      <div className="mt-auto flex flex-col gap-7">
-        <div className="w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white hover:bg-blue-800 transition-colors" title="Cloud">
-          <FaCloud className="w-[30px] h-[30px]" />
+      {/* Quick menu khi click avatar */}
+      {showQuickMenu && (
+        <div className="fixed top-3.5 left-[76px] bg-white rounded-[10px] shadow-[0_4px_20px_rgba(0,0,0,0.15)] min-w-[210px] z-999 overflow-hidden animate-fade-slide-in">
+          <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-gray-100 bg-gray-50">
+            <img src={user?.anhDaiDien || 'https://via.placeholder.com/40'} alt="avatar" className="w-[38px] h-[38px] rounded-full object-cover border-2 border-[#0e9de8]" />
+            <span className="font-semibold text-sm text-gray-800">{user?.name}</span>
+          </div>
+          <div className="flex items-center gap-2.5 px-4 py-3 cursor-pointer text-sm text-gray-700 hover:bg-blue-50 transition-colors" onClick={openProfile}>
+            <FaUser className="text-[15px] text-gray-500" /><span>Hồ sơ của bạn</span>
+          </div>
+          <div className="flex items-center gap-2.5 px-4 py-3 cursor-pointer text-sm text-red-500 border-t border-gray-100 hover:bg-blue-50 transition-colors" onClick={() => { setShowQuickMenu(false); setShowLogoutModal(true); }}>
+            <FaSignOutAlt className="text-[15px] text-red-500" /><span>Đăng xuất</span>
+          </div>
         </div>
-        <div className="w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white hover:bg-blue-800 transition-colors" title="Cài đặt">
-          <FaCog className="w-[30px] h-[30px]" />
-        </div>
-        <div className="w-[45px] h-[45px] rounded-[10px] flex items-center justify-center cursor-pointer text-white hover:bg-blue-800 transition-colors" onClick={() => setShowLogoutModal(true)} title="Đăng xuất">
-          <FaSignOutAlt className="w-[30px] h-[30px]" />
-        </div>
-      </div>
+      )}
 
-      {showProfileModal && currentUser && (
+      {/* Profile Modal */}
+      {showProfileModal && (
         <UserProfileModal
           onClose={() => setShowProfileModal(false)}
-          user={currentUser}
+          user={user}
           setUser={(u) => {
-            setCurrentUser(u);
+            setUser(u);
             sessionStorage.setItem('user', JSON.stringify(u));
           }}
         />
       )}
 
+      {/* Logout Confirm Modal */}
       {showLogoutModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowLogoutModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[340px] p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-1000 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowLogoutModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[340px] p-6 animate-fade-slide-in" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col items-center gap-3 mb-5">
               <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
                 <FaSignOutAlt className="text-red-500 text-2xl" />
@@ -126,7 +130,7 @@ const Sidebar = ({ user, onChangeView }: Props) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
