@@ -1,6 +1,7 @@
 import axios from 'axios';
-import {  useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import toast, { Toaster } from 'react-hot-toast';
 
 export default function VerifyOTPDK() {
   const navigate = useNavigate();
@@ -9,12 +10,28 @@ export default function VerifyOTPDK() {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [log, setLog] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
 
-
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
 
   const handleVerifyOtp = async () => {
+    if (otp.length !== 6) {
+      setLog('Vui lòng nhập đủ 6 chữ số');
+      return;
+    }
+
     try {
       setLoading(true);
+      setLog('');
       const responseData = await axios.post('http://localhost:5000/api/verify-otp', { email, otp });
 
       const verified: boolean = responseData.data.verified;
@@ -25,14 +42,52 @@ export default function VerifyOTPDK() {
 
       navigate('/signup-info', { state: { email, sdt } });
     } catch (error) {
+      setLog('Có lỗi xảy ra, vui lòng thử lại');
       console.log(error);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleResendOtp = async () => {
+    try {
+      setResendLoading(true);
+      setLog('');
+      await axios.post('http://localhost:5000/api/send-otp', { email });
+      setResendTimer(60);
+      toast.success('Mã OTP mới đã được gửi đến email của bạn! 📧', {
+        duration: 3000,
+        position: 'top-center',
+        style: {
+          background: '#10b981',
+          color: '#fff',
+          fontWeight: '600',
+          padding: '16px',
+          borderRadius: '12px',
+        },
+      });
+    } catch (error) {
+      setLog('Không thể gửi lại mã OTP, vui lòng thử lại');
+      toast.error('Không thể gửi lại mã OTP, vui lòng thử lại!', {
+        duration: 3000,
+        position: 'top-center',
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+          fontWeight: '600',
+          padding: '16px',
+          borderRadius: '12px',
+        },
+      });
+      console.log(error);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex bg-linear-to-br from-primary-50 via-white to-primary-100">
+      <Toaster />
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:flex-1 relative overflow-hidden">
         <div className="absolute inset-0 bg-linear-to-br from-primary-400 via-primary-500 to-primary-700" />
@@ -127,7 +182,7 @@ export default function VerifyOTPDK() {
                   <input
                     id="phone-input"
                     type="text"
-                    placeholder="Nhập mã OTP của bạn"
+                    placeholder="● ● ● ● ● ●"
                     maxLength={6}
                     minLength={6}
                     className="w-full text-center text-3xl py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 transition-all duration-300 focus:outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 hover:border-gray-300"
@@ -195,16 +250,30 @@ export default function VerifyOTPDK() {
               <div className="flex-1 border-t border-gray-200" />
             </div>
 
-            {/* Login link */}
-            <div className="text-center">
+            {/* Resend & Back to Signup links */}
+            <div className="text-center space-y-3">
               <p className="text-gray-400 text-sm">
                 Chưa nhận được mã?{' '}
+                {resendTimer > 0 ? (
+                  <span className="text-gray-500 font-medium">Gửi lại sau {resendTimer}s</span>
+                ) : (
+                  <button
+                    onClick={handleResendOtp}
+                    disabled={resendLoading}
+                    className="text-primary-500 hover:text-primary-700 font-semibold transition-colors duration-200 hover:underline underline-offset-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {resendLoading ? 'Đang gửi...' : 'Gửi lại mã'}
+                  </button>
+                )}
+              </p>
+              <p className="text-gray-400 text-sm">
+                Muốn thay đổi thông tin?{' '}
                 <button
-                  id="login-link"
+                  id="signup-link"
                   onClick={() => navigate('/signup')}
                   className="text-primary-500 hover:text-primary-700 font-semibold transition-colors duration-200 hover:underline underline-offset-2 cursor-pointer"
                 >
-                  Đăng ký
+                  Quay lại đăng ký
                 </button>
               </p>
             </div>
