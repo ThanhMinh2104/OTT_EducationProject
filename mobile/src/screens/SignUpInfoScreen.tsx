@@ -4,13 +4,16 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
   ActivityIndicator, StatusBar, Animated, Modal,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { API_URL } from '../utils/config';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+
+const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
+const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+const years = Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i));
 
 const validateName = (name: string) => /^([A-ZÀ-Ỵ][a-zà-ỹ]*)(\s[A-ZÀ-Ỵ][a-zà-ỹ]*)+$/.test(name);
 const validateDateFormat = (date: string) => /^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/(19|20)\d\d$/.test(date);
@@ -34,9 +37,10 @@ type Props = {
 const SignUpInfoScreen = ({ navigation, route }: Props) => {
   const { email, sdt } = route.params;
   const [name, setName] = useState('');
-  const [birthDate, setBirthDate] = useState<Date | null>(null);
-  const [birth, setBirth] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dobDay, setDobDay] = useState('01');
+  const [dobMonth, setDobMonth] = useState('01');
+  const [dobYear, setDobYear] = useState('2000');
+  const [birth, setBirth] = useState('01/01/2000');
   const [password, setPassword] = useState('');
   const [rePassword, setRePassword] = useState('');
   const [gender, setGender] = useState('Nam');
@@ -50,20 +54,9 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
   const slideAnim = useRef(new Animated.Value(30)).current;
   const logoScale = useRef(new Animated.Value(0.8)).current;
 
-  const formatDate = (date: Date) => {
-    const d = String(date.getDate()).padStart(2, '0');
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const y = date.getFullYear();
-    return `${d}/${m}/${y}`;
-  };
-
-  const onDateChange = (_: any, selected?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selected) {
-      setBirthDate(selected);
-      setBirth(formatDate(selected));
-    }
-  };
+  useEffect(() => {
+    setBirth(`${dobDay}/${dobMonth}/${dobYear}`);
+  }, [dobDay, dobMonth, dobYear]);
 
   useEffect(() => {
     Animated.parallel([
@@ -147,59 +140,27 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
             {/* Ngày sinh */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Ngày sinh</Text>
-              <TouchableOpacity
-                style={styles.inputWrapper}
-                onPress={() => setShowDatePicker(true)}
-                disabled={loading}
-              >
-                <View style={styles.inputIconContainer}>
-                  <Ionicons name="calendar-outline" size={20} color="#9ca3af" />
-                </View>
-                <Text style={[styles.input, !birth && { color: '#9ca3af' }]}>
-                  {birth || 'Chọn ngày sinh'}
-                </Text>
-                <View style={styles.eyeIcon}>
-                  <Ionicons name="chevron-down-outline" size={18} color="#9ca3af" />
-                </View>
-              </TouchableOpacity>
+              <View style={styles.dateRow}>
+                {[
+                  { label: 'Ngày', value: dobDay, setValue: setDobDay, options: days },
+                  { label: 'Tháng', value: dobMonth, setValue: setDobMonth, options: months },
+                  { label: 'Năm', value: dobYear, setValue: setDobYear, options: years },
+                ].map(({ label, value, setValue, options }) => (
+                  <ScrollView key={label} style={styles.datePicker} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                    <Text style={styles.datePickerLabel}>{label}</Text>
+                    {options.map((opt) => (
+                      <TouchableOpacity
+                        key={opt}
+                        style={value === opt ? styles.dateOptSelected : styles.dateOpt}
+                        onPress={() => setValue(opt)}
+                      >
+                        <Text style={value === opt ? styles.dateOptTextSelected : styles.dateOptText}>{opt}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                ))}
+              </View>
             </View>
-
-            {/* Date Picker */}
-            {showDatePicker && (
-              Platform.OS === 'ios' ? (
-                <Modal transparent animationType="slide">
-                  <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                      <View style={styles.modalHeader}>
-                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                          <Text style={styles.modalCancel}>Hủy</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.modalTitle}>Chọn ngày sinh</Text>
-                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                          <Text style={styles.modalDone}>Xong</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <DateTimePicker
-                        value={birthDate || new Date(2000, 0, 1)}
-                        mode="date"
-                        display="spinner"
-                        onChange={onDateChange}
-                        maximumDate={new Date()}
-                        locale="vi"
-                      />
-                    </View>
-                  </View>
-                </Modal>
-              ) : (
-                <DateTimePicker
-                  value={birthDate || new Date(2000, 0, 1)}
-                  mode="date"
-                  display="default"
-                  onChange={onDateChange}
-                  maximumDate={new Date()}
-                />
-              )
-            )}
 
             {/* Giới tính */}
             <View style={styles.inputGroup}>
@@ -311,12 +272,13 @@ const styles = StyleSheet.create({
   backContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 16 },
   backLink: { color: '#3b90f4', fontSize: 14, fontWeight: '500' },
   footer: { textAlign: 'center', color: '#9ca3af', fontSize: 11, marginTop: 4, marginBottom: 30 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 30 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
-  modalTitle: { fontSize: 16, fontWeight: '600', color: '#1f2937' },
-  modalCancel: { fontSize: 15, color: '#9ca3af' },
-  modalDone: { fontSize: 15, color: '#3b90f4', fontWeight: '600' },
+  dateRow: { flexDirection: 'row', gap: 8, height: 130 },
+  datePicker: { flex: 1, borderWidth: 1.5, borderColor: '#e5e7eb', borderRadius: 12, backgroundColor: '#f9fafb' },
+  datePickerLabel: { textAlign: 'center', fontSize: 11, color: '#9ca3af', fontWeight: '600', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  dateOpt: { padding: 8, alignItems: 'center' },
+  dateOptSelected: { padding: 8, alignItems: 'center', backgroundColor: '#3b90f4', margin: 2, borderRadius: 8 },
+  dateOptText: { fontSize: 13, color: '#374151' },
+  dateOptTextSelected: { fontSize: 13, color: '#fff', fontWeight: 'bold' },
 });
 
 export default SignUpInfoScreen;
