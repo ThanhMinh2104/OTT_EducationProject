@@ -59,6 +59,11 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
   const [pwError, setPwError] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
   const [pwStep, setPwStep] = useState(1); // 1: Gửi OTP, 2: Nhập OTP, 3: Đổi mật khẩu
+  const [otpModal, setOtpModal] = useState(false);
+  const [otpValue, setOtpValue] = useState('');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -241,6 +246,7 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
   };
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -509,7 +515,48 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
         </View>
       </View>
       </KeyboardAvoidingView>
+
+      {/* OTP Overlay — render bên trong Modal chính */}
+      {otpModal && (
+        <View style={styles.otpOverlay}>
+          <View style={styles.otpBox}>
+            <Text style={styles.otpTitle}>Xác nhận mã OTP</Text>
+            <Text style={styles.otpSubtitle}>
+              Mã OTP đã được gửi đến{'\n'}
+              <Text style={{ fontWeight: '700', color: '#1a1a1a' }}>{otpEmail}</Text>
+            </Text>
+            <TextInput
+              style={styles.otpInput}
+              value={otpValue}
+              onChangeText={(v) => setOtpValue(v.replace(/\D/g, ''))}
+              keyboardType="number-pad"
+              maxLength={6}
+              placeholder="• • • • • •"
+              placeholderTextColor="#ccc"
+            />
+            {otpError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{otpError}</Text>
+              </View>
+            ) : null}
+            <View style={styles.actionRow}>
+              <TouchableOpacity style={styles.btnCancel} onPress={() => setOtpModal(false)}>
+                <Text style={styles.btnCancelText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnSave, otpLoading && { opacity: 0.6 }]}
+                onPress={handleVerifyOtpAndSave}
+                disabled={otpLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.btnSaveText}>{otpLoading ? 'Đang xác nhận...' : 'Xác nhận'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </Modal>
+    </>
   );
 };
 
@@ -814,6 +861,50 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+
+  /* OTP Modal */
+  otpOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  otpBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+  },
+  otpTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 6,
+  },
+  otpSubtitle: {
+    fontSize: 13,
+    color: '#888',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  otpInput: {
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 22,
+    textAlign: 'center',
+    letterSpacing: 10,
+    backgroundColor: '#fafafa',
+    color: '#333',
+    marginBottom: 8,
   },
 });
 
