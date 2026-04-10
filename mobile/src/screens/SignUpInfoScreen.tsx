@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
-  ActivityIndicator, StatusBar, Animated, Modal, FlatList,
+  ActivityIndicator, StatusBar, Animated, Modal, Alert, FlatList,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
@@ -103,6 +103,8 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showRePassword, setShowRePassword] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -141,15 +143,28 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
 
   const handleSignUp = async () => {
     if (!enabled) return;
+    if (!agreeTerms) {
+      setError('Bạn phải đồng ý với điều khoản sử dụng!');
+      return;
+    }
     setError('');
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/api/registerUser`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sdt, name, ngaySinh: birth, matKhau: password, email, gioTinh: gender }),
+        body: JSON.stringify({ 
+          sdt, 
+          name, 
+          ngaySinh: birth, 
+          matKhau: password, 
+          email, 
+          gioTinh: gender,
+          dongYDieuKhoan: true
+        }),
       });
       if (!response.ok) throw new Error('Đăng ký thất bại');
+      Alert.alert('Thành công', 'Đăng ký thành công! Chào mừng bạn đến với OTT Education 🎉');
       navigation.replace('Login');
     } catch {
       setError('Đăng ký thất bại. Vui lòng thử lại.');
@@ -308,8 +323,38 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
               </View>
             ) : null}
 
-            <TouchableOpacity onPress={handleSignUp} disabled={!enabled || loading} activeOpacity={0.85}>
-              <LinearGradient colors={['#60aef8', '#3b90f4', '#2572e9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.btnPrimary, (!enabled || loading) && styles.btnDisabled]}>
+            {/* Checkbox điều khoản */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', padding: 12, backgroundColor: '#f9fafb', borderRadius: 12, marginBottom: 16 }}>
+              <TouchableOpacity 
+                onPress={() => setAgreeTerms(!agreeTerms)}
+                style={{ marginRight: 10, marginTop: 2 }}
+              >
+                <Ionicons 
+                  name={agreeTerms ? 'checkbox' : 'square-outline'} 
+                  size={24} 
+                  color={agreeTerms ? '#2572e9' : '#9ca3af'} 
+                />
+              </TouchableOpacity>
+              <Text style={{ flex: 1, fontSize: 13, color: '#374151', lineHeight: 20 }}>
+                Tôi đồng ý với{' '}
+                <Text 
+                  onPress={() => setShowTermsModal(true)}
+                  style={{ color: '#2572e9', fontWeight: '600', textDecorationLine: 'underline' }}
+                >
+                  Điều khoản sử dụng
+                </Text>
+                {' '}và{' '}
+                <Text 
+                  onPress={() => setShowTermsModal(true)}
+                  style={{ color: '#2572e9', fontWeight: '600', textDecorationLine: 'underline' }}
+                >
+                  Chính sách bảo mật
+                </Text>
+              </Text>
+            </View>
+
+            <TouchableOpacity onPress={handleSignUp} disabled={!enabled || loading || !agreeTerms} activeOpacity={0.85}>
+              <LinearGradient colors={['#60aef8', '#3b90f4', '#2572e9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.btnPrimary, (!enabled || loading || !agreeTerms) && styles.btnDisabled]}>
                 {loading ? (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator color="#fff" size="small" />
@@ -329,6 +374,70 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
 
           <Text style={styles.footer}>© 2025 OTT Education. All rights reserved.</Text>
         </ScrollView>
+
+        {/* Modal điều khoản */}
+        <Modal
+          visible={showTermsModal}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setShowTermsModal(false)}
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
+            <View style={{ backgroundColor: 'white', borderRadius: 16, maxHeight: '80%', overflow: 'hidden' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1f2937' }}>Điều khoản sử dụng</Text>
+                <TouchableOpacity onPress={() => setShowTermsModal(false)}>
+                  <Ionicons name="close" size={24} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView style={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>1. Chấp nhận điều khoản</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 16, lineHeight: 20 }}>
+                  Bằng việc đăng ký và sử dụng dịch vụ, bạn đồng ý tuân thủ các điều khoản sau.
+                </Text>
+
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>2. Quy định sử dụng</Text>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>2.1. Hành vi được phép:</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 4, lineHeight: 20 }}>• Sử dụng dịch vụ cho mục đích cá nhân, hợp pháp</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 4, lineHeight: 20 }}>• Giao tiếp lịch sự, tôn trọng người khác</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 12, lineHeight: 20 }}>• Bảo mật thông tin tài khoản của bạn</Text>
+
+                <Text style={{ fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4 }}>2.2. Hành vi bị cấm:</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 4, lineHeight: 20 }}>• Spam, gửi tin nhắn quấy rối</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 4, lineHeight: 20 }}>• Chia sẻ nội dung vi phạm pháp luật</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 4, lineHeight: 20 }}>• Mạo danh người khác</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 16, lineHeight: 20 }}>• Sử dụng bot, script tự động</Text>
+
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#1f2937', marginBottom: 8 }}>3. Xử lý vi phạm</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 4, lineHeight: 20 }}>• Vi phạm nhẹ: Cảnh báo</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 4, lineHeight: 20 }}>• Vi phạm trung bình: Khóa tạm thời (7-30 ngày)</Text>
+                <Text style={{ fontSize: 14, color: '#4b5563', marginBottom: 16, lineHeight: 20 }}>• Vi phạm nghiêm trọng: Khóa vĩnh viễn</Text>
+
+                <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 16 }}>Cập nhật lần cuối: 2024</Text>
+              </ScrollView>
+
+              <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: '#e5e7eb' }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowTermsModal(false);
+                    setAgreeTerms(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={['#60aef8', '#3b90f4', '#2572e9']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={{ paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Đồng ý và đóng</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </>
   );

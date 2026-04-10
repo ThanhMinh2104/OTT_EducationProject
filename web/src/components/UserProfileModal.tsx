@@ -44,9 +44,10 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
   const [activeTab, setActiveTab] = useState<'info' | 'password'>('info');
   const [errorMessage, setErrorMessage] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [pwForm, setPwForm] = useState({ matKhauCu: '', matKhauMoi: '', xacNhan: '' });
+  const [pwForm, setPwForm] = useState({ matKhauCu: '', matKhauMoi: '', xacNhan: '', otp: '' });
   const [pwError, setPwError] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
+  const [pwStep, setPwStep] = useState(1); // 1: Gửi OTP, 2: Nhập OTP, 3: Đổi mật khẩu
   const [otpModal, setOtpModal] = useState(false);
   const [otpValue, setOtpValue] = useState('');
   const [otpEmail, setOtpEmail] = useState('');
@@ -187,71 +188,107 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
 
   const handleChangePassword = async () => {
     setPwError('');
-    if (!pwForm.matKhauCu || !pwForm.matKhauMoi || !pwForm.xacNhan) {
-      setPwError('Vui lòng điền đầy đủ thông tin.');
-      return;
-    }
-    if (!/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(pwForm.matKhauMoi)) {
-      setPwError('Mật khẩu mới tối thiểu 8 ký tự, gồm cả chữ và số.');
-      return;
-    }
-    if (pwForm.matKhauMoi !== pwForm.xacNhan) {
-      setPwError('Xác nhận mật khẩu không khớp.');
-      return;
-    }
-    try {
-      setPwLoading(true);
-      const res = await fetch(`http://localhost:5000/api/users/${user?.userID}/request-password-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ matKhauCu: pwForm.matKhauCu }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setPwError(data.message);
-        return;
+    
+    // Bước 1: Gửi OTP
+    if (pwStep === 1) {
+      try {
+        setPwLoading(true);
+        const res = await fetch('http://localhost:5000/api/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user?.email }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setPwError(data.message || 'Gửi OTP thất bại');
+          return;
+        }
+        toast.success('Mã OTP đã được gửi đến email của bạn', {
+          duration: 3000,
+          position: 'top-center',
+        });
+        setPwStep(2); // Chuyển sang bước nhập OTP
+      } catch {
+        setPwError('Lỗi hệ thống, vui lòng thử lại.');
+      } finally {
+        setPwLoading(false);
       }
-      setOtpEmail(data.email);
-      setOtpValue('');
-      setOtpError('');
-      setOtpModal(true);
-    } catch {
-      setPwError('Lỗi hệ thống, vui lòng thử lại.');
-    } finally {
-      setPwLoading(false);
+      return;
     }
-  };
 
-  const handleVerifyOtpAndSave = async () => {
-    setOtpError('');
-    if (!otpValue || otpValue.length !== 6) {
-      setOtpError('Vui lòng nhập mã OTP 6 chữ số.');
-      return;
-    }
-    try {
-      setOtpLoading(true);
-      const res = await fetch(`http://localhost:5000/api/users/${user?.userID}/password`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ matKhauMoi: pwForm.matKhauMoi, otp: otpValue, email: otpEmail }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setOtpError(data.message);
+    // Bước 2: Xác thực OTP
+    if (pwStep === 2) {
+      if (!pwForm.otp) {
+        setPwError('Vui lòng nhập mã OTP');
         return;
       }
-      setOtpModal(false);
-      setPwForm({ matKhauCu: '', matKhauMoi: '', xacNhan: '' });
-      toast.success('Đổi mật khẩu thành công! Vui lòng đăng nhập lại.', {
-        duration: 2000,
-        position: 'top-center',
-        style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
-      });
-      setTimeout(() => { sessionStorage.clear(); navigate('/login'); }, 1500);
-    } catch {
-      setOtpError('Lỗi hệ thống, vui lòng thử lại.');
-    } finally {
-      setOtpLoading(false);
+      try {
+        setPwLoading(true);
+        const res = await fetch('http://localhost:5000/api/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user?.email, otp: pwForm.otp }),
+        });
+        const data = await res.json();
+        if (!data.verified) {
+          setPwError('Mã OTP không đúng hoặc đã hết hạn');
+          return;
+        }
+        toast.success('Xác thực thành công!', {
+          duration: 2000,
+          position: 'top-center',
+        });
+        setPwStep(3); // Chuyển sang bước nhập mật khẩu
+      } catch {
+        setPwError('Lỗi hệ thống, vui lòng thử lại.');
+      } finally {
+        setPwLoading(false);
+      }
+      return;
+    }
+
+    // Bước 3: Đổi mật khẩu
+    if (pwStep === 3) {
+      if (!pwForm.matKhauCu || !pwForm.matKhauMoi || !pwForm.xacNhan) {
+        setPwError('Vui lòng điền đầy đủ thông tin.');
+        return;
+      }
+      if (!/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(pwForm.matKhauMoi)) {
+        setPwError('Mật khẩu mới tối thiểu 8 ký tự, gồm cả chữ và số.');
+        return;
+      }
+      if (pwForm.matKhauMoi !== pwForm.xacNhan) {
+        setPwError('Xác nhận mật khẩu không khớp.');
+        return;
+      }
+      try {
+        setPwLoading(true);
+        const res = await fetch(`http://localhost:5000/api/users/${user?.userID}/password`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ matKhauCu: pwForm.matKhauCu, matKhauMoi: pwForm.matKhauMoi }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setPwError(data.message);
+          return;
+        }
+        setPwForm({ matKhauCu: '', matKhauMoi: '', xacNhan: '', otp: '' });
+        setPwStep(1);
+        toast.success('Đổi mật khẩu thành công! Vui lòng đăng nhập lại.', {
+          duration: 2000,
+          position: 'top-center',
+          style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
+        });
+        setTimeout(() => {
+          sessionStorage.clear();
+          navigate('/login');
+        }, 1500);
+      } catch {
+        setPwError('Lỗi hệ thống, vui lòng thử lại.');
+      } finally {
+        setPwLoading(false);
+      }
     }
   };
 
@@ -262,7 +299,8 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
       {otpModal && (
         <div
           className="fixed inset-0 w-screen h-screen bg-black/60 flex justify-center items-center z-[2000] backdrop-blur-sm"
-          onClick={() => setOtpModal(false)}
+          onClick={() => 
+          (false)}
         >
           <div
             className="bg-white rounded-[14px] w-[360px] p-6 shadow-[0_8px_32px_rgba(0,0,0,0.22)] animate-modal-pop"
@@ -593,8 +631,157 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                   </button>
                 </div>
               </div>
-            )}
-          </div>
+              {errorMessage && (
+                <p className="text-red-500 text-[13px] mt-2 text-center bg-red-50 px-3 py-2 rounded-md border border-red-200 w-full">
+                  {errorMessage}
+                </p>
+              )}
+              <div className="flex gap-2.5 mt-5 w-full justify-end">
+                <button
+                  className="bg-gray-100 text-gray-600 border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-medium hover:bg-gray-200 transition-colors"
+                  onClick={() => { setIsEditing(false); setErrorMessage(''); }}
+                >
+                  Hủy
+                </button>
+                <button
+                  className="bg-gradient-to-br from-green-500 to-green-700 text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity"
+                  onClick={handleSave}
+                >
+                  Lưu
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="w-full text-left bg-gray-50 rounded-[10px] px-4 py-3.5">
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Thông tin cá nhân</h4>
+                <p className="text-sm text-gray-600 mb-2.5 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Tên:</span><span>{profile.name}</span></p>
+                <p className="text-sm text-gray-600 mb-2.5 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Email:</span><span>{profile.email}</span></p>
+                <p className="text-sm text-gray-600 mb-2.5 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Số điện thoại:</span><span>{profile.phone}</span></p>
+                <p className="text-sm text-gray-600 mb-2.5 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Ngày sinh:</span><span>{profile.dobDay}/{profile.dobMonth}/{profile.dobYear}</span></p>
+                <p className="text-sm text-gray-600 flex gap-2 items-baseline"><span className="font-semibold text-gray-500 min-w-[110px] text-[13px]">Giới tính:</span><span>{profile.gender}</span></p>
+              </div>
+              <div className="flex gap-2.5 mt-5 w-full justify-end">
+                <button
+                  className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 hover:-translate-y-px transition-all"
+                  onClick={() => setIsEditing(true)}
+                >
+                  <FaPen /> Cập nhật
+                </button>
+              </div>
+            </>
+          )}
+          </>
+          ) : (
+            /* Tab đổi mật khẩu */
+            <div className="w-full">
+              {/* Bước 1: Gửi OTP */}
+              {pwStep === 1 && (
+                <div className="text-center py-8">
+                  <div className="mb-4">
+                    <FaLock className="text-5xl text-[#0e9de8] mx-auto mb-3" />
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Xác thực tài khoản</h3>
+                    <p className="text-sm text-gray-600">
+                      Để đảm bảo an toàn, chúng tôi sẽ gửi mã OTP đến email:<br />
+                      <span className="font-semibold text-[#0e9de8]">{user?.email}</span>
+                    </p>
+                  </div>
+                  {pwError && (
+                    <p className="text-red-500 text-[13px] mb-3 text-center bg-red-50 px-3 py-2 rounded-md border border-red-200">
+                      {pwError}
+                    </p>
+                  )}
+                  <button
+                    disabled={pwLoading}
+                    onClick={handleChangePassword}
+                    className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-6 py-3 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                  >
+                    {pwLoading ? 'Đang gửi...' : 'Gửi mã OTP'}
+                  </button>
+                </div>
+              )}
+
+              {/* Bước 2: Nhập OTP */}
+              {pwStep === 2 && (
+                <div>
+                  <div className="mb-4 text-center">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Nhập mã OTP</h3>
+                    <p className="text-sm text-gray-600">
+                      Mã OTP đã được gửi đến email {user?.email}
+                    </p>
+                  </div>
+                  <div className="mb-3.5">
+                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Mã OTP</label>
+                    <input
+                      type="text"
+                      value={pwForm.otp}
+                      onChange={(e) => setPwForm((p) => ({ ...p, otp: e.target.value }))}
+                      className="w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors box-border text-center text-lg tracking-widest"
+                      placeholder="Nhập mã OTP"
+                      maxLength={6}
+                    />
+                  </div>
+                  {pwError && (
+                    <p className="text-red-500 text-[13px] mt-1 mb-3 text-center bg-red-50 px-3 py-2 rounded-md border border-red-200">
+                      {pwError}
+                    </p>
+                  )}
+                  <div className="flex gap-2 mt-5">
+                    <button
+                      onClick={() => { setPwStep(1); setPwError(''); }}
+                      className="flex-1 bg-gray-200 text-gray-700 border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold hover:bg-gray-300 transition-colors"
+                    >
+                      Quay lại
+                    </button>
+                    <button
+                      disabled={pwLoading}
+                      onClick={handleChangePassword}
+                      className="flex-1 bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                    >
+                      {pwLoading ? 'Đang xác thực...' : 'Xác nhận'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Bước 3: Nhập mật khẩu mới */}
+              {pwStep === 3 && (
+                <div>
+                  {[
+                    { key: 'matKhauCu', label: 'Mật khẩu hiện tại' },
+                    { key: 'matKhauMoi', label: 'Mật khẩu mới' },
+                    { key: 'xacNhan', label: 'Xác nhận mật khẩu mới' },
+                  ].map(({ key, label }) => (
+                    <div key={key} className="mb-3.5">
+                      <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">{label}</label>
+                      <input
+                        type="password"
+                        value={pwForm[key as keyof typeof pwForm]}
+                        onChange={(e) => setPwForm((p) => ({ ...p, [key]: e.target.value }))}
+                        className="w-full px-3 py-2 border-[1.5px] border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:border-[#0e9de8] focus:bg-white outline-none transition-colors box-border"
+                        placeholder={`Nhập ${label.toLowerCase()}`}
+                      />
+                    </div>
+                  ))}
+                  {pwError && (
+                    <p className="text-red-500 text-[13px] mt-1 mb-3 text-center bg-red-50 px-3 py-2 rounded-md border border-red-200">
+                      {pwError}
+                    </p>
+                  )}
+                  <div className="flex justify-end mt-5">
+                    <button
+                      disabled={pwLoading}
+                      onClick={handleChangePassword}
+                      className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity disabled:opacity-60"
+                    >
+                      <FaLock className="text-xs" />
+                      {pwLoading ? 'Đang lưu...' : 'Cập nhật mật khẩu'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>
