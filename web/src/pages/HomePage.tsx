@@ -43,7 +43,23 @@ const HomePage = () => {
       setUser(data);
       sessionStorage.setItem('user', JSON.stringify(data));
     });
-    return () => { socket.off('update_user'); };
+    socket.on('userUpdated', (data: User) => {
+      if (data.userID === user.userID) {
+        setUser(data);
+        sessionStorage.setItem('user', JSON.stringify(data));
+      }
+    });
+    socket.on('forceLogout', (data: { userID: string }) => {
+      if (data.userID === user.userID) {
+        sessionStorage.clear();
+        navigate('/login');
+      }
+    });
+    return () => {
+      socket.off('update_user');
+      socket.off('userUpdated');
+      socket.off('forceLogout');
+    };
   }, [user, navigate]);
 
   return (

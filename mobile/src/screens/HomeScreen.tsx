@@ -36,7 +36,31 @@ const HomeScreen = ({ navigation }: Props) => {
       await AsyncStorage.setItem('user', JSON.stringify(data));
     });
 
-    return () => { socket.off('update_user'); };
+    socket.on('userUpdated', async (data: User) => {
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const u = JSON.parse(stored);
+      if (u.userID === data.userID) {
+        setUser(data);
+        await AsyncStorage.setItem('user', JSON.stringify(data));
+      }
+    });
+
+    socket.on('forceLogout', async (data: { userID: string }) => {
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const u = JSON.parse(stored);
+      if (u.userID === data.userID) {
+        await AsyncStorage.clear();
+        navigation.replace('Login');
+      }
+    });
+
+    return () => {
+      socket.off('update_user');
+      socket.off('userUpdated');
+      socket.off('forceLogout');
+    };
   }, [navigation]);
 
   const handleLogout = async () => {

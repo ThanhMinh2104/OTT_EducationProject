@@ -26,10 +26,10 @@ const connectDB = async () => {
 };
 connectDB();
 
-app.use('/api', userRoutes);
-
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
+
+app.use('/api', userRoutes(io));
 
 io.on('connection', (socket) => {
   socket.on('updateStatus', async (user) => {

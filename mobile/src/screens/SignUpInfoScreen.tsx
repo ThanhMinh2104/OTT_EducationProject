@@ -2,15 +2,70 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
-  ActivityIndicator, StatusBar, Animated, Modal,
+  ActivityIndicator, StatusBar, Animated, Modal, FlatList,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { API_URL } from '../utils/config';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+
+const ITEM_HEIGHT = 44;
+const VISIBLE_ITEMS = 5;
+
+const months = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
+const currentYear = new Date().getFullYear();
+const years = Array.from({ length: 100 }, (_, i) => String(currentYear - i));
+
+function WheelPicker({ items, selectedIndex, onChange }: { items: string[]; selectedIndex: number; onChange: (i: number) => void }) {
+  const ref = useRef<FlatList>(null);
+  const [idx, setIdx] = useState(selectedIndex);
+
+  useEffect(() => {
+    setTimeout(() => {
+      ref.current?.scrollToIndex({ index: selectedIndex, animated: false });
+    }, 50);
+  }, []);
+
+  return (
+    <View style={wp.container}>
+      <View style={wp.selector} pointerEvents="none" />
+      <FlatList
+        ref={ref}
+        data={items}
+        keyExtractor={(_, i) => String(i)}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={ITEM_HEIGHT}
+        decelerationRate="fast"
+        getItemLayout={(_, i) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * i, index: i })}
+        ListHeaderComponent={<View style={{ height: ITEM_HEIGHT * 2 }} />}
+        ListFooterComponent={<View style={{ height: ITEM_HEIGHT * 2 }} />}
+        onMomentumScrollEnd={(e) => {
+          const newIdx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+          const clamped = Math.max(0, Math.min(newIdx, items.length - 1));
+          setIdx(clamped);
+          onChange(clamped);
+        }}
+        renderItem={({ item, index }) => (
+          <View style={[wp.item, index === idx && wp.itemSelected]}>
+            <Text style={[wp.text, index === idx && wp.textSelected]}>{item}</Text>
+          </View>
+        )}
+      />
+    </View>
+  );
+}
+
+const wp = StyleSheet.create({
+  container: { flex: 1, height: ITEM_HEIGHT * VISIBLE_ITEMS, overflow: 'hidden' },
+  selector: { position: 'absolute', top: ITEM_HEIGHT * 2, height: ITEM_HEIGHT, left: 0, right: 0, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#d1d5db', zIndex: 1 },
+  item: { height: ITEM_HEIGHT, justifyContent: 'center', alignItems: 'center' },
+  itemSelected: {},
+  text: { fontSize: 15, color: '#9ca3af' },
+  textSelected: { fontSize: 16, fontWeight: '600', color: '#1f2937' },
+});
 
 const validateName = (name: string) => /^([A-ZÀ-Ỵ][a-zà-ỹ]*)(\s[A-ZÀ-Ỵ][a-zà-ỹ]*)+$/.test(name);
 const validateDateFormat = (date: string) => /^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/(19|20)\d\d$/.test(date);
@@ -37,6 +92,9 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [birth, setBirth] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDay, setTempDay] = useState(0);    // index
+  const [tempMonth, setTempMonth] = useState(0); // index
+  const [tempYear, setTempYear] = useState(24);  // index (2000)
   const [password, setPassword] = useState('');
   const [rePassword, setRePassword] = useState('');
   const [gender, setGender] = useState('Nam');
@@ -57,13 +115,6 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
     return `${d}/${m}/${y}`;
   };
 
-  const onDateChange = (_: any, selected?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selected) {
-      setBirthDate(selected);
-      setBirth(formatDate(selected));
-    }
-  };
 
   useEffect(() => {
     Animated.parallel([
@@ -149,7 +200,16 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
               <Text style={styles.label}>Ngày sinh</Text>
               <TouchableOpacity
                 style={styles.inputWrapper}
-                onPress={() => setShowDatePicker(true)}
+                onPress={() => {
+                  if (birthDate) {
+                    setTempDay(birthDate.getDate() - 1);
+                    setTempMonth(birthDate.getMonth());
+                    setTempYear(years.indexOf(String(birthDate.getFullYear())));
+                  } else {
+                    setTempDay(0); setTempMonth(0); setTempYear(24);
+                  }
+                  setShowDatePicker(true);
+                }}
                 disabled={loading}
               >
                 <View style={styles.inputIconContainer}>
@@ -165,41 +225,40 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
             </View>
 
             {/* Date Picker */}
-            {showDatePicker && (
-              Platform.OS === 'ios' ? (
-                <Modal transparent animationType="slide">
-                  <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                      <View style={styles.modalHeader}>
-                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                          <Text style={styles.modalCancel}>Hủy</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.modalTitle}>Chọn ngày sinh</Text>
-                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                          <Text style={styles.modalDone}>Xong</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <DateTimePicker
-                        value={birthDate || new Date(2000, 0, 1)}
-                        mode="date"
-                        display="spinner"
-                        onChange={onDateChange}
-                        maximumDate={new Date()}
-                        locale="vi"
-                      />
-                    </View>
+            <Modal
+              visible={showDatePicker}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShowDatePicker(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowDatePicker(false)} />
+                <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                      <Text style={styles.modalCancel}>Hủy</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.modalTitle}>Chọn ngày sinh</Text>
+                    <TouchableOpacity onPress={() => {
+                      const d = tempDay + 1;
+                      const m = tempMonth + 1;
+                      const y = parseInt(years[tempYear]);
+                      const date = new Date(y, tempMonth, d);
+                      setBirthDate(date);
+                      setBirth(`${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`);
+                      setShowDatePicker(false);
+                    }}>
+                      <Text style={styles.modalDone}>Xong</Text>
+                    </TouchableOpacity>
                   </View>
-                </Modal>
-              ) : (
-                <DateTimePicker
-                  value={birthDate || new Date(2000, 0, 1)}
-                  mode="date"
-                  display="default"
-                  onChange={onDateChange}
-                  maximumDate={new Date()}
-                />
-              )
-            )}
+                  <View style={styles.pickerRow}>
+                    <WheelPicker items={days} selectedIndex={tempDay} onChange={setTempDay} />
+                    <WheelPicker items={months} selectedIndex={tempMonth} onChange={setTempMonth} />
+                    <WheelPicker items={years} selectedIndex={tempYear} onChange={setTempYear} />
+                  </View>
+                </View>
+              </View>
+            </Modal>
 
             {/* Giới tính */}
             <View style={styles.inputGroup}>
@@ -311,12 +370,14 @@ const styles = StyleSheet.create({
   backContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 16 },
   backLink: { color: '#3b90f4', fontSize: 14, fontWeight: '500' },
   footer: { textAlign: 'center', color: '#9ca3af', fontSize: 11, marginTop: 4, marginBottom: 30 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 30 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: Platform.OS === 'ios' ? 34 : 16 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
   modalTitle: { fontSize: 16, fontWeight: '600', color: '#1f2937' },
   modalCancel: { fontSize: 15, color: '#9ca3af' },
   modalDone: { fontSize: 15, color: '#3b90f4', fontWeight: '600' },
+  pickerRow: { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 8 },
 });
 
 export default SignUpInfoScreen;

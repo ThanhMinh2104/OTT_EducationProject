@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
+import { Server } from 'socket.io';
 import Users from '../models/User';
 import Otp from '../models/Otp';
 import Chat from "../models/Chat";
@@ -13,6 +14,8 @@ import { uploadToCloudinary } from '../services/uploadService';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const router = Router();
+
+export default function userRoutes(io: Server) {
 
 // Tạo userID tự động
 const generateUserID = async (): Promise<string> => {
@@ -247,19 +250,16 @@ router.post('/users/doimatkhau', async (req: Request, res: Response) => {
 });
 
 
-// Đổi mật khẩu khi đã đăng nhập (yêu cầu JWT, check trùng mật khẩu cũ)
-router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, res: Response) => {
+// Yêu cầu OTP để đổi mật khẩu (xác thực mật khẩu cũ trước, rồi gửi OTP)
+router.post('/users/:userID/request-password-otp', authMiddleware, async (req: AuthRequest, res: Response) => {
   const { userID } = req.params;
-
   if (req.userID !== userID) {
     return res.status(403).json({ message: 'Không có quyền thực hiện thao tác này' }) as any;
   }
-
-  const { matKhauCu, matKhauMoi } = req.body;
-  if (!matKhauCu || !matKhauMoi) {
-    return res.status(400).json({ message: 'Vui lòng nhập đầy đủ mật khẩu cũ và mới' }) as any;
+  const { matKhauCu } = req.body;
+  if (!matKhauCu) {
+    return res.status(400).json({ message: 'Vui lòng nhập mật khẩu cũ' }) as any;
   }
-
   try {
     const user = await Users.findOne({ userID });
     if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' }) as any;
@@ -268,6 +268,41 @@ router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, r
     if (!isMatch) {
       return res.status(400).json({ message: 'Mật khẩu cũ không đúng' }) as any;
     }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    await Otp.deleteMany({ email: user.email });
+    await Otp.create({ email: user.email, otp });
+    await sendOtpEmail(user.email, otp);
+
+    res.status(200).json({ message: 'Đã gửi OTP về email', email: user.email });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+});
+
+// Đổi mật khẩu khi đã đăng nhập (yêu cầu JWT, check trùng mật khẩu cũ)
+router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const { userID } = req.params;
+
+  if (req.userID !== userID) {
+    return res.status(403).json({ message: 'Không có quyền thực hiện thao tác này' }) as any;
+  }
+
+  const { matKhauMoi, otp, email } = req.body;
+  if (!matKhauMoi || !otp || !email) {
+    return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' }) as any;
+  }
+
+  try {
+    // Xác thực OTP
+    const otpRecord = await Otp.findOne({ email, otp });
+    if (!otpRecord) {
+      return res.status(400).json({ message: 'Mã OTP không đúng hoặc đã hết hạn' }) as any;
+    }
+    await Otp.deleteOne({ _id: otpRecord._id });
+
+    const user = await Users.findOne({ userID });
+    if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' }) as any;
 
     const isSame = await bcrypt.compare(matKhauMoi, user.matKhau);
     if (isSame) {
@@ -278,6 +313,9 @@ router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, r
     user.matKhau = await bcrypt.hash(matKhauMoi, salt);
     user.ngaySuaDoi = new Date();
     await user.save();
+
+    // Emit force logout tới tất cả thiết bị của user này
+    io.emit('forceLogout', { userID });
 
     res.status(200).json({ message: 'Đổi mật khẩu thành công' });
   } catch (error: any) {
@@ -293,15 +331,32 @@ router.post('/users/get-email-by-phone', async (req: Request, res: Response) => 
     if (!user) {
       return res.status(404).json({ message: 'Số điện thoại không tồn tại' }) as any;
     }
-    // Chỉ trả về email để frontend gọi API gửi OTP
-    res.status(200).json({ email: user.email });
+    res.status(200).json({ email: user.email, sdt: user.sdt });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi server', error: error.message });
-
   }
 });
 
-export default router;
+// Lấy thông tin từ email hoặc SĐT (dùng cho luồng quên mật khẩu)
+router.post('/users/find-by-identity', async (req: Request, res: Response) => {
+  const { identity } = req.body;
+  if (!identity) return res.status(400).json({ message: 'Vui lòng nhập SĐT hoặc email' }) as any;
+  try {
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity);
+    const user = isEmail
+      ? await Users.findOne({ email: identity })
+      : await Users.findOne({ sdt: identity });
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy tài khoản với thông tin này' }) as any;
+    }
+    res.status(200).json({ email: user.email, sdt: user.sdt });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+});
+
+  return router;
+}
 
 
 
