@@ -30,10 +30,16 @@ const SignUpInfoScreen = () => {
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const handleSignUp = async () => {
     if (!name || !birth || !password || !rePassword) {
       setError('Vui lòng nhập đầy đủ thông tin!');
+      return;
+    }
+    if (!agreeTerms) {
+      setError('Bạn phải đồng ý với điều khoản sử dụng để tiếp tục!');
       return;
     }
     if (!validateName(name)) {
@@ -70,6 +76,7 @@ const SignUpInfoScreen = () => {
           matKhau: password,
           email,
           gioTinh: gender,
+          dongYDieuKhoan: true,
         }),
       });
       if (!response.ok) throw new Error('Đăng ký thất bại');
@@ -375,6 +382,35 @@ const SignUpInfoScreen = () => {
                 </div>
               )}
 
+              {/* Checkbox điều khoản */}
+              <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <input
+                  type="checkbox"
+                  id="agree-terms"
+                  checked={agreeTerms}
+                  onChange={(e) => setAgreeTerms(e.target.checked)}
+                  className="mt-1 w-4 h-4 text-primary-500 border-gray-300 rounded focus:ring-2 focus:ring-primary-400 cursor-pointer"
+                />
+                <label htmlFor="agree-terms" className="text-sm text-gray-700 cursor-pointer">
+                  Tôi đồng ý với{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowTerms(true)}
+                    className="text-primary-500 hover:text-primary-700 font-semibold underline"
+                  >
+                    Điều khoản sử dụng
+                  </button>{' '}
+                  và{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowTerms(true)}
+                    className="text-primary-500 hover:text-primary-700 font-semibold underline"
+                  >
+                    Chính sách bảo mật
+                  </button>
+                </label>
+              </div>
+
               {/* Submit */}
               <button
                 id="create-account-button"
@@ -437,6 +473,81 @@ const SignUpInfoScreen = () => {
           </p>
         </div>
       </div>
+
+      {/* Modal điều khoản */}
+      {showTerms && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-gray-800">Điều khoản sử dụng</h3>
+              <button
+                onClick={() => setShowTerms(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh] text-sm text-gray-700 space-y-4">
+              <h4 className="font-semibold text-base">1. Chấp nhận điều khoản</h4>
+              <p>Bằng việc đăng ký và sử dụng dịch vụ, bạn đồng ý tuân thủ các điều khoản sau.</p>
+
+              <h4 className="font-semibold text-base">2. Quy định sử dụng</h4>
+              <p className="font-medium">2.1. Hành vi được phép:</p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Sử dụng dịch vụ cho mục đích cá nhân, hợp pháp</li>
+                <li>Giao tiếp lịch sự, tôn trọng người khác</li>
+                <li>Bảo mật thông tin tài khoản của bạn</li>
+              </ul>
+
+              <p className="font-medium">2.2. Hành vi bị cấm:</p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Spam, gửi tin nhắn quấy rối</li>
+                <li>Chia sẻ nội dung vi phạm pháp luật</li>
+                <li>Mạo danh người khác</li>
+                <li>Sử dụng bot, script tự động</li>
+                <li>Tấn công, hack hệ thống</li>
+                <li>Chia sẻ thông tin cá nhân của người khác</li>
+              </ul>
+
+              <h4 className="font-semibold text-base">3. Xử lý vi phạm</h4>
+              <p className="font-medium">3.1. Các mức độ vi phạm:</p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li><strong>Vi phạm nhẹ:</strong> Cảnh báo</li>
+                <li><strong>Vi phạm trung bình:</strong> Khóa tài khoản tạm thời (7-30 ngày)</li>
+                <li><strong>Vi phạm nghiêm trọng:</strong> Khóa tài khoản vĩnh viễn</li>
+              </ul>
+
+              <p className="font-medium">3.2. Quyền của Admin:</p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Khóa tài khoản vi phạm điều khoản</li>
+                <li>Xóa nội dung không phù hợp</li>
+                <li>Từ chối cung cấp dịch vụ</li>
+              </ul>
+
+              <h4 className="font-semibold text-base">4. Quyền riêng tư</h4>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Chúng tôi cam kết bảo mật thông tin cá nhân</li>
+                <li>Không chia sẻ dữ liệu cho bên thứ ba</li>
+              </ul>
+
+              <p className="text-xs text-gray-500 mt-6">Cập nhật lần cuối: 2024</p>
+            </div>
+            <div className="p-6 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowTerms(false);
+                  setAgreeTerms(true);
+                }}
+                className="w-full bg-primary-500 text-white py-3 rounded-xl font-semibold hover:bg-primary-600 transition-colors"
+              >
+                Đồng ý và đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </>
   );

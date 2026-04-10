@@ -8,6 +8,8 @@ import http from 'http';
 import { Server } from 'socket.io';
 
 import userRoutes from './routes/userRoutes';
+import sessionRoutes from './routes/sessionRoutes';
+import adminRoutes from './routes/adminRoutes';
 
 const app = express();
 
@@ -27,6 +29,8 @@ const connectDB = async () => {
 connectDB();
 
 app.use('/api', userRoutes);
+app.use('/api', sessionRoutes);
+app.use('/api', adminRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });

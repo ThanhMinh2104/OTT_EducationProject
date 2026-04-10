@@ -8,11 +8,16 @@ export interface IUser extends Document {
   anhDaiDien?: string;
   matKhau: string;
   trangThai: 'online' | 'offline';
+  trangThaiTaiKhoan: 'active' | 'locked'; // Trạng thái tài khoản
+  lyDoKhoa?: string; // Lý do khóa tài khoản
+  ngayKhoa?: Date; // Ngày khóa
+  role?: 'user' | 'admin'; // Quyền hạn
   ngayTao: Date;
   ngaySuaDoi: Date;
   ngaysinh?: Date;
   anhBia?: string;
   gioTinh?: 'Nam' | 'Nữ' | 'Khác';
+  dongYDieuKhoan: boolean; // Đồng ý điều khoản khi đăng ký
 }
 
 const UserSchema = new Schema<IUser>(
@@ -24,11 +29,16 @@ const UserSchema = new Schema<IUser>(
     anhDaiDien: { type: String },
     matKhau: { type: String, required: true },
     trangThai: { type: String, enum: ['online', 'offline'], default: 'offline' },
+    trangThaiTaiKhoan: { type: String, enum: ['active', 'locked'], default: 'active' },
+    lyDoKhoa: { type: String },
+    ngayKhoa: { type: Date },
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
     ngayTao: { type: Date, default: Date.now },
     ngaySuaDoi: { type: Date, default: Date.now },
     ngaysinh: { type: Date },
     anhBia: { type: String },
     gioTinh: { type: String, enum: ['Nam', 'Nữ', 'Khác'] },
+    dongYDieuKhoan: { type: Boolean, default: false },
   },
   { versionKey: false }
 );

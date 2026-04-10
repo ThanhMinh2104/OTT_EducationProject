@@ -4,10 +4,10 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import Users from '../models/User';
 import Otp from '../models/Otp';
-import Chat from "../models/Chat";
+import Session from '../models/Session';
+import LoginHistory from '../models/LoginHistory';
 import sendOtpEmail from '../services/emailService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { log } from 'console';
 import { uploadToCloudinary } from '../services/uploadService';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -24,10 +24,15 @@ const generateUserID = async (): Promise<string> => {
 
 // Đăng ký
 router.post('/registerUser', async (req: Request, res: Response) => {
-  const { sdt, name, ngaySinh, matKhau, email, gioTinh } = req.body;
+  const { sdt, name, ngaySinh, matKhau, email, gioTinh, dongYDieuKhoan } = req.body;
 
   if (!sdt || !name || !ngaySinh || !matKhau || !email) {
     return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' }) as any;
+  }
+
+  // Kiểm tra đồng ý điều khoản
+  if (!dongYDieuKhoan) {
+    return res.status(400).json({ message: 'Bạn phải đồng ý với điều khoản sử dụng' }) as any;
   }
 
   const userExists = await Users.findOne({ sdt });
@@ -47,6 +52,8 @@ router.post('/registerUser', async (req: Request, res: Response) => {
     anhDaiDien:
       'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
     trangThai: 'offline',
+    trangThaiTaiKhoan: 'active',
+    dongYDieuKhoan: true,
     ngaysinh: ngaySinhDate,
     anhBia:
       'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
@@ -64,7 +71,8 @@ router.post('/registerUser', async (req: Request, res: Response) => {
 
 // Đăng nhập
 router.post('/login', async (req: Request, res: Response) => {
-  const { sdt, matKhau } = req.body;
+  const { sdt, matKhau, deviceType, deviceName, deviceId } = req.body;
+  
   try {
     const user = await Users.findOne({ sdt });
     if (!user) return res.status(400).json({ message: 'Sai số điện thoại hoặc mật khẩu!' }) as any;
@@ -73,11 +81,107 @@ router.post('/login', async (req: Request, res: Response) => {
     if (!isMatch)
       return res.status(400).json({ message: 'Sai số điện thoại hoặc mật khẩu!' }) as any;
 
-    const token = jwt.sign({ userID: user.userID }, process.env.JWT_SECRET as string, {
+    // KIỂM TRA TÀI KHOẢN BỊ KHÓA TRƯỚC KHI CHO ĐĂNG NHẬP
+    if (user.trangThaiTaiKhoan === 'locked') {
+      return res.status(403).json({ 
+        message: 'Tài khoản của bạn đã bị khóa',
+        reason: user.lyDoKhoa || 'Vi phạm điều khoản',
+        isLocked: true,
+        canUnlock: user.lyDoKhoa?.includes('tự vô hiệu hóa') || false
+      }) as any;
+    }
+
+    // Tạo JWT token với sessionId unique để mỗi lần đăng nhập có token khác nhau
+    const sessionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const token = jwt.sign({ 
+      userID: user.userID,
+      sessionId: sessionId,
+      deviceType: deviceType || 'web'
+    }, process.env.JWT_SECRET as string, {
       expiresIn: (process.env.JWT_EXPIRES || '7d') as jwt.SignOptions['expiresIn'],
     });
 
-    res.status(200).json({ message: 'Đăng nhập thành công!', token, user });
+    // Tính thời gian hết hạn (7 ngày)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // Lấy IP address
+    const ipAddress = req.ip || req.socket.remoteAddress || 'unknown';
+
+    const finalDeviceType = deviceType || 'web';
+
+    console.log('=== LOGIN DEBUG ===');
+    console.log('UserID:', user.userID);
+    console.log('Device Type:', finalDeviceType);
+    console.log('Device Name:', deviceName);
+    console.log('Device ID:', deviceId);
+
+    // LOGIC MỚI: 
+    // - Web + Mobile: OK (có thể cùng lúc)
+    // - Web + Web: Chỉ 1 web (web mới đẩy web cũ ra)
+    // - Mobile + Mobile: Chỉ 1 mobile (mobile mới đẩy mobile cũ ra)
+    
+    // Xóa tất cả sessions cũ của CÙNG deviceType (web hoặc mobile)
+    console.log(`Deleting all old ${finalDeviceType} sessions...`);
+    const oldSessions = await Session.find({ 
+      userID: user.userID,
+      deviceType: finalDeviceType
+    });
+
+    // Cập nhật LoginHistory cho các session bị đẩy ra
+    for (const oldSession of oldSessions) {
+      await LoginHistory.findOneAndUpdate(
+        { 
+          userID: user.userID,
+          deviceId: oldSession.deviceId,
+          status: 'active'
+        },
+        { 
+          logoutAt: new Date(),
+          status: 'logged_out'
+        }
+      );
+    }
+
+    // Xóa các session cũ
+    const deleteResult = await Session.deleteMany({ 
+      userID: user.userID,
+      deviceType: finalDeviceType
+    });
+    console.log('Deleted sessions:', deleteResult.deletedCount);
+
+    // Tạo session mới
+    const finalDeviceId = deviceId || `${Date.now()}-${Math.random()}`;
+    await Session.create({
+      userID: user.userID,
+      token,
+      deviceType: finalDeviceType,
+      deviceName: deviceName || 'Unknown Device',
+      deviceId: finalDeviceId,
+      ipAddress,
+      expiresAt
+    });
+
+    // Lưu vào LoginHistory
+    await LoginHistory.create({
+      userID: user.userID,
+      deviceType: finalDeviceType,
+      deviceName: deviceName || 'Unknown Device',
+      deviceId: finalDeviceId,
+      ipAddress,
+      loginAt: new Date(),
+      status: 'active'
+    });
+
+    res.status(200).json({ 
+      message: 'Đăng nhập thành công!', 
+      token, 
+      user,
+      sessionInfo: {
+        deviceType: finalDeviceType,
+        deviceName: deviceName || 'Unknown Device'
+      }
+    });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

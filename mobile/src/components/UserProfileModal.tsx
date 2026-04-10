@@ -55,9 +55,10 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
     userID: '', name: '', email: '', phone: '',
     avatar: '', dobDay: '', dobMonth: '', dobYear: '', gender: 'Nam',
   });
-  const [pwForm, setPwForm] = useState({ matKhauCu: '', matKhauMoi: '', xacNhan: '' });
+  const [pwForm, setPwForm] = useState({ matKhauCu: '', matKhauMoi: '', xacNhan: '', otp: '' });
   const [pwError, setPwError] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
+  const [pwStep, setPwStep] = useState(1); // 1: Gửi OTP, 2: Nhập OTP, 3: Đổi mật khẩu
 
   useEffect(() => {
     if (!user) return;
@@ -143,35 +144,99 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
 
   const handleChangePassword = async () => {
     setPwError('');
-    if (!pwForm.matKhauCu || !pwForm.matKhauMoi || !pwForm.xacNhan) {
-      setPwError('Vui lòng điền đầy đủ thông tin.'); return;
+    
+    // Bước 1: Gửi OTP
+    if (pwStep === 1) {
+      try {
+        setPwLoading(true);
+        const res = await fetch(`${API_URL}/api/send-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user?.email }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setPwError(data.message || 'Gửi OTP thất bại');
+          return;
+        }
+        Alert.alert('Thành công', 'Mã OTP đã được gửi đến email của bạn');
+        setPwStep(2);
+      } catch {
+        setPwError('Lỗi hệ thống, vui lòng thử lại.');
+      } finally {
+        setPwLoading(false);
+      }
+      return;
     }
-    if (!/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(pwForm.matKhauMoi)) {
-      setPwError('Mật khẩu mới tối thiểu 8 ký tự, gồm cả chữ và số.'); return;
+
+    // Bước 2: Xác thực OTP
+    if (pwStep === 2) {
+      if (!pwForm.otp) {
+        setPwError('Vui lòng nhập mã OTP');
+        return;
+      }
+      try {
+        setPwLoading(true);
+        const res = await fetch(`${API_URL}/api/verify-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user?.email, otp: pwForm.otp }),
+        });
+        const data = await res.json();
+        if (!data.verified) {
+          setPwError('Mã OTP không đúng hoặc đã hết hạn');
+          return;
+        }
+        Alert.alert('Thành công', 'Xác thực thành công!');
+        setPwStep(3);
+      } catch {
+        setPwError('Lỗi hệ thống, vui lòng thử lại.');
+      } finally {
+        setPwLoading(false);
+      }
+      return;
     }
-    if (pwForm.matKhauMoi !== pwForm.xacNhan) {
-      setPwError('Xác nhận mật khẩu không khớp.'); return;
-    }
-    try {
-      setPwLoading(true);
-      const token = await AsyncStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/users/${user?.userID}/password`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ matKhauCu: pwForm.matKhauCu, matKhauMoi: pwForm.matKhauMoi }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setPwError(data.message); return; }
-      await AsyncStorage.clear();
-      Alert.alert('Thành công', 'Đổi mật khẩu thành công! Vui lòng đăng nhập lại.');
-      onClose();
-    } catch {
-      setPwError('Lỗi hệ thống, vui lòng thử lại.');
-    } finally {
-      setPwLoading(false);
+
+    // Bước 3: Đổi mật khẩu
+    if (pwStep === 3) {
+      if (!pwForm.matKhauCu || !pwForm.matKhauMoi || !pwForm.xacNhan) {
+        setPwError('Vui lòng điền đầy đủ thông tin.');
+        return;
+      }
+      if (!/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(pwForm.matKhauMoi)) {
+        setPwError('Mật khẩu mới tối thiểu 8 ký tự, gồm cả chữ và số.');
+        return;
+      }
+      if (pwForm.matKhauMoi !== pwForm.xacNhan) {
+        setPwError('Xác nhận mật khẩu không khớp.');
+        return;
+      }
+      try {
+        setPwLoading(true);
+        const token = await AsyncStorage.getItem('token');
+        const res = await fetch(`${API_URL}/api/users/${user?.userID}/password`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ matKhauCu: pwForm.matKhauCu, matKhauMoi: pwForm.matKhauMoi }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setPwError(data.message);
+          return;
+        }
+        await AsyncStorage.clear();
+        setPwForm({ matKhauCu: '', matKhauMoi: '', xacNhan: '', otp: '' });
+        setPwStep(1);
+        Alert.alert('Thành công', 'Đổi mật khẩu thành công! Vui lòng đăng nhập lại.');
+        onClose();
+      } catch {
+        setPwError('Lỗi hệ thống, vui lòng thử lại.');
+      } finally {
+        setPwLoading(false);
+      }
     }
   };
 
@@ -329,36 +394,115 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
             </>) : (
               /* ===== TAB ĐỔI MẬT KHẨU ===== */
               <View style={styles.pwForm}>
-                {[
-                  { key: 'matKhauCu', label: 'Mật khẩu hiện tại' },
-                  { key: 'matKhauMoi', label: 'Mật khẩu mới' },
-                  { key: 'xacNhan', label: 'Xác nhận mật khẩu mới' },
-                ].map(({ key, label }) => (
-                  <View key={key} style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>{label}</Text>
-                    <TextInput
-                      style={styles.input}
-                      secureTextEntry
-                      placeholder={`Nhập ${label.toLowerCase()}`}
-                      placeholderTextColor="#bbb"
-                      value={pwForm[key as keyof typeof pwForm]}
-                      onChangeText={(v) => setPwForm((p) => ({ ...p, [key]: v }))}
-                    />
+                {/* Bước 1: Gửi OTP */}
+                {pwStep === 1 && (
+                  <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                    <Text style={{ fontSize: 40, marginBottom: 15 }}>🔒</Text>
+                    <Text style={{ fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                      Xác thực tài khoản
+                    </Text>
+                    <Text style={{ fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 5 }}>
+                      Để đảm bảo an toàn, chúng tôi sẽ gửi mã OTP đến email:
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#0e9de8', marginBottom: 20 }}>
+                      {user?.email}
+                    </Text>
+                    {pwError ? (
+                      <View style={[styles.errorBox, { marginBottom: 15 }]}>
+                        <Text style={styles.errorText}>{pwError}</Text>
+                      </View>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[styles.btnSave, pwLoading && { opacity: 0.6 }]}
+                      onPress={handleChangePassword}
+                      disabled={pwLoading}
+                    >
+                      <Text style={styles.btnSaveText}>{pwLoading ? 'Đang gửi...' : 'Gửi mã OTP'}</Text>
+                    </TouchableOpacity>
                   </View>
-                ))}
-                {pwError ? (
-                  <View style={styles.errorBox}>
-                    <Text style={styles.errorText}>{pwError}</Text>
+                )}
+
+                {/* Bước 2: Nhập OTP */}
+                {pwStep === 2 && (
+                  <View>
+                    <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                        Nhập mã OTP
+                      </Text>
+                      <Text style={{ fontSize: 14, color: '#666', textAlign: 'center' }}>
+                        Mã OTP đã được gửi đến email {user?.email}
+                      </Text>
+                    </View>
+                    <View style={styles.fieldGroup}>
+                      <Text style={styles.fieldLabel}>Mã OTP</Text>
+                      <TextInput
+                        style={[styles.input, { textAlign: 'center', fontSize: 18, letterSpacing: 4 }]}
+                        placeholder="Nhập mã OTP"
+                        placeholderTextColor="#bbb"
+                        value={pwForm.otp}
+                        onChangeText={(v) => setPwForm((p) => ({ ...p, otp: v }))}
+                        keyboardType="number-pad"
+                        maxLength={6}
+                      />
+                    </View>
+                    {pwError ? (
+                      <View style={styles.errorBox}>
+                        <Text style={styles.errorText}>{pwError}</Text>
+                      </View>
+                    ) : null}
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                      <TouchableOpacity
+                        style={[styles.btnCancel, { flex: 1 }]}
+                        onPress={() => { setPwStep(1); setPwError(''); }}
+                      >
+                        <Text style={styles.btnCancelText}>Quay lại</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.btnSave, { flex: 1 }, pwLoading && { opacity: 0.6 }]}
+                        onPress={handleChangePassword}
+                        disabled={pwLoading}
+                      >
+                        <Text style={styles.btnSaveText}>{pwLoading ? 'Đang xác thực...' : 'Xác nhận'}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                ) : null}
-                <TouchableOpacity
-                  style={[styles.btnSave, pwLoading && { opacity: 0.6 }]}
-                  onPress={handleChangePassword}
-                  disabled={pwLoading}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.btnSaveText}>{pwLoading ? 'Đang lưu...' : '🔒  Cập nhật mật khẩu'}</Text>
-                </TouchableOpacity>
+                )}
+
+                {/* Bước 3: Nhập mật khẩu mới */}
+                {pwStep === 3 && (
+                  <View>
+                    {[
+                      { key: 'matKhauCu', label: 'Mật khẩu hiện tại' },
+                      { key: 'matKhauMoi', label: 'Mật khẩu mới' },
+                      { key: 'xacNhan', label: 'Xác nhận mật khẩu mới' },
+                    ].map(({ key, label }) => (
+                      <View key={key} style={styles.fieldGroup}>
+                        <Text style={styles.fieldLabel}>{label}</Text>
+                        <TextInput
+                          style={styles.input}
+                          secureTextEntry
+                          placeholder={`Nhập ${label.toLowerCase()}`}
+                          placeholderTextColor="#bbb"
+                          value={pwForm[key as keyof typeof pwForm]}
+                          onChangeText={(v) => setPwForm((p) => ({ ...p, [key]: v }))}
+                        />
+                      </View>
+                    ))}
+                    {pwError ? (
+                      <View style={styles.errorBox}>
+                        <Text style={styles.errorText}>{pwError}</Text>
+                      </View>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[styles.btnSave, pwLoading && { opacity: 0.6 }]}
+                      onPress={handleChangePassword}
+                      disabled={pwLoading}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.btnSaveText}>{pwLoading ? 'Đang lưu...' : '🔒  Cập nhật mật khẩu'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             )}
           </ScrollView>

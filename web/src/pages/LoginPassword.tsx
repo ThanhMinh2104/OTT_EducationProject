@@ -16,6 +16,10 @@ const LoginPassword = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [unlockStep, setUnlockStep] = useState<'confirm' | 'otp'>('confirm');
+  const [otp, setOtp] = useState('');
+  const [userEmail, setUserEmail] = useState('');
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -32,7 +36,22 @@ const LoginPassword = () => {
 
     setIsLoading(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/login', { sdt, matKhau });
+      // Tạo hoặc lấy deviceId từ localStorage
+      let deviceId = localStorage.getItem('deviceId');
+      if (!deviceId) {
+        deviceId = `web-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        localStorage.setItem('deviceId', deviceId);
+      }
+
+      const response = await axios.post('http://localhost:5000/api/login', { 
+        sdt, 
+        matKhau,
+        deviceType: 'web',
+        deviceName: navigator.userAgent.includes('Chrome') ? 'Chrome' : 
+                    navigator.userAgent.includes('Firefox') ? 'Firefox' :
+                    navigator.userAgent.includes('Edge') ? 'Edge' : 'Browser',
+        deviceId: deviceId
+      });
       const { token, user: loginUser } = response.data;
 
       sessionStorage.setItem('token', token);
@@ -66,19 +85,73 @@ const LoginPassword = () => {
       setTimeout(() => {
         navigate('/home');
       }, 1000);
-    } catch {
-      setError('Sai số điện thoại hoặc mật khẩu');
-      toast.error('Đăng nhập thất bại! Vui lòng kiểm tra lại thông tin.', {
-        duration: 1500,
-        position: 'top-center',
-        style: {
-          background: '#ef4444',
-          color: '#fff',
-          fontWeight: '600',
-          padding: '16px',
-          borderRadius: '12px',
-        },
-      });
+    } catch (err: any) {
+      // Kiểm tra nếu tài khoản bị khóa
+      if (err.response?.status === 403 && err.response?.data?.isLocked) {
+        const { reason, canUnlock } = err.response.data;
+        
+        // Kiểm tra xem có phải tự khóa không
+        if (canUnlock) {
+          setShowUnlockModal(true);
+          setUnlockStep('confirm');
+        } else {
+          // Bị admin khóa
+          toast.error(
+            <div>
+              <div className="font-bold">Tài khoản đã bị khóa</div>
+              <div className="text-sm mt-1">Lý do: {reason}</div>
+              <div className="text-xs mt-1">Vui lòng liên hệ quản trị viên</div>
+            </div>,
+            {
+              duration: 5000,
+              position: 'top-center',
+              icon: '🔒',
+            }
+          );
+        }
+      } else {
+        setError('Sai số điện thoại hoặc mật khẩu');
+        toast.error('Đăng nhập thất bại! Vui lòng kiểm tra lại thông tin.', {
+          duration: 1500,
+          position: 'top-center',
+          style: {
+            background: '#ef4444',
+            color: '#fff',
+            fontWeight: '600',
+            padding: '16px',
+            borderRadius: '12px',
+          },
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendUnlockOTP = async () => {
+    try {
+      setIsLoading(true);
+      const response = await axios.post('http://localhost:5000/api/users/unlock/send-otp', { sdt });
+      setUserEmail(response.data.email);
+      setUnlockStep('otp');
+      toast.success('Mã OTP đã được gửi đến email của bạn');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể gửi OTP');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyUnlockOTP = async () => {
+    try {
+      setIsLoading(true);
+      await axios.post('http://localhost:5000/api/users/unlock/verify-otp', { sdt, otp });
+      toast.success('Tài khoản đã được mở khóa! Bạn có thể đăng nhập lại.');
+      setShowUnlockModal(false);
+      setOtp('');
+      setUnlockStep('confirm');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Mã OTP không đúng');
     } finally {
       setIsLoading(false);
     }
@@ -300,6 +373,96 @@ const LoginPassword = () => {
         </div>
       </div>
     </div>
+
+    {/* Unlock Account Modal */}
+    {showUnlockModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up">
+          {unlockStep === 'confirm' ? (
+            <>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Tài khoản đã bị khóa</h3>
+                <p className="text-gray-600 text-sm">
+                  Tài khoản của bạn đã bị vô hiệu hóa. Bạn có muốn mở lại tài khoản không?
+                </p>
+                <p className="text-gray-500 text-xs mt-2">
+                  Chúng tôi sẽ gửi mã OTP đến email của bạn để xác nhận.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowUnlockModal(false)}
+                  className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleSendUnlockOTP}
+                  disabled={isLoading}
+                  className="flex-1 py-3 rounded-xl bg-primary-500 text-white font-medium hover:bg-primary-600 transition-colors disabled:opacity-50"
+                >
+                  {isLoading ? 'Đang gửi...' : 'Mở khóa'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Xác nhận OTP</h3>
+                <p className="text-gray-600 text-sm">
+                  Mã OTP đã được gửi đến email
+                </p>
+                <p className="text-primary-600 font-medium text-sm mt-1">
+                  {userEmail}
+                </p>
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Nhập mã OTP
+                </label>
+                <input
+                  type="text"
+                  placeholder="Nhập 6 chữ số"
+                  maxLength={6}
+                  className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center text-2xl font-bold tracking-widest focus:outline-none focus:border-primary-400 focus:bg-white"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowUnlockModal(false);
+                    setUnlockStep('confirm');
+                    setOtp('');
+                  }}
+                  className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleVerifyUnlockOTP}
+                  disabled={isLoading || otp.length !== 6}
+                  className="flex-1 py-3 rounded-xl bg-primary-500 text-white font-medium hover:bg-primary-600 transition-colors disabled:opacity-50"
+                >
+                  {isLoading ? 'Đang xác nhận...' : 'Xác nhận'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )}
     </>
   );
 };

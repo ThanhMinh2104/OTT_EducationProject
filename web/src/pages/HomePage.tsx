@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
 import { getToken } from '../utils/auth';
+import axiosInstance from '../utils/axios';
 
 const socket = io('http://localhost:5000');
 
@@ -43,11 +44,31 @@ const HomePage = () => {
       setUser(data);
       sessionStorage.setItem('user', JSON.stringify(data));
     });
-    return () => { socket.off('update_user'); };
+
+    // Check session validity mỗi 10 giây
+    const checkSession = async () => {
+      try {
+        await axiosInstance.get('/sessions');
+      } catch (error) {
+        // Axios interceptor sẽ tự động xử lý 401
+        console.log('Session check failed');
+      }
+    };
+
+    // Check ngay lập tức
+    checkSession();
+
+    // Check định kỳ mỗi 10 giây
+    const intervalId = setInterval(checkSession, 10000);
+
+    return () => { 
+      socket.off('update_user');
+      clearInterval(intervalId);
+    };
   }, [user, navigate]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif]">
+    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif] bg-white dark:bg-gray-900">
       <Sidebar user={user} setUser={setUser} />
 
       <div className="flex-1 flex flex-row overflow-hidden">
