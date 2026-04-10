@@ -2,20 +2,17 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
-import { Server } from 'socket.io';
 import Users from '../models/User';
 import Otp from '../models/Otp';
-import Chat from "../models/Chat";
+import Session from '../models/Session';
+import LoginHistory from '../models/LoginHistory';
 import sendOtpEmail from '../services/emailService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { log } from 'console';
 import { uploadToCloudinary } from '../services/uploadService';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const router = Router();
-
-export default function userRoutes(io: Server) {
 
 // Tạo userID tự động
 const generateUserID = async (): Promise<string> => {
@@ -27,10 +24,15 @@ const generateUserID = async (): Promise<string> => {
 
 // Đăng ký
 router.post('/registerUser', async (req: Request, res: Response) => {
-  const { sdt, name, ngaySinh, matKhau, email, gioTinh } = req.body;
+  const { sdt, name, ngaySinh, matKhau, email, gioTinh, dongYDieuKhoan } = req.body;
 
   if (!sdt || !name || !ngaySinh || !matKhau || !email) {
     return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' }) as any;
+  }
+
+  // Kiểm tra đồng ý điều khoản
+  if (!dongYDieuKhoan) {
+    return res.status(400).json({ message: 'Bạn phải đồng ý với điều khoản sử dụng' }) as any;
   }
 
   const userExists = await Users.findOne({ sdt });
@@ -50,6 +52,8 @@ router.post('/registerUser', async (req: Request, res: Response) => {
     anhDaiDien:
       'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
     trangThai: 'offline',
+    trangThaiTaiKhoan: 'active',
+    dongYDieuKhoan: true,
     ngaysinh: ngaySinhDate,
     anhBia:
       'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
@@ -67,7 +71,8 @@ router.post('/registerUser', async (req: Request, res: Response) => {
 
 // Đăng nhập
 router.post('/login', async (req: Request, res: Response) => {
-  const { sdt, matKhau } = req.body;
+  const { sdt, matKhau, deviceType, deviceName, deviceId } = req.body;
+
   try {
     const user = await Users.findOne({ sdt });
     if (!user) return res.status(400).json({ message: 'Sai số điện thoại hoặc mật khẩu!' }) as any;
@@ -76,11 +81,111 @@ router.post('/login', async (req: Request, res: Response) => {
     if (!isMatch)
       return res.status(400).json({ message: 'Sai số điện thoại hoặc mật khẩu!' }) as any;
 
-    const token = jwt.sign({ userID: user.userID }, process.env.JWT_SECRET as string, {
-      expiresIn: (process.env.JWT_EXPIRES || '7d') as jwt.SignOptions['expiresIn'],
+    // KIỂM TRA TÀI KHOẢN BỊ KHÓA TRƯỚC KHI CHO ĐĂNG NHẬP
+    if (user.trangThaiTaiKhoan === 'locked') {
+      return res.status(403).json({
+        message: 'Tài khoản của bạn đã bị khóa',
+        reason: user.lyDoKhoa || 'Vi phạm điều khoản',
+        isLocked: true,
+        canUnlock: user.lyDoKhoa?.includes('tự vô hiệu hóa') || false,
+      }) as any;
+    }
+
+    // Tạo JWT token với sessionId unique để mỗi lần đăng nhập có token khác nhau
+    const sessionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const token = jwt.sign(
+      {
+        userID: user.userID,
+        sessionId: sessionId,
+        deviceType: deviceType || 'web',
+      },
+      process.env.JWT_SECRET as string,
+      {
+        expiresIn: (process.env.JWT_EXPIRES || '7d') as jwt.SignOptions['expiresIn'],
+      }
+    );
+
+    // Tính thời gian hết hạn (7 ngày)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // Lấy IP address
+    const ipAddress = req.ip || req.socket.remoteAddress || 'unknown';
+
+    const finalDeviceType = deviceType || 'web';
+
+    console.log('=== LOGIN DEBUG ===');
+    console.log('UserID:', user.userID);
+    console.log('Device Type:', finalDeviceType);
+    console.log('Device Name:', deviceName);
+    console.log('Device ID:', deviceId);
+
+    // LOGIC MỚI:
+    // - Web + Mobile: OK (có thể cùng lúc)
+    // - Web + Web: Chỉ 1 web (web mới đẩy web cũ ra)
+    // - Mobile + Mobile: Chỉ 1 mobile (mobile mới đẩy mobile cũ ra)
+
+    // Xóa tất cả sessions cũ của CÙNG deviceType (web hoặc mobile)
+    console.log(`Deleting all old ${finalDeviceType} sessions...`);
+    const oldSessions = await Session.find({
+      userID: user.userID,
+      deviceType: finalDeviceType,
     });
 
-    res.status(200).json({ message: 'Đăng nhập thành công!', token, user });
+    // Cập nhật LoginHistory cho các session bị đẩy ra
+    for (const oldSession of oldSessions) {
+      await LoginHistory.findOneAndUpdate(
+        {
+          userID: user.userID,
+          deviceId: oldSession.deviceId,
+          status: 'active',
+        },
+        {
+          logoutAt: new Date(),
+          status: 'logged_out',
+        }
+      );
+    }
+
+    // Xóa các session cũ
+    const deleteResult = await Session.deleteMany({
+      userID: user.userID,
+      deviceType: finalDeviceType,
+    });
+    console.log('Deleted sessions:', deleteResult.deletedCount);
+
+    // Tạo session mới
+    const finalDeviceId = deviceId || `${Date.now()}-${Math.random()}`;
+    await Session.create({
+      userID: user.userID,
+      token,
+      deviceType: finalDeviceType,
+      deviceName: deviceName || 'Unknown Device',
+      deviceId: finalDeviceId,
+      ipAddress,
+      expiresAt,
+    });
+
+    // Lưu vào LoginHistory
+    await LoginHistory.create({
+      userID: user.userID,
+      deviceType: finalDeviceType,
+      deviceName: deviceName || 'Unknown Device',
+      deviceId: finalDeviceId,
+      ipAddress,
+      loginAt: new Date(),
+      status: 'active',
+    });
+
+    res.status(200).json({
+      message: 'Đăng nhập thành công!',
+      token,
+      user,
+      sessionInfo: {
+        deviceType: finalDeviceType,
+        deviceName: deviceName || 'Unknown Device',
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -207,17 +312,23 @@ router.put('/users/:userID', authMiddleware, async (req: AuthRequest, res: Respo
 });
 
 // Upload ảnh (yêu cầu JWT)
-router.post('/upload', authMiddleware, upload.array('files'), async (req: AuthRequest, res: Response) => {
-  try {
-    const files = req.files as Express.Multer.File[];
-    if (!files || files.length === 0) return res.status(400).json({ error: 'No files uploaded' }) as any;
+router.post(
+  '/upload',
+  authMiddleware,
+  upload.array('files'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0)
+        return res.status(400).json({ error: 'No files uploaded' }) as any;
 
-    const urls = await Promise.all(files.map((file) => uploadToCloudinary(file)));
-    res.json({ urls });
-  } catch (error: any) {
-    res.status(500).json({ error: 'Upload failed' });
+      const urls = await Promise.all(files.map((file) => uploadToCloudinary(file)));
+      res.json({ urls });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Upload failed' });
+    }
   }
-})
+);
 // Đặt lại mật khẩu sau khi người dùng xác thực OTP thành công
 router.post('/users/doimatkhau', async (req: Request, res: Response) => {
   const { sdt, matKhauMoi } = req.body;
@@ -249,37 +360,6 @@ router.post('/users/doimatkhau', async (req: Request, res: Response) => {
   }
 });
 
-
-// Yêu cầu OTP để đổi mật khẩu (xác thực mật khẩu cũ trước, rồi gửi OTP)
-router.post('/users/:userID/request-password-otp', authMiddleware, async (req: AuthRequest, res: Response) => {
-  const { userID } = req.params;
-  if (req.userID !== userID) {
-    return res.status(403).json({ message: 'Không có quyền thực hiện thao tác này' }) as any;
-  }
-  const { matKhauCu } = req.body;
-  if (!matKhauCu) {
-    return res.status(400).json({ message: 'Vui lòng nhập mật khẩu cũ' }) as any;
-  }
-  try {
-    const user = await Users.findOne({ userID });
-    if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' }) as any;
-
-    const isMatch = await bcrypt.compare(matKhauCu, user.matKhau);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Mật khẩu cũ không đúng' }) as any;
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    await Otp.deleteMany({ email: user.email });
-    await Otp.create({ email: user.email, otp });
-    await sendOtpEmail(user.email, otp);
-
-    res.status(200).json({ message: 'Đã gửi OTP về email', email: user.email });
-  } catch (error: any) {
-    res.status(500).json({ message: 'Lỗi server', error: error.message });
-  }
-});
-
 // Đổi mật khẩu khi đã đăng nhập (yêu cầu JWT, check trùng mật khẩu cũ)
 router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, res: Response) => {
   const { userID } = req.params;
@@ -288,21 +368,19 @@ router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, r
     return res.status(403).json({ message: 'Không có quyền thực hiện thao tác này' }) as any;
   }
 
-  const { matKhauMoi, otp, email } = req.body;
-  if (!matKhauMoi || !otp || !email) {
-    return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' }) as any;
+  const { matKhauCu, matKhauMoi } = req.body;
+  if (!matKhauCu || !matKhauMoi) {
+    return res.status(400).json({ message: 'Vui lòng nhập đầy đủ mật khẩu cũ và mới' }) as any;
   }
 
   try {
-    // Xác thực OTP
-    const otpRecord = await Otp.findOne({ email, otp });
-    if (!otpRecord) {
-      return res.status(400).json({ message: 'Mã OTP không đúng hoặc đã hết hạn' }) as any;
-    }
-    await Otp.deleteOne({ _id: otpRecord._id });
-
     const user = await Users.findOne({ userID });
     if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' }) as any;
+
+    const isMatch = await bcrypt.compare(matKhauCu, user.matKhau);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Mật khẩu cũ không đúng' }) as any;
+    }
 
     const isSame = await bcrypt.compare(matKhauMoi, user.matKhau);
     if (isSame) {
@@ -313,9 +391,6 @@ router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, r
     user.matKhau = await bcrypt.hash(matKhauMoi, salt);
     user.ngaySuaDoi = new Date();
     await user.save();
-
-    // Emit force logout tới tất cả thiết bị của user này
-    io.emit('forceLogout', { userID });
 
     res.status(200).json({ message: 'Đổi mật khẩu thành công' });
   } catch (error: any) {
@@ -331,32 +406,11 @@ router.post('/users/get-email-by-phone', async (req: Request, res: Response) => 
     if (!user) {
       return res.status(404).json({ message: 'Số điện thoại không tồn tại' }) as any;
     }
-    res.status(200).json({ email: user.email, sdt: user.sdt });
+    // Chỉ trả về email để frontend gọi API gửi OTP
+    res.status(200).json({ email: user.email });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 });
 
-// Lấy thông tin từ email hoặc SĐT (dùng cho luồng quên mật khẩu)
-router.post('/users/find-by-identity', async (req: Request, res: Response) => {
-  const { identity } = req.body;
-  if (!identity) return res.status(400).json({ message: 'Vui lòng nhập SĐT hoặc email' }) as any;
-  try {
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity);
-    const user = isEmail
-      ? await Users.findOne({ email: identity })
-      : await Users.findOne({ sdt: identity });
-    if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy tài khoản với thông tin này' }) as any;
-    }
-    res.status(200).json({ email: user.email, sdt: user.sdt });
-  } catch (error: any) {
-    res.status(500).json({ message: 'Lỗi server', error: error.message });
-  }
-});
-
-  return router;
-}
-
-
-
+export default router;

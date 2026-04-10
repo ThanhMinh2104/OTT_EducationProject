@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import LoginPassword from './pages/LoginPassword';
 import SignUpScreen from './pages/SignUpScreen';
 import SignUpInfoScreen from './pages/SignUpInfoScreen';
@@ -11,13 +12,14 @@ import ConfirmPassword from './pages/ConfirmPassword';
 function App() {
   return (
     <Router>
+      <Toaster />
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPassword />} />
         <Route path="/signup" element={<SignUpScreen />} />
         <Route path="/signup-info" element={<SignUpInfoScreen />} />
         {/* Add more routes here */}
-        <Route path="/home" element={<HomePage/>} />
+        <Route path="/home" element={<HomePage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/verify-code" element={<VerifyCode />} />
         <Route path="/confirm-password" element={<ConfirmPassword />} />

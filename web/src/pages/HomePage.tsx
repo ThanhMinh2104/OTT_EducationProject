@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
 import { getToken } from '../utils/auth';
+import axiosInstance from '../utils/axios';
 
 const socket = io('http://localhost:5000');
 
@@ -37,33 +38,40 @@ const HomePage = () => {
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
 
   useEffect(() => {
-    if (!user || !getToken()) { navigate('/login'); return; }
+    if (!user || !getToken()) {
+      navigate('/login');
+      return;
+    }
     socket.emit('join_user', user.userID);
     socket.on('update_user', (data: User) => {
       setUser(data);
       sessionStorage.setItem('user', JSON.stringify(data));
     });
-    socket.on('userUpdated', (data: User) => {
-      if (data.userID === user.userID) {
-        setUser(data);
-        sessionStorage.setItem('user', JSON.stringify(data));
+
+    // Check session validity mỗi 10 giây
+    const checkSession = async () => {
+      try {
+        await axiosInstance.get('/sessions');
+      } catch (error) {
+        // Axios interceptor sẽ tự động xử lý 401
+        console.log('Session check failed');
       }
-    });
-    socket.on('forceLogout', (data: { userID: string }) => {
-      if (data.userID === user.userID) {
-        sessionStorage.clear();
-        navigate('/login');
-      }
-    });
+    };
+
+    // Check ngay lập tức
+    checkSession();
+
+    // Check định kỳ mỗi 10 giây
+    const intervalId = setInterval(checkSession, 10000);
+
     return () => {
       socket.off('update_user');
-      socket.off('userUpdated');
-      socket.off('forceLogout');
+      clearInterval(intervalId);
     };
   }, [user, navigate]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif]">
+    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif] bg-white dark:bg-gray-900">
       <Sidebar user={user} setUser={setUser} />
 
       <div className="flex-1 flex flex-row overflow-hidden">
