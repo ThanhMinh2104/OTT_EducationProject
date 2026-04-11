@@ -11,6 +11,8 @@ export interface IMessage extends Document {
   timestamp: Date;
   media_url: string[];
   status: 'sent' | 'delivered' | 'read';
+  deletedFor?: string[]; //  Danh sách userID đã xóa tin nhắn phía client
+  forwardedFrom?: string; //  MessageID gốc nếu là tin nhắn forward
   replyTo?: {
     messageID?: string;
     senderID?: string;
@@ -38,6 +40,8 @@ const MessageSchema = new Schema<IMessage>(
     timestamp: { type: Date, default: Date.now },
     media_url: { type: [String], default: [] },
     status: { type: String, enum: ['sent', 'delivered', 'read'], default: 'sent' },
+    deletedFor: { type: [String], default: [] }, // ⭐ Mảng userID
+    forwardedFrom: { type: String }, // ⭐ MessageID gốc
     replyTo: {
       messageID: { type: String },
       senderID: { type: String },

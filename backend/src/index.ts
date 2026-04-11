@@ -10,6 +10,7 @@ import { Server } from 'socket.io';
 import userRoutes from './routes/userRoutes';
 import sessionRoutes from './routes/sessionRoutes';
 import adminRoutes from './routes/adminRoutes';
+import { registerMessageEvents } from './socket/messageEvents'; // ⭐ Import message events
 
 const app = express();
 
@@ -35,12 +36,36 @@ app.use('/api', adminRoutes);
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
+// ⭐ Socket.IO Connection Handler
 io.on('connection', (socket) => {
+  console.log('🟢 Client connected:', socket.id);
+
+  // Tham gia phòng cá nhân
+  socket.on('join_user', (userID: string) => {
+    socket.join(userID);
+    console.log(`🧍 ${socket.id} joined user room: ${userID}`);
+  });
+
+  // Tham gia phòng chat
+  socket.on('join_chat', (chatID: string) => {
+    socket.join(chatID);
+    console.log(`💬 ${socket.id} joined chat room: ${chatID}`);
+  });
+
+  // ⭐ Đăng ký tất cả message events (TV2)
+  registerMessageEvents(io, socket);
+
+  // User status events (giữ nguyên)
   socket.on('updateStatus', async (user) => {
     io.emit('userStatusUpdated', user);
   });
+  
   socket.on('updateUser', (user) => {
     io.emit('userUpdated', user);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('🔴 Client disconnected:', socket.id);
   });
 });
 
