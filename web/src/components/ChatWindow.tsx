@@ -1,13 +1,33 @@
-import { FaComments } from 'react-icons/fa';
+import { useState, useRef } from 'react';
+import { FaComments, FaTrash, FaShare } from 'react-icons/fa';
+import { io, Socket } from 'socket.io-client';
+import ForwardMessageModal from './ForwardMessageModal';
+
+const socket: Socket = io('http://localhost:5000');
+
+interface Message {
+  messageID?: string;
+  chatID: string;
+  senderID: string;
+  content?: string;
+  type: string;
+  timestamp: string;
+  media_url?: string[];
+  status?: string;
+  senderInfo?: { name: string; avatar?: string | null };
+  forwardedFrom?: string;
+}
 
 interface Chat {
   id: string;
   name: string;
   avatar?: string;
+  chatID?: string;
 }
 
 interface User {
   name?: string;
+  userID?: string;
 }
 
 interface Props {
@@ -16,6 +36,29 @@ interface Props {
 }
 
 const ChatWindow = ({ selectedChat, user }: Props) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [actionMsgId, setActionMsgId] = useState<string | null>(null);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [selectedMessageForForward, setSelectedMessageForForward] = useState<Message | null>(null);
+
+  const handleDeleteLocal = (msg: Message) => {
+    if (!msg.messageID || !user?.userID) return;
+    
+    socket.emit('delete_message_local', {
+      messageID: msg.messageID,
+      userID: user.userID,
+      chatID: selectedChat?.chatID || selectedChat?.id,
+    });
+    
+    setActionMsgId(null);
+  };
+
+  const handleForwardClick = (msg: Message) => {
+    setSelectedMessageForForward(msg);
+    setShowForwardModal(true);
+    setActionMsgId(null);
+  };
+
   if (!selectedChat) {
     return (
       <div className="flex-1 flex flex-col h-screen bg-gray-100 dark:bg-gray-800">
@@ -35,7 +78,7 @@ const ChatWindow = ({ selectedChat, user }: Props) => {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-screen bg-gray-100 dark:bg-gray-800">
+    <div className="flex-1 flex flex-col h-screen bg-gray-100 dark:bg-gray-800" onClick={() => setActionMsgId(null)}>
       <div className="flex-1 flex w-full h-full">
         <div className="flex-1 h-full bg-white dark:bg-gray-900 flex flex-col">
           {/* Header */}
@@ -58,14 +101,60 @@ const ChatWindow = ({ selectedChat, user }: Props) => {
 
           {/* Messages area */}
           <div className="flex-1 px-5 py-4 overflow-y-auto flex flex-col gap-2.5 bg-gray-100 dark:bg-gray-800 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
-            <div className="flex-1 flex flex-col justify-center items-center">
-              <p className="text-gray-300 dark:text-gray-600 text-sm">nố nồ nô</p>
-            </div>
+            {messages.map((msg) => {
+              const isMine = msg.senderID === user?.userID;
+              const msgKey = msg.messageID || msg.timestamp;
+
+              return (
+                <div key={msgKey} className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
+                  {!isMine && (
+                    <img
+                      src={msg.senderInfo?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + msg.senderID}
+                      alt="av"
+                      className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1"
+                    />
+                  )}
+
+                  <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
+                    <div className="relative">
+                      <div
+                        className={`px-3 py-2 rounded-2xl shadow-sm cursor-pointer select-text ${
+                          isMine
+                            ? 'bg-[#0e9de8] text-white rounded-br-sm'
+                            : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-bl-sm'
+                        }`}
+                        onContextMenu={(e) => { e.preventDefault(); setActionMsgId(msgKey as string); }}
+                      >
+                        <span className="text-sm whitespace-pre-wrap break-words">{msg.content}</span>
+                      </div>
+
+                      {/* Action menu */}
+                      {actionMsgId === msgKey && (
+                        <div
+                          className={`absolute z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1 min-w-[160px] ${isMine ? 'right-0' : 'left-0'} bottom-full mb-1`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                            onClick={() => handleForwardClick(msg)}>
+                            <FaShare className="text-gray-400 text-xs" /> Chuyển tiếp
+                          </button>
+                          {isMine && (
+                            <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              onClick={() => handleDeleteLocal(msg)}>
+                              <FaTrash className="text-xs" /> Xóa phía tôi
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Input area */}
           <div className="flex items-center px-4 py-2.5 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 gap-2.5">
-            <div className="input-icons left" />
             <input
               type="text"
               placeholder="Nhập tin nhắn..."
@@ -74,6 +163,18 @@ const ChatWindow = ({ selectedChat, user }: Props) => {
           </div>
         </div>
       </div>
+
+      {/* Forward Modal */}
+      {showForwardModal && selectedMessageForForward && (
+        <ForwardMessageModal
+          message={selectedMessageForForward}
+          onClose={() => {
+            setShowForwardModal(false);
+            setSelectedMessageForForward(null);
+          }}
+          user={user}
+        />
+      )}
     </div>
   );
 };
