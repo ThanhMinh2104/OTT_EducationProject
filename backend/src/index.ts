@@ -10,14 +10,15 @@ import { Server } from 'socket.io';
 import userRoutes from './routes/userRoutes';
 import sessionRoutes from './routes/sessionRoutes';
 import adminRoutes from './routes/adminRoutes';
-import { registerMessageEvents } from './socket/messageEvents'; // ⭐ Import message events
+import chatRoutes, { getChatsForUser } from './routes/chatRoutes';
+import { registerMessageEvents } from './socket/messageEvents';
+import { registerNotificationEvents } from './socket/notificationEvents';
 
 const app = express();
 
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'] }));
 app.use(express.json());
 
-// MongoDB
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI as string);
@@ -29,37 +30,47 @@ const connectDB = async () => {
 };
 connectDB();
 
-app.use('/api', userRoutes);
-app.use('/api', sessionRoutes);
-app.use('/api', adminRoutes);
-
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-// ⭐ Socket.IO Connection Handler
+app.use('/api', userRoutes);
+app.use('/api', sessionRoutes);
+app.use('/api', adminRoutes);
+app.use('/api', chatRoutes(io));
+
 io.on('connection', (socket) => {
   console.log('🟢 Client connected:', socket.id);
 
-  // Tham gia phòng cá nhân
   socket.on('join_user', (userID: string) => {
     socket.join(userID);
     console.log(`🧍 ${socket.id} joined user room: ${userID}`);
   });
 
-  // Tham gia phòng chat
   socket.on('join_chat', (chatID: string) => {
     socket.join(chatID);
     console.log(`💬 ${socket.id} joined chat room: ${chatID}`);
   });
 
-  // ⭐ Đăng ký tất cả message events (TV2)
+  // Lấy danh sách chat
+  socket.on('getChat', async (userID: string) => {
+    try {
+      const chats = await getChatsForUser(userID);
+      socket.emit('ChatByUserID', chats);
+    } catch (e) {
+      console.error('getChat error:', e);
+    }
+  });
+
+  // Đăng ký message events (TV2)
   registerMessageEvents(io, socket);
 
-  // User status events (giữ nguyên)
+  // Đăng ký notification events (TV5)
+  registerNotificationEvents(io, socket);
+
   socket.on('updateStatus', async (user) => {
     io.emit('userStatusUpdated', user);
   });
-  
+
   socket.on('updateUser', (user) => {
     io.emit('userUpdated', user);
   });

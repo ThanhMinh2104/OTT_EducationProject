@@ -24,6 +24,12 @@ export interface IMessage extends Document {
     pinnedBy?: string;
     pinnedAt?: Date;
   };
+  seenBy?: {
+    userID: string;
+    userName: string;
+    avatar?: string | null;
+    readAt: string;
+  }[];
 }
 
 const MessageSchema = new Schema<IMessage>(
@@ -57,6 +63,15 @@ const MessageSchema = new Schema<IMessage>(
       pinnedBy: { type: String },
       pinnedAt: { type: Date, default: Date.now },
     },
+    seenBy: [
+      {
+        userID: { type: String, required: true },
+        userName: { type: String },
+        avatar: { type: String, default: null },
+        readAt: { type: String },
+        _id: false,
+      },
+    ],
   },
   { versionKey: false }
 );
