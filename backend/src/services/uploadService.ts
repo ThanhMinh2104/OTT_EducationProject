@@ -9,6 +9,9 @@ const FILE_TYPE_MATCH: Record<string, string[]> = {
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    // TV3: thêm Excel
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   ],
 };
 
