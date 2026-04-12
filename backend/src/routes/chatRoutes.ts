@@ -203,11 +203,15 @@ export default function chatRoutes(io: Server) {
         ],
       });
 
-      let friendStatus = 'none';
+      let friendStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'blocked' = 'none';
       if (contact) {
-        if (contact.status === 'pending') friendStatus = 'pending';
-        else if (contact.status === 'accepted') friendStatus = 'accepted';
-        else if (contact.status === 'blocked') friendStatus = 'blocked';
+        if (contact.status === 'pending') {
+          friendStatus = contact.contactID === userID ? 'pending_sent' : 'pending_received';
+        } else if (contact.status === 'accepted') {
+          friendStatus = 'accepted';
+        } else if (contact.status === 'blocked') {
+          friendStatus = 'blocked';
+        }
       }
 
       res.json({
@@ -284,8 +288,22 @@ export default function chatRoutes(io: Server) {
 
       const sender = await Users.findOne({ userID: senderID });
       const receiver = await Users.findOne({ userID });
-      io.to(senderID).emit('friend_request_accepted', { userID, name: receiver?.name, anhDaiDien: receiver?.anhDaiDien });
-      io.to(userID).emit('friend_request_accepted', { userID: senderID, name: sender?.name, anhDaiDien: sender?.anhDaiDien });
+      
+      // Gửi cho người gửi lời mời ban đầu
+      io.to(senderID).emit('friend_request_accepted', { 
+        userID, 
+        name: receiver?.name, 
+        anhDaiDien: receiver?.anhDaiDien,
+        actorID: userID 
+      });
+
+      // Gửi cho người vừa chấp nhận (để đồng bộ các tab khác)
+      io.to(userID).emit('friend_request_accepted', { 
+        userID: senderID, 
+        name: sender?.name, 
+        anhDaiDien: sender?.anhDaiDien,
+        actorID: userID 
+      });
       res.json({ message: 'Đã chấp nhận kết bạn' });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -300,7 +318,10 @@ export default function chatRoutes(io: Server) {
       const contact = await Contacts.findOneAndDelete({ userID, contactID: senderID, status: 'pending' });
       if (!contact) return res.status(404).json({ message: 'Không tìm thấy lời mời' }) as any;
 
-      io.to(senderID).emit('friend_request_rejected', { recipientID: userID });
+      // Thông báo cho người gửi và đồng bộ tab người nhận
+      io.to(senderID).emit('friend_request_rejected', { senderID, recipientID: userID });
+      io.to(userID).emit('friend_request_rejected', { senderID, recipientID: userID });
+      
       res.json({ message: 'Đã từ chối kết bạn' });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -346,10 +367,89 @@ export default function chatRoutes(io: Server) {
       const userID = req.userID!;
       const pending = await Contacts.find({ userID, status: 'pending' }).lean();
       const result = await Promise.all(pending.map(async (r) => {
-        const sender = await Users.findOne({ userID: r.contactID }).select('name anhDaiDien sdt').lean();
-        return { contactID: r.contactID, userID, name: sender?.name, avatar: sender?.anhDaiDien, sdt: sender?.sdt, message: r.message };
+        const sender = await Users.findOne({ userID: r.contactID }).select('userID name anhDaiDien sdt anhBia ngaysinh gioTinh').lean();
+        return { 
+          contactID: r.contactID, 
+          userID, 
+          name: sender?.name, 
+          avatar: sender?.anhDaiDien, 
+          sdt: sender?.sdt,
+          anhBia: sender?.anhBia,
+          ngaysinh: sender?.ngaysinh,
+          gioTinh: sender?.gioTinh,
+          message: r.message 
+        };
       }));
       res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Lấy danh sách lời mời ĐÃ GỬI (Zalo Style)
+  router.get('/contacts/sent-friend-requests', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const sent = await Contacts.find({ contactID: userID, status: 'pending' }).lean();
+      const result = await Promise.all(sent.map(async (r) => {
+        const target = await Users.findOne({ userID: r.userID }).select('userID name anhDaiDien sdt anhBia ngaysinh gioTinh').lean();
+        return { 
+          recipientID: r.userID, 
+          senderID: userID, 
+          name: target?.name, 
+          avatar: target?.anhDaiDien, 
+          sdt: target?.sdt,
+          anhBia: target?.anhBia,
+          ngaysinh: target?.ngaysinh,
+          gioTinh: target?.gioTinh,
+          message: r.message 
+        };
+      }));
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Thu hồi lời mời kết bạn
+  router.post('/contacts/cancel-friend-request', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const senderID = req.userID!;
+      const { recipientID } = req.body;
+      const contact = await Contacts.findOneAndDelete({ contactID: senderID, userID: recipientID, status: 'pending' });
+      
+      if (!contact) return res.status(404).json({ message: 'Không tìm thấy lời mời để thu hồi' }) as any;
+
+      // Thông báo cho người nhận và người gửi để đồng bộ trạng thái
+      io.to(recipientID).emit('friend_request_cancelled', { senderID, recipientID });
+      io.to(senderID).emit('friend_request_cancelled', { senderID, recipientID });
+      
+      res.json({ message: 'Đã thu hồi lời mời kết bạn' });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Hủy kết bạn
+  router.post('/contacts/unfriend', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const { friendID } = req.body;
+      
+      const contact = await Contacts.findOneAndDelete({
+        $or: [
+          { userID, contactID: friendID, status: 'accepted' },
+          { userID: friendID, contactID: userID, status: 'accepted' },
+        ],
+      });
+
+      if (!contact) return res.status(404).json({ message: 'Không tìm thấy quan hệ bạn bè' }) as any;
+
+      // Thông báo cho cả 2 bên
+      io.to(friendID).emit('friend_unfriended', { userID, friendID });
+      io.to(userID).emit('friend_unfriended', { userID, friendID });
+
+      res.json({ message: 'Đã hủy kết bạn' });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

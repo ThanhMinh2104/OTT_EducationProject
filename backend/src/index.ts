@@ -39,11 +39,21 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use('/api', chatRoutes(io));
 
 io.on('connection', (socket) => {
+  // Tham gia phòng cá nhân để nhận thông báo realtime
+  socket.on('join_user', (userID: string) => {
+    socket.join(userID);
+    console.log(`👤 User joined room: ${userID}`);
+  });
+
   socket.on('updateStatus', async (user) => {
     io.emit('userStatusUpdated', user);
   });
   socket.on('updateUser', (user) => {
     io.emit('userUpdated', user);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('🔌 User disconnected:', socket.id);
   });
 });
 
