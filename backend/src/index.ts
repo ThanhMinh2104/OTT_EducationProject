@@ -10,6 +10,7 @@ import { Server } from 'socket.io';
 import userRoutes from './routes/userRoutes';
 import sessionRoutes from './routes/sessionRoutes';
 import adminRoutes from './routes/adminRoutes';
+import chatRoutes from './routes/chatRoutes';
 
 const app = express();
 
@@ -34,6 +35,8 @@ app.use('/api', adminRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
+
+app.use('/api', chatRoutes(io));
 
 io.on('connection', (socket) => {
   socket.on('updateStatus', async (user) => {
