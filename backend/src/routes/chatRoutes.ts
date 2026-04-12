@@ -3,6 +3,54 @@ import { Server } from 'socket.io';
 import multer from 'multer';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { uploadToCloudinary } from '../services/uploadService';
+import Chat from '../models/Chat';
+import ChatMember from '../models/ChatMember';
+import Message from '../models/Messages';
+import Users from '../models/User';
+import Contacts from '../models/Contacts';
+
+// Helper: tạo chatID tự động
+const generateChatID = async (): Promise<string> => {
+  const last = await Chat.findOne().sort({ chatID: -1 }).limit(1);
+  if (!last) return 'chat001';
+  const n = parseInt(last.chatID.replace('chat', ''), 10);
+  return `chat${(n + 1).toString().padStart(3, '0')}`;
+};
+
+// Helper: lấy danh sách chat đầy đủ cho user
+export const getChatsForUser = async (userID: string) => {
+  const memberDocs = await ChatMember.find({ 'members.userID': userID }).lean();
+  const chatIDs = memberDocs.map((m) => m.chatID);
+  if (!chatIDs.length) return [];
+
+  const chats = await Chat.find({ chatID: { $in: chatIDs } }).lean();
+  const allMessages = await Message.find({ chatID: { $in: chatIDs } }).sort({ timestamp: 1 }).lean();
+
+  const senderIDs = [...new Set(allMessages.map((m) => m.senderID))];
+  const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
+
+  const enriched = allMessages.map((msg) => {
+    const s = senders.find((u) => u.userID === msg.senderID);
+    return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+  });
+
+  const msgByChat: Record<string, typeof enriched> = {};
+  enriched.forEach((m) => {
+    if (!msgByChat[m.chatID]) msgByChat[m.chatID] = [];
+    msgByChat[m.chatID].push(m);
+  });
+
+  const membersByChat: Record<string, { userID: string; role: string }[]> = {};
+  memberDocs.forEach((doc) => {
+    membersByChat[doc.chatID] = doc.members.map((m) => ({ userID: m.userID, role: m.role }));
+  });
+
+  return chats.map((c) => ({
+    ...c,
+    lastMessage: msgByChat[c.chatID] || [],
+    members: membersByChat[c.chatID] || [],
+  }));
+};
 
 
 const uploadAudio = multer({
@@ -54,6 +102,256 @@ export default function chatRoutes(io: Server) {
       res.json({ url, fileName: file.originalname, fileSize: file.size, mimeType: file.mimetype });
     } catch (e: any) {
       res.status(500).json({ error: 'Upload document thất bại', detail: e.message });
+    }
+  });
+
+  // --- MEMBER 1: CONTACTS & STRANGER CHAT ---
+
+  // Lấy danh sách chat của user (Member 1 & 2)
+  router.post('/chats/userID', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const chats = await getChatsForUser(req.userID!);
+      res.json(chats);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Lấy chat 1-1 giữa 2 người
+  router.post('/chats1-1ByUserID', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { userID2 } = req.body;
+      const userID1 = req.userID!;
+      const matched = await ChatMember.find({ 'members.userID': { $all: [userID1, userID2] } }).lean();
+      if (!matched.length) return res.status(404).json({ message: 'Chưa có chat 1-1' }) as any;
+
+      const chatIDs = matched.map((m) => m.chatID);
+      const privateChat = await Chat.findOne({ chatID: { $in: chatIDs }, type: 'private' }).lean();
+      if (!privateChat) return res.status(404).json({ message: 'Không tìm thấy chat 1-1' }) as any;
+
+      const memberDoc = await ChatMember.findOne({ chatID: privateChat.chatID }).lean();
+      const msgs = await Message.find({ chatID: privateChat.chatID }).sort({ timestamp: 1 }).lean();
+      const senderIDs = [...new Set(msgs.map((m) => m.senderID))];
+      const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
+      const enriched = msgs.map((msg) => {
+        const s = senders.find((u) => u.userID === msg.senderID);
+        return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+      });
+
+      res.json({ ...privateChat, members: memberDoc?.members || [], lastMessage: enriched });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Tạo chat 1-1 / Nhắn tin người lạ
+  router.post('/createChat1-1', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { userID2 } = req.body;
+      const userID1 = req.userID!;
+
+      const existing = await ChatMember.find({ 'members.userID': { $all: [userID1, userID2] } }).lean();
+      if (existing.length) {
+        const chatIDs = existing.map((m) => m.chatID);
+        const found = await Chat.findOne({ chatID: { $in: chatIDs }, type: 'private' }).lean();
+        if (found) {
+          const memberDoc = await ChatMember.findOne({ chatID: found.chatID }).lean();
+          return res.json({ ...found, members: memberDoc?.members || [], lastMessage: [] }) as any;
+        }
+      }
+
+      const user1 = await Users.findOne({ userID: userID1 });
+      const user2 = await Users.findOne({ userID: userID2 });
+      if (!user1 || !user2) return res.status(404).json({ message: 'User không tồn tại' }) as any;
+
+      const chatID = await generateChatID();
+      const members = [{ userID: userID1, role: 'admin' }, { userID: userID2, role: 'member' }];
+      const newChat = await Chat.create({
+        chatID,
+        type: 'private',
+        avatar: user2.anhDaiDien || '',
+        name: `${user1.name.split(' ').pop()} & ${user2.name.split(' ').pop()}`,
+        created_at: new Date(),
+      });
+      await ChatMember.create({ chatID, members });
+      const result = { ...newChat.toObject(), members, lastMessage: [] };
+      io.to(userID1).emit('newChat1-1', result);
+      io.to(userID2).emit('newChat1-1', result);
+      res.status(201).json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Tìm kiếm bạn bè theo SĐT (Zalo Style)
+  router.post('/contacts/search-friend-by-phone', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { phoneNumber } = req.body;
+      const userID = req.userID!;
+      const currentUser = await Users.findOne({ userID });
+      if (currentUser && currentUser.sdt === phoneNumber) {
+        return res.json({ ...currentUser.toObject(), friendStatus: 'self' }) as any;
+      }
+
+      const target = await Users.findOne({ sdt: phoneNumber });
+      if (!target) return res.status(404).json({ message: 'Không tìm thấy người dùng' }) as any;
+
+      const contact = await Contacts.findOne({
+        $or: [
+          { userID, contactID: target.userID },
+          { userID: target.userID, contactID: userID },
+        ],
+      });
+
+      let friendStatus = 'none';
+      if (contact) {
+        if (contact.status === 'pending') friendStatus = 'pending';
+        else if (contact.status === 'accepted') friendStatus = 'accepted';
+        else if (contact.status === 'blocked') friendStatus = 'blocked';
+      }
+
+      res.json({
+        userID: target.userID,
+        name: target.name,
+        sdt: target.sdt,
+        anhDaiDien: target.anhDaiDien,
+        anhBia: target.anhBia,
+        ngaysinh: target.ngaysinh,
+        gioTinh: target.gioTinh,
+        friendStatus,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Gửi lời mời kết bạn (Zalo Style - Alias & Message)
+  router.post('/contacts/send-friend-request', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const senderID = req.userID!;
+      const { recipientPhone, alias, message } = req.body;
+
+      const target = await Users.findOne({ sdt: recipientPhone });
+      if (!target) return res.status(404).json({ message: 'Không tìm thấy người dùng' }) as any;
+      if (target.userID === senderID) return res.status(400).json({ message: 'Không thể kết bạn với chính mình' }) as any;
+
+      const existing = await Contacts.findOne({
+        $or: [
+          { userID: target.userID, contactID: senderID },
+          { userID: senderID, contactID: target.userID },
+        ],
+      });
+
+      if (existing?.status === 'accepted') return res.status(400).json({ message: 'Đã là bạn bè' }) as any;
+      if (existing?.status === 'pending') return res.status(400).json({ message: 'Đã gửi lời mời trước đó' }) as any;
+
+      const newContact = await Contacts.create({
+        contactID: senderID,
+        userID: target.userID,
+        alias: alias || target.name,
+        message: message || 'Mình kết bạn nhé!',
+        status: 'pending',
+        created_at: new Date(),
+      });
+
+      const sender = await Users.findOne({ userID: senderID });
+      io.to(target.userID).emit('new_friend_request', {
+        contactID: senderID,
+        userID: target.userID,
+        name: sender?.name,
+        avatar: sender?.anhDaiDien,
+        alias: newContact.alias,
+        message: newContact.message,
+      });
+
+      res.status(201).json({ message: 'Đã gửi lời mời kết bạn' });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Chấp nhận kết bạn
+  router.post('/contacts/accept-friend-request', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const { senderID } = req.body;
+      const contact = await Contacts.findOneAndUpdate(
+        { userID, contactID: senderID, status: 'pending' },
+        { status: 'accepted' },
+        { new: true }
+      );
+      if (!contact) return res.status(404).json({ message: 'Không tìm thấy lời mời' }) as any;
+
+      const sender = await Users.findOne({ userID: senderID });
+      const receiver = await Users.findOne({ userID });
+      io.to(senderID).emit('friend_request_accepted', { userID, name: receiver?.name, anhDaiDien: receiver?.anhDaiDien });
+      io.to(userID).emit('friend_request_accepted', { userID: senderID, name: sender?.name, anhDaiDien: sender?.anhDaiDien });
+      res.json({ message: 'Đã chấp nhận kết bạn' });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Từ chối kết bạn
+  router.post('/contacts/reject-friend-request', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const { senderID } = req.body;
+      const contact = await Contacts.findOneAndDelete({ userID, contactID: senderID, status: 'pending' });
+      if (!contact) return res.status(404).json({ message: 'Không tìm thấy lời mời' }) as any;
+
+      io.to(senderID).emit('friend_request_rejected', { recipientID: userID });
+      res.json({ message: 'Đã từ chối kết bạn' });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Lấy danh sách bạn bè (Zalo Style - Có Alias)
+  router.post('/contacts/friends', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const friends = await Contacts.find({
+        $or: [
+          { userID, status: 'accepted' },
+          { contactID: userID, status: 'accepted' },
+        ],
+      }).lean();
+
+      const result = await Promise.all(friends.map(async (f) => {
+        const friendID = f.userID === userID ? f.contactID : f.userID;
+        const friendUser = await Users.findOne({ userID: friendID }).select('name anhDaiDien sdt trangThai').lean();
+        // Nếu người gửi (A) đặt alias cho người nhận (B), thì A thấy B là alias.
+        // Ngược lại, nếu B là người nhận, B thấy A là tên thật (hoặc alias nếu B cũng đặt).
+        // Tạm thời: friendStatus record lưu alias mà NGƯỜI TẠO record đặt.
+        return { 
+          userID: friendID, 
+          name: friendUser?.name, 
+          anhDaiDien: friendUser?.anhDaiDien, 
+          sdt: friendUser?.sdt, 
+          trangThai: friendUser?.trangThai,
+          alias: f.contactID === friendID ? f.alias : undefined 
+        };
+      }));
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Lấy danh sách lời mời kết bạn đang chờ (Zalo Style - Có message)
+  router.get('/contacts/friend-requests', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const pending = await Contacts.find({ userID, status: 'pending' }).lean();
+      const result = await Promise.all(pending.map(async (r) => {
+        const sender = await Users.findOne({ userID: r.contactID }).select('name anhDaiDien sdt').lean();
+        return { contactID: r.contactID, userID, name: sender?.name, avatar: sender?.anhDaiDien, sdt: sender?.sdt, message: r.message };
+      }));
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
     }
   });
 

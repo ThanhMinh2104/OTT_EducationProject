@@ -9,6 +9,7 @@ import {
   FaMobileAlt,
   FaUserSlash,
   FaHistory,
+  FaAddressBook,
 } from 'react-icons/fa';
 import UserProfileModal from './UserProfileModal';
 import axiosInstance from '../utils/axios';
@@ -50,9 +51,11 @@ interface LoginHistoryItem {
 interface Props {
   user: User | null;
   setUser: (u: User) => void;
+  activeTab: 'chats' | 'contacts';
+  setActiveTab: (tab: 'chats' | 'contacts') => void;
 }
 
-const Sidebar = ({ user, setUser }: Props) => {
+const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
   const navigate = useNavigate();
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -172,8 +175,19 @@ const Sidebar = ({ user, setUser }: Props) => {
               className="w-full h-full object-cover"
             />
           </div>
-          <div className="w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-white/85 text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all">
+          <div 
+            onClick={() => setActiveTab('chats')}
+            className={`w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all ${activeTab === 'chats' ? 'bg-white/30 text-white' : 'text-white/85'}`}
+            title="Tin nhắn"
+          >
             <FaComments />
+          </div>
+          <div 
+            onClick={() => setActiveTab('contacts')}
+            className={`w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all ${activeTab === 'contacts' ? 'bg-white/30 text-white' : 'text-white/85'}`}
+            title="Danh bạ"
+          >
+            <FaAddressBook />
           </div>
         </div>
         <div className="mt-auto flex flex-col gap-2">

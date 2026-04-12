@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FaSearch, FaUserPlus, FaUsers, FaAngleDown, FaEllipsisH } from 'react-icons/fa';
+import AddFriendModal from './AddFriendModal';
 
 interface Chat {
   id: string;
@@ -11,7 +12,7 @@ interface Chat {
 }
 
 interface Props {
-  user: unknown;
+  user: { userID: string; name: string; anhDaiDien?: string } | null;
   onSelectChat: (chat: Chat) => void;
   selectedChatId: string | null;
 }
@@ -28,8 +29,9 @@ const MOCK_CHATS: Chat[] = [
   },
 ];
 
-const ChatList = ({ onSelectChat, selectedChatId }: Props) => {
+const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
   const [searchText, setSearchText] = useState('');
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
 
   const filtered = MOCK_CHATS.filter((c) =>
     c.name.toLowerCase().includes(searchText.toLowerCase())
@@ -54,6 +56,7 @@ const ChatList = ({ onSelectChat, selectedChatId }: Props) => {
         <div className="flex gap-1">
           <button
             title="Thêm bạn"
+            onClick={() => setShowAddFriendModal(true)}
             className="bg-none border-none cursor-pointer text-[17px] text-gray-600 dark:text-gray-400 w-[34px] h-[34px] rounded-lg flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-[#0e9de8] dark:hover:text-blue-400 transition-colors"
           >
             <FaUserPlus />
@@ -118,6 +121,14 @@ const ChatList = ({ onSelectChat, selectedChatId }: Props) => {
           </div>
         ))}
       </div>
+
+      {showAddFriendModal && (
+        <AddFriendModal
+          onClose={() => setShowAddFriendModal(false)}
+          currentUser={user}
+          onStartChat={(chat) => onSelectChat(chat)}
+        />
+      )}
     </div>
   );
 };
