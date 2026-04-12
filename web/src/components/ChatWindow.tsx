@@ -403,7 +403,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   // ==================== TV2: Forward message ====================
   const handleForwardMessage = (msg: Message) => {
-    // Placeholder: sẽ mở ForwardMessageModal
+    // TODO: Mở ForwardMessageModal
     // Tạm thời copy nội dung vào input
     if (msg.content) setInputText(msg.content);
     setActionMsgId(null);
@@ -749,10 +749,16 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             {msg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
                           </button>
                           {isMine && msg.type !== 'unsend' && (
-                            <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                              onClick={() => handleUnsend(msg)}>
-                              <FaTrash className="text-xs" /> Thu hồi
-                            </button>
+                            <>
+                              <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                                onClick={() => handleDeleteLocal(msg)}>
+                                <FaTrash className="text-xs" /> Xóa phía tôi
+                              </button>
+                              <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                onClick={() => handleUnsend(msg)}>
+                                <FaTrash className="text-xs" /> Thu hồi
+                              </button>
+                            </>
                           )}
                         </div>
                       )}
