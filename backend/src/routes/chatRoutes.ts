@@ -80,13 +80,17 @@ export default function chatRoutes(io: Server) {
   router.post('/upload/audio', authMiddleware, uploadAudio.single('file'), async (req: AuthRequest, res: Response) => {
     try {
       const file = req.file;
+      console.log('Upload audio request:', { hasFile: !!file, mimetype: file?.mimetype, size: file?.size });
       if (!file) return res.status(400).json({ error: 'Không có file' }) as any;
       if (!ALLOWED_AUDIO_TYPES.includes(file.mimetype)) {
         return res.status(400).json({ error: 'Chỉ chấp nhận file audio (mp3, wav, webm, ogg, mp4)' }) as any;
       }
+      console.log('Uploading to Cloudinary...');
       const url = await uploadToCloudinary(file);
+      console.log('Upload success:', url);
       res.json({ url, fileName: file.originalname, fileSize: file.size, mimeType: file.mimetype });
     } catch (e: any) {
+      console.error('Upload audio error:', e);
       res.status(500).json({ error: 'Upload audio thất bại', detail: e.message });
     }
   });
@@ -205,11 +209,29 @@ export default function chatRoutes(io: Server) {
   router.post('/upload', authMiddleware, upload.array('files'), async (req: AuthRequest, res: Response) => {
     try {
       const files = req.files as Express.Multer.File[];
+      console.log('Upload request:', { 
+        fileCount: files?.length, 
+        files: files?.map(f => ({ name: f.originalname, size: f.size, type: f.mimetype })) 
+      });
+      
       if (!files?.length) return res.status(400).json({ error: 'No files' }) as any;
-      const urls = await Promise.all(files.map((f) => uploadToCloudinary(f)));
+      
+      const urls = await Promise.all(files.map(async (f) => {
+        try {
+          console.log(`Uploading file: ${f.originalname} (${f.mimetype})`);
+          const url = await uploadToCloudinary(f);
+          console.log(`Upload success: ${f.originalname} -> ${url}`);
+          return url;
+        } catch (err: any) {
+          console.error(`Upload failed for ${f.originalname}:`, err);
+          throw new Error(`Failed to upload ${f.originalname}: ${err.message}`);
+        }
+      }));
+      
       res.json({ urls });
     } catch (e: any) {
-      res.status(500).json({ error: 'Upload failed' });
+      console.error('Upload error:', e);
+      res.status(500).json({ error: 'Upload failed', detail: e.message || String(e) });
     }
   });
 

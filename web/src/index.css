@@ -110,3 +110,8 @@
 @utility animate-fade-slide-in {
   animation: fadeSlideIn 0.15s ease;
 }
+
+@keyframes waveBar {
+  0% { transform: scaleY(0.3); }
+  100% { transform: scaleY(1); }
+}
