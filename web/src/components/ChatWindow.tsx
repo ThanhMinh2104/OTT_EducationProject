@@ -1,4 +1,4 @@
-import { FaComments } from 'react-icons/fa';
+import { FaComments, FaPhone, FaVideo } from 'react-icons/fa';
 
 interface Chat {
   id: string;
@@ -13,9 +13,10 @@ interface User {
 interface Props {
   selectedChat: Chat | null;
   user: User | null;
+  onStartVideoCall?: () => void;
 }
 
-const ChatWindow = ({ selectedChat, user }: Props) => {
+const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   if (!selectedChat) {
     return (
       <div className="flex-1 flex flex-col h-screen bg-gray-100 dark:bg-gray-800">
@@ -39,20 +40,45 @@ const ChatWindow = ({ selectedChat, user }: Props) => {
       <div className="flex-1 flex w-full h-full">
         <div className="flex-1 h-full bg-white dark:bg-gray-900 flex flex-col">
           {/* Header */}
-          <div className="flex items-center px-4.5 py-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
-            <img
-              src={selectedChat.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=User123'}
-              alt="avatar"
-              className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 dark:border-blue-800"
-            />
-            <div>
-              <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900 dark:text-gray-100">
-                {selectedChat.name}
-              </h2>
-              <p className="text-xs text-green-500 dark:text-green-400 m-0 flex items-center gap-1">
-                <span className="w-[7px] h-[7px] bg-green-500 dark:bg-green-400 rounded-full inline-block" />
-                Đang hoạt động
-              </p>
+          <div className="flex flex-row justify-between items-center px-4.5 py-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+            <div className="flex flex-row justify-between items-center">
+              <img
+                src={
+                  selectedChat.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=User123'
+                }
+                alt="avatar"
+                className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 dark:border-blue-800"
+              />
+              <div>
+                <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900 dark:text-gray-100">
+                  {selectedChat.name}
+                </h2>
+                <p className="text-xs text-green-500 dark:text-green-400 m-0 flex items-center gap-1">
+                  <span className="w-[7px] h-[7px] bg-green-500 dark:bg-green-400 rounded-full inline-block" />
+                  Đang hoạt động
+                </p>
+              </div>
+            </div>
+
+            {/* RIGHT - BUTTON */}
+
+            <div className="flex items-center gap-2">
+              {/* 📞 CALL THƯỜNG */}
+              <button
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition hover:cursor-pointer"
+                title="Gọi thường"
+                onClick={() => onStartVideoCall?.()}
+              >
+                <FaPhone className="text-green-500 dark:text-green-400 text-lg" />
+              </button>
+              {/* 🎥 VIDEO CALL */}
+              <button
+                onClick={() => onStartVideoCall?.()}
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition hover:cursor-pointer"
+                title="Gọi video"
+              >
+                <FaVideo className="text-blue-500 dark:text-blue-400 text-lg" />
+              </button>
             </div>
           </div>
 
