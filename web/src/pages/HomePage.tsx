@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import Sidebar from '../components/Sidebar';
@@ -58,17 +58,15 @@ const HomePage = () => {
 
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
 
-  // Call State
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [activeCallInfo, setActiveCallInfo] = useState<{
     offer?: RTCSessionDescriptionInit;
-    remoteUserID?: string; // userID của đối phương
+    remoteUserID?: string;
     callerInfo?: { name: string; avatar?: string };
   } | null>(null);
-  // Call state Incomming — đặt ở đây để luôn lắng nghe dù đang ở tab nào
   const [incomingCall, setIncomingCall] = useState<{
     offer: RTCSessionDescriptionInit;
-    from: string; // userID của người gọi
+    from: string;
     callerInfo: { name: string; avatar?: string };
   } | null>(null);
 
@@ -84,19 +82,9 @@ const HomePage = () => {
       sessionStorage.setItem('user', JSON.stringify(data));
     });
 
-    // Lắng nghe cuộc gọi đến — luôn active ở cấp HomePage
-    socket.on(
-      'call-made',
-      (data: {
-        offer: RTCSessionDescriptionInit;
-        from: string;
-        callerInfo: { name: string; avatar?: string };
-      }) => {
-        setIncomingCall(data);
-      }
-    );
-
-    // Check session validity mỗi 60 giây
+    socket.on('call-made', (data: { offer: RTCSessionDescriptionInit; from: string; callerInfo: { name: string; avatar?: string } }) => {
+      setIncomingCall(data);
+    });
 
     const checkSession = async () => {
       try {
@@ -106,9 +94,6 @@ const HomePage = () => {
       }
     };
     checkSession();
-
-    // Check định kỳ mỗi 60 giây
-
     const intervalId = setInterval(checkSession, 60000);
 
     return () => {
@@ -116,14 +101,14 @@ const HomePage = () => {
       socket.off('call-made');
       clearInterval(intervalId);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.userID]);
 
   const handleAcceptCall = () => {
     if (!incomingCall) return;
     setActiveCallInfo({
       offer: incomingCall.offer,
-      remoteUserID: incomingCall.from, // userID của người gọi
+      remoteUserID: incomingCall.from,
       callerInfo: incomingCall.callerInfo,
     });
     setIncomingCall(null);
@@ -137,30 +122,14 @@ const HomePage = () => {
     setIncomingCall(null);
   };
 
-  // Render IncomingCallModal
-  {
-    incomingCall && (
-      <IncomingCallModal
-        callerInfo={incomingCall.callerInfo}
-        onAccept={handleAcceptCall}
-        onReject={handleRejectCall}
-      />
-    );
-  }
-
-  // Lấy memberInfo từ selectedChat để truyền vào VideoCallModal khi gọi đi
   const getMemberInfo = () => {
     if (!selectedChat || !user) return null;
-    // Giả sử selectedChat có thông tin về người nhận
-    // Bạn cần điều chỉnh logic này dựa trên cấu trúc Chat của bạn
     return {
-      userID: selectedChat.id,
+      userID: selectedChat.chatID,
       name: selectedChat.name,
       anhDaiDien: selectedChat.avatar,
     };
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.userID]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif] bg-white dark:bg-gray-900">
@@ -183,7 +152,6 @@ const HomePage = () => {
         />
       </div>
 
-      {/* Cuộc gọi đến — hiện ở mọi nơi */}
       {incomingCall && (
         <IncomingCallModal
           callerInfo={incomingCall.callerInfo}
@@ -192,7 +160,6 @@ const HomePage = () => {
         />
       )}
 
-      {/* Video call modal */}
       {showVideoCall && user && (
         <VideoCallModal
           user={user}
