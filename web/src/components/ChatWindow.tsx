@@ -388,6 +388,28 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     inputRef.current?.focus();
   };
 
+  // ==================== TV2: Delete message local ====================
+  const handleDeleteLocal = (msg: Message) => {
+    if (!msg.messageID || !user?.userID) return;
+    
+    socket.emit('delete_message_local', {
+      messageID: msg.messageID,
+      userID: user.userID,
+      chatID: selectedChat!.chatID,
+    });
+    
+    setActionMsgId(null);
+  };
+
+  // ==================== TV2: Forward message ====================
+  const handleForwardMessage = (msg: Message) => {
+    // Placeholder: sẽ mở ForwardMessageModal
+    // Tạm thời copy nội dung vào input
+    if (msg.content) setInputText(msg.content);
+    setActionMsgId(null);
+    inputRef.current?.focus();
+  };
+
   // Ghi âm
   const startRecording = async () => {
     try {

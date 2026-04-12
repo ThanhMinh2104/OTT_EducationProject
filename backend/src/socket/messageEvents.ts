@@ -209,7 +209,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         timestamp: new Date(),
         media_url: originalMsg.media_url,
         status: 'sent',
-        forwardedFrom: data.originalMessageID, // ⭐ Đánh dấu là tin nhắn forward
+        forwardedFrom: data.originalMessageID, //  Đánh dấu là tin nhắn forward
         replyTo: null, // Không giữ replyTo khi forward
         pinnedInfo: null, // Không giữ pinnedInfo khi forward
       });
