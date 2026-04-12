@@ -51,7 +51,7 @@ io.on('connection', (socket) => {
     console.log(`💬 ${socket.id} joined chat room: ${chatID}`);
   });
 
-  // Lấy danh sách chat
+  // Lấy danh sách chat của user
   socket.on('getChat', async (userID: string) => {
     try {
       const chats = await getChatsForUser(userID);
