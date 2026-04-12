@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import Sidebar from '../components/Sidebar';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
+import ContactsPanel from '../components/ContactsPanel';
 import { getToken } from '../utils/auth';
 import axiosInstance from '../utils/axios';
 
@@ -93,6 +94,7 @@ const HomePage = () => {
           user={user}
           onSelectChat={setSelectedChat}
           selectedChatId={selectedChat?.chatID ?? null}
+          activeTab={activeTab}
         />
         <ChatWindow selectedChat={selectedChat} user={user} />
       </div>

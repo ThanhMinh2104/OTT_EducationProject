@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { FaSearch, FaUserPlus, FaUsers, FaAngleDown, FaEllipsisH, FaTrash } from 'react-icons/fa';
 import { io, Socket } from 'socket.io-client';
 import AddFriendModal from './AddFriendModal';
+import ContactsPanel from './ContactsPanel';
 import { getToken } from '../utils/auth';
 
 const socket: Socket = io('http://localhost:5000');
@@ -38,6 +39,7 @@ interface Props {
   user: User | null;
   onSelectChat: (chat: Chat) => void;
   selectedChatId: string | null;
+  activeTab?: 'chats' | 'contacts';
 }
 
 const getLastMsgPreview = (chat: Chat, userID: string): string => {
@@ -75,7 +77,7 @@ const getTime = (chat: Chat): string => {
   return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 };
 
-const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
+const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: Props) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [searchText, setSearchText] = useState('');
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
@@ -253,6 +255,10 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
   const filtered = chats.filter((c) =>
     getChatName(c).toLowerCase().includes(searchText.toLowerCase())
   );
+
+  if (activeTab === 'contacts') {
+    return <ContactsPanel user={user} onStartChat={onSelectChat} />;
+  }
 
   return (
     <div className="w-[310px] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-screen shrink-0" onClick={() => setMenuChatId(null)}>
