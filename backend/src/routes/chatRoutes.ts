@@ -569,5 +569,33 @@ export default function chatRoutes(io: Server) {
     }
   });
 
+  // Cập nhật tên gợi nhớ (Alias) - Chỉ cho phép người thiết lập thấy
+  router.post('/contacts/update-alias', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const { contactID, alias } = req.body;
+      
+      // Tìm quan hệ bạn bè. Alias trong DB hiện tại đang gán cho người nhận lời mời.
+      // Để đơn giản theo schema hiện tại, ta cập nhật alias của bản ghi contact chung.
+      const contact = await Contacts.findOneAndUpdate(
+        {
+          $or: [
+            { userID: contactID, contactID: userID },
+            { userID, contactID: contactID },
+          ],
+          status: 'accepted'
+        },
+        { alias: alias || '' },
+        { new: true }
+      );
+
+      if (!contact) return res.status(404).json({ message: 'Không tìm thấy quan hệ bạn bè' }) as any;
+
+      res.json({ message: 'Đã cập nhật tên gợi nhớ', alias: contact.alias });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   return router;
 }

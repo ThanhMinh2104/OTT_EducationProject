@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   FaComments, FaPaperPlane, FaSmile, FaPaperclip, FaTimes,
   FaReply, FaTrash, FaThumbsUp, FaDownload, FaInfoCircle,
-  FaSearch, FaImage, FaVideo, FaMicrophone,
+  FaSearch, FaImage, FaVideo, FaMicrophone, FaPen,
   FaStop, FaBell, FaPhone,
 } from 'react-icons/fa';
 import { BsPin, BsPinAngleFill } from 'react-icons/bs';
@@ -11,6 +11,10 @@ import { io, Socket } from 'socket.io-client';
 import { getToken } from '../utils/auth';
 import ReminderModal from './ReminderModal';
 import ChatInfoPanel from './ChatInfoPanel';
+import OtherProfileModal from './OtherProfileModal';
+import AliasModal from './AliasModal';
+import axiosInstance from '../utils/axios';
+import toast from 'react-hot-toast';
 import { loadReminderEvents, saveReminderEvent, type ReminderEvent } from '../hooks/useReminderChecker';
 
 const socket: Socket = io('http://localhost:5000');
@@ -53,6 +57,8 @@ interface User {
   anhDaiDien?: string;
   sdt?: string;
   trangThai?: string;
+  alias?: string;
+  friendStatus?: string;
 }
 interface Props {
   selectedChat: Chat | null;
@@ -102,6 +108,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // States mới cho Profile và Alias
+  const [showOtherProfile, setShowOtherProfile] = useState(false);
+  const [profileUser, setProfileUser] = useState<any>(null);
+  const [showAliasModal, setShowAliasModal] = useState(false);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -137,7 +148,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           body: JSON.stringify({ userID: otherId }),
         })
           .then((r) => r.json())
-          .then((d) => setMemberInfo(d))
+          .then((d) => {
+            // Lấy thêm alias từ danh sách bạn bè nếu có
+            axiosInstance.post('/contacts/friends').then(res => {
+              const friend = res.data.find((f: any) => f.userID === otherId);
+              setMemberInfo({ ...d, alias: friend?.alias, friendStatus: friend ? 'accepted' : 'none' });
+            }).catch(() => setMemberInfo(d));
+          })
           .catch(() => {});
       }
     }
@@ -260,6 +277,40 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Hàm mở hồ sơ người dùng
+  const handleOpenProfile = async (targetUserID: string) => {
+    try {
+      const userInfoRes = await axiosInstance.post('/usersID', { userID: targetUserID });
+      const searchRes = await axiosInstance.post('/contacts/search-friend-by-phone', { phoneNumber: userInfoRes.data.sdt });
+      setProfileUser(searchRes.data);
+      setShowOtherProfile(true);
+    } catch {
+      toast.error('Không thể lấy thông tin người dùng');
+    }
+  };
+
+  const handleSaveAlias = async (newAlias: string) => {
+    if (!memberInfo) return;
+    try {
+      await axiosInstance.post('/contacts/update-alias', { contactID: memberInfo.userID, alias: newAlias });
+      setMemberInfo({ ...memberInfo, alias: newAlias });
+      setShowAliasModal(false);
+      toast.success('Đã cập nhật tên gợi nhớ');
+    } catch {
+      toast.error('Lỗi khi cập nhật tên gợi nhớ');
+    }
+  };
+
+  const handeActionFromProfile = async (api: string, nextStatus: string) => {
+    if (!profileUser) return;
+    try {
+      await axiosInstance.post(api, { senderID: profileUser.userID, recipientID: profileUser.userID });
+      setProfileUser({ ...profileUser, friendStatus: nextStatus });
+      if (nextStatus === 'accepted' && memberInfo) setMemberInfo({ ...memberInfo, friendStatus: 'accepted' });
+      if (nextStatus === 'none' && memberInfo) setMemberInfo({ ...memberInfo, friendStatus: 'none' });
+    } catch { toast.error('Thao tác thất bại'); }
+  };
 
   const buildMsg = (extra: Partial<Message>): Message => ({
     tempID: Date.now().toString(),
@@ -561,14 +612,21 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               <img
                 src={chatAvatar}
                 alt="avatar"
-                className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 dark:border-blue-800"
+                className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 dark:border-blue-800 cursor-pointer hover:brightness-110 transition-all"
+                onClick={() => selectedChat.type === 'private' && memberInfo && handleOpenProfile(memberInfo.userID)}
               />
-              <div className="flex-1">
-                <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900 dark:text-gray-100">{chatName}</h2>
+              <div className="flex-1 overflow-hidden">
+                <div 
+                   className="flex items-center gap-2 group cursor-pointer" 
+                   onClick={() => selectedChat.type === 'private' && setShowAliasModal(true)}
+                >
+                  <h2 className="text-[17px] font-bold m-0 text-gray-900 dark:text-gray-100 truncate">{chatName}</h2>
+                  {selectedChat.type === 'private' && (
+                    <FaPen className="text-gray-400 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </div>
                 <p className="text-xs text-gray-400 m-0">
-                  {memberInfo?.trangThai === 'online'
-                    ? <span className="text-green-500">● Đang hoạt động</span>
-                    : <span>● Ngoại tuyến</span>}
+                  {selectedChat.type === 'private' ? (memberInfo?.trangThai === 'online' ? <span className="text-green-500">● Đang hoạt động</span> : <span>● Ngoại tuyến</span>) : 'Hội thoại nhóm'}
                 </p>
               </div>
 
@@ -698,7 +756,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       <img
                         src={msg.senderInfo?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + msg.senderID}
                         alt="av"
-                        className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1"
+                        className="w-7 h-7 rounded-full object-cover flex-shrink-0 cursor-pointer hover:scale-105 transition-transform mb-1"
+                        onClick={() => handleOpenProfile(msg.senderID)}
                       />
                     )}
 
@@ -1087,8 +1146,47 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           }}
         />
       )}
+      {/* MODALS */}
+      <ProfileAndAliasModals 
+        showOtherProfile={showOtherProfile}
+        profileUser={profileUser}
+        user={user}
+        setShowOtherProfile={setShowOtherProfile}
+        handeActionFromProfile={handeActionFromProfile}
+        showAliasModal={showAliasModal}
+        memberInfo={memberInfo}
+        setShowAliasModal={setShowAliasModal}
+        handleSaveAlias={handleSaveAlias}
+      />
     </>
   );
 };
 
 export default ChatWindow;
+
+const ProfileAndAliasModals = ({ showOtherProfile, profileUser, user, setShowOtherProfile, handeActionFromProfile, showAliasModal, memberInfo, setShowAliasModal, handleSaveAlias }: any) => {
+  return (
+    <>
+      {showOtherProfile && profileUser && (
+        <OtherProfileModal 
+          user={profileUser} currentUser={user} 
+          onClose={() => setShowOtherProfile(false)}
+          onStartChat={() => setShowOtherProfile(false)}
+          onAccept={() => handeActionFromProfile('/contacts/accept-friend-request', 'accepted')}
+          onReject={() => handeActionFromProfile('/contacts/reject-friend-request', 'none')}
+          onRecall={() => handeActionFromProfile('/contacts/cancel-friend-request', 'none')}
+          onAddFriend={() => handeActionFromProfile('/contacts/send-friend-request', 'pending_sent')}
+          onEditAlias={() => setShowAliasModal(true)}
+        />
+      )}
+      {showAliasModal && memberInfo && (
+        <AliasModal 
+          user={{ userID: memberInfo.userID, name: memberInfo.name, avatar: memberInfo.anhDaiDien }}
+          currentAlias={memberInfo.alias || ''}
+          onClose={() => setShowAliasModal(false)}
+          onSave={handleSaveAlias}
+        />
+      )}
+    </>
+  );
+}

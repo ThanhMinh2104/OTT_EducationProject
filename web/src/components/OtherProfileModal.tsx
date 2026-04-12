@@ -18,11 +18,12 @@ interface Props {
   onAccept?: () => void;
   onReject?: () => void;
   onRecall?: () => void;
+  onEditAlias?: () => void;
 }
 
-const OtherProfileModal = ({ 
-  user, onClose, onBack, onStartChat, onAddFriend, 
-  onOpenSelfProfile, onAccept, onReject, onRecall 
+const OtherProfileModal = ({
+  user, onClose, onBack, onStartChat, onAddFriend,
+  onOpenSelfProfile, onAccept, onReject, onRecall, onEditAlias
 }: Props) => {
   const [showFriendMenu, setShowFriendMenu] = useState(false);
   const [showRequestMenu, setShowRequestMenu] = useState(false);
@@ -39,12 +40,12 @@ const OtherProfileModal = ({
   };
 
   const handleUnfriend = async () => {
-    if (!confirm(`Hủy kết bạn với ${user.name}?`)) return;
+    if (!confirm(`Xóa ${user.name} khỏi danh sách bạn bè?`)) return;
     try {
       await axiosInstance.post('/contacts/unfriend', { friendID: user.userID });
-      toast.success('Đã hủy kết bạn');
+      toast.success('Đã xóa khỏi danh sách bạn bè');
       onClose();
-    } catch { toast.error('Lỗi khi hủy kết bạn'); }
+    } catch { toast.error('Lỗi khi thực hiện thao tác'); }
   };
 
   const formatDate = (dateStr?: string) => {
@@ -60,8 +61,8 @@ const OtherProfileModal = ({
       return (
         <div className="w-full flex flex-col items-center gap-2">
           <div className="text-gray-500 text-[14.5px] italic text-center py-2">Đây là hồ sơ của bạn</div>
-          <button 
-            onClick={onOpenSelfProfile} 
+          <button
+            onClick={onOpenSelfProfile}
             className="w-full py-2.5 rounded-lg text-[14.5px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-800 transition-colors flex items-center justify-center gap-2"
           >
             <FaPen className="text-xs" /> Chỉnh sửa thông tin
@@ -73,8 +74,8 @@ const OtherProfileModal = ({
     if (user.friendStatus === 'accepted') {
       return (
         <div className="relative flex-1" ref={menuRef}>
-          <button 
-            onClick={() => setShowFriendMenu(!showFriendMenu)} 
+          <button
+            onClick={() => setShowFriendMenu(!showFriendMenu)}
             className="w-full h-[42px] rounded-xl text-[14.5px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-800 transition-all flex items-center justify-center gap-2 shadow-sm"
           >
             <FaUserFriends className="text-[16px]" /> Bạn bè <FaChevronDown className={`text-[10px] transition-transform ${showFriendMenu ? "rotate-180" : ""}`} />
@@ -93,22 +94,22 @@ const OtherProfileModal = ({
     if (user.friendStatus === 'pending_received') {
       return (
         <div className="flex-1 relative flex" ref={requestMenuRef}>
-          <button 
-            onClick={onAccept} 
+          <button
+            onClick={onAccept}
             className="flex-1 h-[42px] rounded-l-xl text-[14.5px] font-bold bg-gradient-to-r from-[#0068FF] to-[#005AE6] text-white hover:brightness-110 transition-all flex items-center justify-center gap-2 shadow-sm"
           >
             <FaUserCheck className="text-[16px]" /> Chấp nhận
           </button>
-          <button 
-            onClick={() => setShowRequestMenu(!showRequestMenu)} 
+          <button
+            onClick={() => setShowRequestMenu(!showRequestMenu)}
             className="w-[42px] h-[42px] rounded-r-xl bg-[#005AE6] text-white border-l border-white/20 hover:brightness-110 transition-all flex items-center justify-center shadow-sm"
           >
             <FaChevronDown className={`text-[10px] transition-transform ${showRequestMenu ? "rotate-180" : ""}`} />
           </button>
           {showRequestMenu && (
             <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-30 overflow-hidden animate-in fade-in slide-in-from-top-2">
-              <button 
-                onClick={() => { setShowRequestMenu(false); onReject?.(); }} 
+              <button
+                onClick={() => { setShowRequestMenu(false); onReject?.(); }}
                 className="w-full flex items-center gap-3 px-4 py-3.5 text-left text-red-600 hover:bg-red-50 transition-colors"
               >
                 <FaUserTimes className="text-[14px]" /> <span className="text-[14.5px] font-bold">Từ chối lời mời</span>
@@ -121,8 +122,8 @@ const OtherProfileModal = ({
 
     if (user.friendStatus === 'pending_sent') {
       return (
-        <button 
-          onClick={onRecall} 
+        <button
+          onClick={onRecall}
           className="flex-1 h-[42px] rounded-xl text-[14.5px] font-bold bg-red-50 text-red-600 hover:bg-red-100 active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-red-100 shadow-sm"
         >
           <FaUndo className="text-[14px]" /> Thu hồi lời mời
@@ -131,8 +132,8 @@ const OtherProfileModal = ({
     }
 
     return (
-      <button 
-        onClick={onAddFriend} 
+      <button
+        onClick={onAddFriend}
         className="flex-1 h-[42px] rounded-xl text-[14.5px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-800 transition-all border border-gray-200"
       >
         Kết bạn
@@ -143,7 +144,7 @@ const OtherProfileModal = ({
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4 font-['Segoe_UI',sans-serif]">
       <div className="bg-white w-full sm:w-[400px] h-full sm:h-[700px] sm:rounded-md shadow-2xl flex flex-col text-gray-800 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 relative animate-modal-pop">
-        
+
         {/* Header content */}
         <div className="absolute top-0 left-0 w-full flex items-center justify-between px-4 py-3 z-10 bg-gradient-to-b from-black/60 to-transparent sm:rounded-t-md">
           <div className="flex items-center gap-4">
@@ -157,39 +158,44 @@ const OtherProfileModal = ({
 
         {/* Banner and Avatar section */}
         <div className="relative mb-14 shrink-0">
-          <img 
-            src={user.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.userID} 
-            alt="cover" 
-            className="w-full h-[220px] object-cover bg-gray-200 sm:rounded-t-md brightness-90" 
+          <img
+            src={user.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.userID}
+            alt="cover"
+            className="w-full h-[220px] object-cover bg-gray-200 sm:rounded-t-md brightness-90"
           />
           <div className="absolute -bottom-10 left-5">
-            <img 
-              src={user.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.userID} 
-              alt="avatar" 
-              className="w-[84px] h-[84px] rounded-full object-cover border-4 border-white bg-gray-100 shadow-sm" 
+            <img
+              src={user.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.userID}
+              alt="avatar"
+              className="w-[84px] h-[84px] rounded-full object-cover border-4 border-white bg-gray-100 shadow-sm"
             />
           </div>
         </div>
 
         {/* Action Header */}
         <div className="px-5 pb-5 border-b-[8px] border-gray-100">
-          <div className="flex items-center gap-2 mb-5">
+          <div className="flex items-center gap-2 mb-5 group">
             <h2 className="text-[22px] font-bold text-gray-900 truncate max-w-[280px]">{user.alias || user.name}</h2>
             {user.friendStatus !== 'self' && (
-              <button className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors"><FaPen className="text-[13px]" /></button>
+              <button
+                onClick={onEditAlias}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <FaPen className="text-[13px]" />
+              </button>
             )}
           </div>
 
           <div className="flex gap-3">
-             {renderActions()}
-             {user.friendStatus !== 'self' && (
-               <button 
-                 onClick={handleStartChat} 
-                 className={`flex-1 h-[42px] rounded-xl text-[14.5px] font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${user.friendStatus.startsWith('pending') ? 'bg-blue-50 text-[#0068FF] border border-blue-100 hover:bg-blue-100' : 'bg-[#0068FF] text-white hover:bg-[#005AE6]'}`}
-               >
-                 <FaCommentDots className="text-[16px]" /> Nhắn tin
-               </button>
-             )}
+            {renderActions()}
+            {user.friendStatus !== 'self' && (
+              <button
+                onClick={handleStartChat}
+                className={`flex-1 h-[42px] rounded-xl text-[14.5px] font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${user.friendStatus.startsWith('pending') ? 'bg-blue-50 text-[#0068FF] border border-blue-100 hover:bg-blue-100' : 'bg-[#0068FF] text-white hover:bg-[#005AE6]'}`}
+              >
+                <FaCommentDots className="text-[16px]" /> Nhắn tin
+              </button>
+            )}
           </div>
         </div>
 
