@@ -379,6 +379,10 @@ export default function chatRoutes(io: Server) {
         userID: target.userID,
         name: sender?.name,
         avatar: sender?.anhDaiDien,
+        sdt: sender?.sdt,
+        anhBia: sender?.anhBia,
+        ngaysinh: sender?.ngaysinh,
+        gioTinh: sender?.gioTinh,
         alias: newContact.alias,
         message: newContact.message,
       });
@@ -453,13 +457,16 @@ export default function chatRoutes(io: Server) {
 
       const result = await Promise.all(friends.map(async (f) => {
         const friendID = f.userID === userID ? f.contactID : f.userID;
-        const friendUser = await Users.findOne({ userID: friendID }).select('name anhDaiDien sdt trangThai').lean();
+        const friendUser = await Users.findOne({ userID: friendID }).select('name anhDaiDien sdt trangThai anhBia ngaysinh gioTinh').lean();
         return { 
           userID: friendID, 
           name: friendUser?.name, 
           anhDaiDien: friendUser?.anhDaiDien, 
           sdt: friendUser?.sdt, 
           trangThai: friendUser?.trangThai,
+          anhBia: friendUser?.anhBia,
+          ngaysinh: friendUser?.ngaysinh,
+          gioTinh: friendUser?.gioTinh,
           alias: f.contactID === friendID ? f.alias : undefined 
         };
       }));
