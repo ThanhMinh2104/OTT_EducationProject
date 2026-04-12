@@ -40,3 +40,6 @@ mobile/.expo/
 
 # Uploads tạm
 uploads/
+
+# Markdown files
+*.md

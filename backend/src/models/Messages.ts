@@ -11,6 +11,8 @@ export interface IMessage extends Document {
   timestamp: Date;
   media_url: string[];
   status: 'sent' | 'delivered' | 'read';
+  deletedFor?: string[]; //  Danh sách userID đã xóa tin nhắn phía client
+  forwardedFrom?: string; //  MessageID gốc nếu là tin nhắn forward
   replyTo?: {
     messageID?: string;
     senderID?: string;
@@ -22,6 +24,12 @@ export interface IMessage extends Document {
     pinnedBy?: string;
     pinnedAt?: Date;
   };
+  seenBy?: {
+    userID: string;
+    userName: string;
+    avatar?: string | null;
+    readAt: string;
+  }[];
 }
 
 const MessageSchema = new Schema<IMessage>(
@@ -38,6 +46,8 @@ const MessageSchema = new Schema<IMessage>(
     timestamp: { type: Date, default: Date.now },
     media_url: { type: [String], default: [] },
     status: { type: String, enum: ['sent', 'delivered', 'read'], default: 'sent' },
+    deletedFor: { type: [String], default: [] }, // ⭐ Mảng userID
+    forwardedFrom: { type: String }, // ⭐ MessageID gốc
     replyTo: {
       messageID: { type: String },
       senderID: { type: String },
@@ -53,6 +63,15 @@ const MessageSchema = new Schema<IMessage>(
       pinnedBy: { type: String },
       pinnedAt: { type: Date, default: Date.now },
     },
+    seenBy: [
+      {
+        userID: { type: String, required: true },
+        userName: { type: String },
+        avatar: { type: String, default: null },
+        readAt: { type: String },
+        _id: false,
+      },
+    ],
   },
   { versionKey: false }
 );

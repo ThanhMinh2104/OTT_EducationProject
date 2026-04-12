@@ -9,10 +9,15 @@ import {
   FaMobileAlt,
   FaUserSlash,
   FaHistory,
+  FaAddressBook,
 } from 'react-icons/fa';
 import UserProfileModal from './UserProfileModal';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
+import { io, Socket } from 'socket.io-client';
+import { useEffect } from 'react';
+
+const socket: Socket = io('http://localhost:5000');
 
 interface User {
   userID: string;
@@ -50,9 +55,11 @@ interface LoginHistoryItem {
 interface Props {
   user: User | null;
   setUser: (u: User) => void;
+  activeTab: 'chats' | 'contacts';
+  setActiveTab: (tab: 'chats' | 'contacts') => void;
 }
 
-const Sidebar = ({ user, setUser }: Props) => {
+const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
   const navigate = useNavigate();
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -65,6 +72,48 @@ const Sidebar = ({ user, setUser }: Props) => {
   const [loginHistory, setLoginHistory] = useState<LoginHistoryItem[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [requestCount, setRequestCount] = useState(0);
+
+  // Lấy số lượng lời mời kết bạn chưa xử lý
+  const fetchRequestCount = async () => {
+    try {
+      const res = await axiosInstance.get('/contacts/friend-requests');
+      setRequestCount(res.data.length);
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+
+    fetchRequestCount();
+    socket.emit('join_user', user.userID);
+
+    // Lắng nghe sự kiện để cập nhật badge
+    socket.on('new_friend_request', () => {
+      setRequestCount(prev => prev + 1);
+    });
+
+    socket.on('friend_request_accepted', () => {
+      setRequestCount(prev => Math.max(0, prev - 1));
+    });
+
+    socket.on('friend_request_rejected', () => {
+      setRequestCount(prev => Math.max(0, prev - 1));
+    });
+
+    socket.on('friend_request_cancelled', () => {
+      setRequestCount(prev => Math.max(0, prev - 1));
+    });
+
+    return () => {
+      socket.off('new_friend_request');
+      socket.off('friend_request_accepted');
+      socket.off('friend_request_rejected');
+      socket.off('friend_request_cancelled');
+    };
+  }, [user]);
 
   const openProfile = () => {
     setShowQuickMenu(false);
@@ -172,8 +221,26 @@ const Sidebar = ({ user, setUser }: Props) => {
               className="w-full h-full object-cover"
             />
           </div>
-          <div className="w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-white/85 text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all">
+          <div 
+            onClick={() => setActiveTab('chats')}
+            className={`w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all ${activeTab === 'chats' ? 'bg-white/30 text-white' : 'text-white/85'}`}
+            title="Tin nhắn"
+          >
             <FaComments />
+          </div>
+          <div 
+            onClick={() => setActiveTab('contacts')}
+            className={`w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all relative ${activeTab === 'contacts' ? 'bg-white/30 text-white' : 'text-white/85'}`}
+            title="Danh bạ"
+          >
+            <FaAddressBook />
+            
+            {/* Badge thông báo số lượng lời mời kết bạn */}
+            {requestCount > 0 && (
+              <div className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-[#0e9de8] shadow-sm animate-pulse">
+                {requestCount > 99 ? '99+' : requestCount}
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-auto flex flex-col gap-2">

@@ -12,7 +12,8 @@ import ConfirmPassword from './pages/ConfirmPassword';
 function App() {
   return (
     <Router>
-      <Toaster />
+      {/* Toast thông báo - z-index cao nhất để không bị modal che */}
+      <Toaster containerStyle={{ zIndex: 99999 }} />
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPassword />} />
