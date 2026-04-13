@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaTimes, FaPen, FaLock } from 'react-icons/fa';
-import { io } from 'socket.io-client';
+import socket from '../utils/socket';
 import { authHeaders } from '../utils/auth';
 import toast, { Toaster } from 'react-hot-toast';
 
-const socket = io('http://localhost:5000');
+// Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 
 const isValidPhone = (p: string) => /^(0[35789][0-9]{8}|(\+84)[35789][0-9]{8})$/.test(p);
 const isValidEmail = (e: string) => /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(e);

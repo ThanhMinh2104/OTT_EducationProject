@@ -13,6 +13,7 @@ import adminRoutes from './routes/adminRoutes';
 import chatRoutes, { getChatsForUser } from './routes/chatRoutes';
 import { registerMessageEvents } from './socket/messageEvents';
 import { registerNotificationEvents } from './socket/notificationEvents';
+import { registerCallEvents } from './socket/index';
 
 const app = express();
 
@@ -66,6 +67,9 @@ io.on('connection', (socket) => {
 
   // Đăng ký notification events (TV5)
   registerNotificationEvents(io, socket);
+
+  // Đăng ký call events (WebRTC)
+  registerCallEvents(io, socket);
 
   socket.on('updateStatus', async (user) => {
     io.emit('userStatusUpdated', user);

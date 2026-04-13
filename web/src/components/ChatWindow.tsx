@@ -1,23 +1,45 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  FaComments, FaPaperPlane, FaSmile, FaPaperclip, FaTimes,
-  FaReply, FaTrash, FaThumbsUp, FaDownload, FaInfoCircle,
-  FaSearch, FaImage, FaVideo, FaMicrophone,
-  FaStop, FaBell, FaPhone, FaPlay, FaPause,
+  FaComments,
+  FaPaperPlane,
+  FaSmile,
+  FaPaperclip,
+  FaTimes,
+  FaReply,
+  FaTrash,
+  FaThumbsUp,
+  FaDownload,
+  FaInfoCircle,
+  FaSearch,
+  FaImage,
+  FaVideo,
+  FaMicrophone,
+  FaStop,
+  FaBell,
+  FaPhone,
+  FaPlay,
+  FaPause,
 } from 'react-icons/fa';
 import { BsPin, BsPinAngleFill } from 'react-icons/bs';
 import { EmojiClickData } from 'emoji-picker-react';
-import { io, Socket } from 'socket.io-client';
+import socket from '../utils/socket';
 import { getToken } from '../utils/auth';
 import ReminderModal from './ReminderModal';
 import ChatInfoPanel from './ChatInfoPanel';
 import StickerEmojiPicker from './StickerEmojiPicker';
-import { loadReminderEvents, saveReminderEvent, type ReminderEvent } from '../hooks/useReminderChecker';
+import {
+  loadReminderEvents,
+  saveReminderEvent,
+  type ReminderEvent,
+} from '../hooks/useReminderChecker';
 
-const socket: Socket = io('http://localhost:5000');
+// Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 const API = 'http://localhost:5000/api';
 
-interface Member { userID: string; role: string }
+interface Member {
+  userID: string;
+  role: string;
+}
 interface ReplyTo {
   messageID?: string;
   senderID?: string;
@@ -58,7 +80,7 @@ interface User {
 interface Props {
   selectedChat: Chat | null;
   user: User | null;
-  onStartVideoCall?: () => void;
+  onStartVideoCall?: (callType: 'voice' | 'video') => void;
 }
 
 const authHeaders = (): Record<string, string> => {
@@ -68,13 +90,17 @@ const authHeaders = (): Record<string, string> => {
 
 const formatTime = (ts: string) => {
   if (!ts) return '';
-  return new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(ts).toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 };
 
 // ==================== File Icon Component ====================
 const getFileIcon = (fileName: string) => {
   const ext = fileName.split('.').pop()?.toLowerCase();
-  
+
   // Word documents
   if (['doc', 'docx'].includes(ext || '')) {
     return (
@@ -121,7 +147,11 @@ const getFileIcon = (fileName: string) => {
   return (
     <div className="w-12 h-12 bg-gray-500 rounded-lg flex items-center justify-center text-white">
       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+        <path
+          fillRule="evenodd"
+          d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+          clipRule="evenodd"
+        />
       </svg>
     </div>
   );
@@ -134,13 +164,21 @@ const formatFileSize = (bytes: number): string => {
 };
 
 // ==================== File Display Component ====================
-const FileDisplay = ({ fileName, fileUrl, isMine }: { fileName: string; fileUrl: string; isMine: boolean }) => {
+const FileDisplay = ({
+  fileName,
+  fileUrl,
+  isMine,
+}: {
+  fileName: string;
+  fileUrl: string;
+  isMine: boolean;
+}) => {
   const [fileSize, setFileSize] = useState<number | null>(null);
 
   // Fetch file size
   useEffect(() => {
     fetch(fileUrl, { method: 'HEAD' })
-      .then(res => {
+      .then((res) => {
         const size = res.headers.get('content-length');
         if (size) setFileSize(parseInt(size));
       })
@@ -152,7 +190,7 @@ const FileDisplay = ({ fileName, fileUrl, isMine }: { fileName: string; fileUrl:
       // Fetch file as blob
       const response = await fetch(fileUrl);
       const blob = await response.blob();
-      
+
       // Create download link with correct filename
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -195,7 +233,11 @@ const FileDisplay = ({ fileName, fileUrl, isMine }: { fileName: string; fileUrl:
         title="Tải xuống"
       >
         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+          <path
+            fillRule="evenodd"
+            d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
+            clipRule="evenodd"
+          />
         </svg>
       </button>
     </div>
@@ -212,11 +254,21 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
 
   const toggle = () => {
     if (!audioRef.current) return;
-    if (playing) { audioRef.current.pause(); setPlaying(false); }
-    else { audioRef.current.play(); setPlaying(true); }
+    if (playing) {
+      audioRef.current.pause();
+      setPlaying(false);
+    } else {
+      audioRef.current.play();
+      setPlaying(true);
+    }
   };
 
-  const fmt = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+  const fmt = (s: number) =>
+    `${Math.floor(s / 60)
+      .toString()
+      .padStart(2, '0')}:${Math.floor(s % 60)
+      .toString()
+      .padStart(2, '0')}`;
 
   return (
     <div
@@ -230,15 +282,25 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
         onTimeUpdate={() => {
           if (!audioRef.current) return;
           setCurrent(audioRef.current.currentTime);
-          setProgress(audioRef.current.duration ? (audioRef.current.currentTime / audioRef.current.duration) * 100 : 0);
+          setProgress(
+            audioRef.current.duration
+              ? (audioRef.current.currentTime / audioRef.current.duration) * 100
+              : 0
+          );
         }}
-        onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
-        onEnded={() => { setPlaying(false); setProgress(0); setCurrent(0); }}
+        onLoadedMetadata={() => {
+          if (audioRef.current) setDuration(audioRef.current.duration);
+        }}
+        onEnded={() => {
+          setPlaying(false);
+          setProgress(0);
+          setCurrent(0);
+        }}
       />
-      
+
       {/* Play/Pause Button */}
-      <button 
-        onClick={toggle} 
+      <button
+        onClick={toggle}
         className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-[#0e9de8] text-white hover:bg-[#0077c2] transition-colors shadow-md"
       >
         {playing ? <FaPause className="text-sm" /> : <FaPlay className="text-sm ml-0.5" />}
@@ -266,17 +328,17 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
       </span>
 
       {/* Cloud Download Icon */}
-      <a 
-        href={src} 
-        download 
+      <a
+        href={src}
+        download
         className={`shrink-0 ${isMine ? 'text-white/80 hover:text-white' : 'text-gray-300 hover:text-white'} transition-colors`}
         onClick={(e) => e.stopPropagation()}
         title="Tải xuống"
       >
         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M10 3a1 1 0 011 1v5.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z"/>
-          <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/>
-          <path d="M6.5 9.5a1 1 0 011-1h5a1 1 0 110 2h-5a1 1 0 01-1-1z"/>
+          <path d="M10 3a1 1 0 011 1v5.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z" />
+          <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+          <path d="M6.5 9.5a1 1 0 011-1h5a1 1 0 110 2h-5a1 1 0 01-1-1z" />
         </svg>
       </a>
     </div>
@@ -295,7 +357,16 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [memberInfo, setMemberInfo] = useState<User | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [searchResults, setSearchResults] = useState<{ type: string; content?: string; url?: string; name?: string; timestamp: string; messageID?: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<
+    {
+      type: string;
+      content?: string;
+      url?: string;
+      name?: string;
+      timestamp: string;
+      messageID?: string;
+    }[]
+  >([]);
   const [showSearch, setShowSearch] = useState(false);
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const msgRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -306,7 +377,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [typingUsers, setTypingUsers] = useState<{ userID: string; userName: string }[]>([]);
   const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [seenMap, setSeenMap] = useState<Record<string, { userID: string; userName: string; avatar?: string | null; readAt: string }[]>>({});
+  const [seenMap, setSeenMap] = useState<
+    Record<string, { userID: string; userName: string; avatar?: string | null; readAt: string }[]>
+  >({});
 
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -327,7 +400,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     const userID = user.userID;
 
     setMessages(selectedChat.lastMessage || []);
-    setPinnedMessages((selectedChat.lastMessage || []).filter((m) => m.pinnedInfo));
+    setPinnedMessages(
+      (selectedChat.lastMessage || []).filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
+    );
     setReplyTo(null);
     setFiles([]);
     setInputText('');
@@ -357,7 +432,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
     const onNewMessage = (msg: Message) => {
       setMessages((prev) => {
-        if (prev.find((m) => m.messageID === msg.messageID || (msg.tempID && m.tempID === msg.tempID))) {
+        if (
+          prev.find((m) => m.messageID === msg.messageID || (msg.tempID && m.tempID === msg.tempID))
+        ) {
           return prev.map((m) => (m.tempID === msg.tempID ? { ...m, ...msg } : m));
         }
         return [...prev, msg];
@@ -368,19 +445,27 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     };
 
     const onUnsend = (updated: Message) => {
-      setMessages((prev) => prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m)));
+      setMessages((prev) =>
+        prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m))
+      );
     };
 
     const onGhim = (updated: Message) => {
-      setMessages((prev) => prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m)));
+      setMessages((prev) =>
+        prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m))
+      );
       setPinnedMessages((prev) => {
         const exists = prev.find((m) => m.messageID === updated.messageID);
-        return exists ? prev.map((m) => (m.messageID === updated.messageID ? updated : m)) : [...prev, updated];
+        return exists
+          ? prev.map((m) => (m.messageID === updated.messageID ? updated : m))
+          : [...prev, updated];
       });
     };
 
     const onUnghim = (updated: Message) => {
-      setMessages((prev) => prev.map((m) => (m.messageID === updated.messageID ? { ...m, pinnedInfo: null } : m)));
+      setMessages((prev) =>
+        prev.map((m) => (m.messageID === updated.messageID ? { ...m, pinnedInfo: null } : m))
+      );
       setPinnedMessages((prev) => prev.filter((m) => m.messageID !== updated.messageID));
     };
 
@@ -402,31 +487,80 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     socket.on(`status_update_${chatID}`, onStatusUpdate);
     socket.on('updatee_user', onUpdateUser);
 
-    const onTypingStart = ({ chatID: evtChatID, userID: uid, userName }: { chatID: string; userID: string; userName: string }) => {
+    const onTypingStart = ({
+      chatID: evtChatID,
+      userID: uid,
+      userName,
+    }: {
+      chatID: string;
+      userID: string;
+      userName: string;
+    }) => {
       if (uid === userID || evtChatID !== chatID) return;
-      setTypingUsers((prev) => prev.find((u) => u.userID === uid) ? prev : [...prev, { userID: uid, userName }]);
+      setTypingUsers((prev) =>
+        prev.find((u) => u.userID === uid) ? prev : [...prev, { userID: uid, userName }]
+      );
     };
-    const onTypingStop = ({ chatID: evtChatID, userID: uid }: { chatID: string; userID: string }) => {
+    const onTypingStop = ({
+      chatID: evtChatID,
+      userID: uid,
+    }: {
+      chatID: string;
+      userID: string;
+    }) => {
       if (evtChatID !== chatID) return;
       setTypingUsers((prev) => prev.filter((u) => u.userID !== uid));
     };
 
-    const onMessageSeen = (data: { chatID: string; messageID: string; userID: string; userName: string; avatar?: string | null; readAt: string }) => {
+    const onMessageSeen = (data: {
+      chatID: string;
+      messageID: string;
+      userID: string;
+      userName: string;
+      avatar?: string | null;
+      readAt: string;
+    }) => {
       if (data.chatID !== chatID) return;
       setSeenMap((prev) => {
         const existing = prev[data.messageID] || [];
         if (existing.find((r) => r.userID === data.userID)) return prev;
-        return { ...prev, [data.messageID]: [...existing, { userID: data.userID, userName: data.userName, avatar: data.avatar, readAt: data.readAt }] };
+        return {
+          ...prev,
+          [data.messageID]: [
+            ...existing,
+            {
+              userID: data.userID,
+              userName: data.userName,
+              avatar: data.avatar,
+              readAt: data.readAt,
+            },
+          ],
+        };
       });
     };
-    const onBulkSeen = (data: { chatID: string; userID: string; userName: string; avatar?: string | null; readAt: string; messageIDs: string[] }) => {
+    const onBulkSeen = (data: {
+      chatID: string;
+      userID: string;
+      userName: string;
+      avatar?: string | null;
+      readAt: string;
+      messageIDs: string[];
+    }) => {
       if (data.chatID !== chatID) return;
       setSeenMap((prev) => {
         const next = { ...prev };
         data.messageIDs.forEach((mid) => {
           const existing = next[mid] || [];
           if (!existing.find((r) => r.userID === data.userID)) {
-            next[mid] = [...existing, { userID: data.userID, userName: data.userName, avatar: data.avatar, readAt: data.readAt }];
+            next[mid] = [
+              ...existing,
+              {
+                userID: data.userID,
+                userName: data.userName,
+                avatar: data.avatar,
+                readAt: data.readAt,
+              },
+            ];
           }
         });
         return next;
@@ -448,8 +582,26 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     };
     socket.on('reminder_event', onReminderEvent);
 
+    const onCallSystemMessage = (data: {
+      chatID: string;
+      type: 'call-missed' | 'call-rejected' | 'call-ended';
+      from: string;
+      duration?: number;
+      messageID?: string;
+    }) => {
+      // Không cần xử lý gì vì đã có new_message event
+      // Event này chỉ để backward compatibility
+      console.log('call-system-message received (ignored, using new_message instead):', data);
+    };
+    socket.on('call-system-message', onCallSystemMessage);
+
     if (user) {
-      socket.emit('bulk_seen', { chatID, userID, userName: user.name, avatar: user.anhDaiDien || null });
+      socket.emit('bulk_seen', {
+        chatID,
+        userID,
+        userName: user.name,
+        avatar: user.anhDaiDien || null,
+      });
     }
 
     return () => {
@@ -465,31 +617,43 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('message_seen', onMessageSeen);
       socket.off('bulk_seen', onBulkSeen);
       socket.off('reminder_event', onReminderEvent);
+      socket.off('call-system-message', onCallSystemMessage);
       setTypingUsers([]);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.chatID, user?.userID]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const buildMsg = (extra: Partial<Message>): Message => ({
-    tempID: Date.now().toString(),
-    chatID: selectedChat!.chatID,
-    senderID: user!.userID,
-    timestamp: new Date().toISOString(),
-    status: 'sent',
-    senderInfo: { name: user!.name, avatar: user!.anhDaiDien || null },
-    replyTo: replyTo
-      ? { messageID: replyTo.messageID, senderID: replyTo.senderID, content: replyTo.content, type: replyTo.type, media_url: replyTo.media_url }
-      : null,
-    ...extra,
-  } as Message);
+  const buildMsg = (extra: Partial<Message>): Message =>
+    ({
+      tempID: Date.now().toString(),
+      chatID: selectedChat!.chatID,
+      senderID: user!.userID,
+      timestamp: new Date().toISOString(),
+      status: 'sent',
+      senderInfo: { name: user!.name, avatar: user!.anhDaiDien || null },
+      replyTo: replyTo
+        ? {
+            messageID: replyTo.messageID,
+            senderID: replyTo.senderID,
+            content: replyTo.content,
+            type: replyTo.type,
+            media_url: replyTo.media_url,
+          }
+        : null,
+      ...extra,
+    }) as Message;
 
   const sendText = () => {
     if (!inputText.trim() || !selectedChat || !user) return;
-    socket.emit('typing_stop', { chatID: selectedChat.chatID, userID: user.userID, userName: user.name });
+    socket.emit('typing_stop', {
+      chatID: selectedChat.chatID,
+      userID: user.userID,
+      userName: user.name,
+    });
     if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
     const msg = buildMsg({ content: inputText, type: 'text', media_url: [] });
     socket.emit('send_message', msg);
@@ -501,10 +665,18 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const handleInputChange = (value: string) => {
     setInputText(value);
     if (!selectedChat || !user) return;
-    socket.emit('typing_start', { chatID: selectedChat.chatID, userID: user.userID, userName: user.name });
+    socket.emit('typing_start', {
+      chatID: selectedChat.chatID,
+      userID: user.userID,
+      userName: user.name,
+    });
     if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
     typingDebounceRef.current = setTimeout(() => {
-      socket.emit('typing_stop', { chatID: selectedChat.chatID, userID: user.userID, userName: user.name });
+      socket.emit('typing_stop', {
+        chatID: selectedChat.chatID,
+        userID: user.userID,
+        userName: user.name,
+      });
     }, 2000);
   };
 
@@ -591,19 +763,22 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       else groups.file.push(f);
     });
 
-    console.log('Uploading files:', { 
-      total: fileList.length, 
-      images: groups.image.length, 
-      videos: groups.video.length, 
-      files: groups.file.length 
+    console.log('Uploading files:', {
+      total: fileList.length,
+      images: groups.image.length,
+      videos: groups.video.length,
+      files: groups.file.length,
     });
 
     try {
       for (const [type, files] of Object.entries(groups)) {
         if (!files.length) continue;
-        
-        console.log(`Uploading ${type}:`, files.map(f => ({ name: f.name, size: f.size, type: f.type })));
-        
+
+        console.log(
+          `Uploading ${type}:`,
+          files.map((f) => ({ name: f.name, size: f.size, type: f.type }))
+        );
+
         const form = new FormData();
         files.forEach((f) => form.append('files', f));
 
@@ -612,13 +787,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           headers: authHeaders(),
           body: form,
         });
-        
+
         if (!res.ok) {
           const errorText = await res.text();
           console.error('Upload error:', errorText);
           throw new Error(`Upload failed: ${res.status} - ${errorText}`);
         }
-        
+
         const data = await res.json();
         console.log('Upload success:', data);
 
@@ -650,7 +825,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   const handleUnsend = (msg: Message) => {
     if (!msg.messageID || msg.senderID !== user?.userID) return;
-    socket.emit('unsend_message', { messageID: msg.messageID, chatID: selectedChat!.chatID, senderID: user!.userID });
+    socket.emit('unsend_message', {
+      messageID: msg.messageID,
+      chatID: selectedChat!.chatID,
+      senderID: user!.userID,
+    });
     setActionMsgId(null);
   };
 
@@ -659,7 +838,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     if (msg.pinnedInfo) {
       socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
     } else {
-      socket.emit('ghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID, senderID: user!.userID });
+      socket.emit('ghim_message', {
+        messageID: msg.messageID,
+        chatID: selectedChat!.chatID,
+        senderID: user!.userID,
+      });
     }
     setActionMsgId(null);
   };
@@ -693,7 +876,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       mediaRecorderRef.current = mr;
       audioChunksRef.current = [];
 
-      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
       mr.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
@@ -730,14 +915,18 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     try {
       const form = new FormData();
       form.append('file', audioBlob, 'voice-message.webm');
-      const res = await fetch(`${API}/upload/audio`, { method: 'POST', headers: authHeaders(), body: form });
+      const res = await fetch(`${API}/upload/audio`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form,
+      });
       const data = await res.json();
       console.log('Upload response:', data);
-      
+
       if (!res.ok) {
         throw new Error(data.error || 'Upload failed');
       }
-      
+
       const msg = buildMsg({ content: '', type: 'audio', media_url: [data.url] });
       console.log('Sending audio message:', msg);
       socket.emit('send_message', msg);
@@ -745,17 +934,24 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       setAudioBlob(null);
       setRecordingTime(0);
       setReplyTo(null);
-    } catch (err) { 
+    } catch (err) {
       console.error('Error sending audio:', err);
-      alert('Lỗi gửi audio: ' + (err instanceof Error ? err.message : 'Unknown error')); 
+      alert('Lỗi gửi audio: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsUploading(false);
     }
-    finally { setIsUploading(false); }
   };
 
-  const formatRecordTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+  const formatRecordTime = (s: number) =>
+    `${Math.floor(s / 60)
+      .toString()
+      .padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
   const handleSearch = async () => {
-    if (!searchKeyword.trim() || !selectedChat) { setSearchResults([]); return; }
+    if (!searchKeyword.trim() || !selectedChat) {
+      setSearchResults([]);
+      return;
+    }
     try {
       const res = await fetch(
         `${API}/messages/search?chatID=${selectedChat.chatID}&keyword=${encodeURIComponent(searchKeyword.trim())}`,
@@ -791,51 +987,87 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     if (msg.type === 'notification') {
       return <span className="text-xs text-gray-500 italic">{msg.content}</span>;
     }
+    if (msg.type === 'call-missed') {
+      return (
+        <div className="flex items-center gap-2 text-sm text-red-500">
+          <FaPhone className="text-xs" />
+          <span>Cuộc gọi nhỡ</span>
+        </div>
+      );
+    }
+    if (msg.type === 'call-rejected') {
+      return (
+        <div className="flex items-center gap-2 text-sm text-orange-500">
+          <FaPhone className="text-xs" />
+          <span>Cuộc gọi bị từ chối</span>
+        </div>
+      );
+    }
+    if (msg.type === 'call-ended' && msg.content) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-green-500">
+          <FaPhone className="text-xs" />
+          <span>Cuộc gọi • {msg.content}</span>
+        </div>
+      );
+    }
     if (msg.type === 'image' && msg.media_url?.length) {
       const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
       return (
-        <img 
-          src={url} 
-          alt="img" 
-          className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg" 
-          onClick={() => window.open(url, '_blank')} 
+        <img
+          src={url}
+          alt="img"
+          className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg"
+          onClick={() => window.open(url, '_blank')}
         />
       );
     }
     if (msg.type === 'sticker' && msg.media_url?.length) {
       const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
       return (
-        <img 
-          src={url} 
-          alt="sticker" 
-          className="w-[150px] h-[150px] object-contain cursor-pointer" 
-          onClick={() => window.open(url, '_blank')} 
+        <img
+          src={url}
+          alt="sticker"
+          className="w-[150px] h-[150px] object-contain cursor-pointer"
+          onClick={() => window.open(url, '_blank')}
         />
       );
     }
     if (msg.type === 'gif' && msg.media_url?.length) {
       const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
       return (
-        <img 
-          src={url} 
-          alt="gif" 
-          className="max-w-[300px] max-h-[300px] w-auto h-auto object-contain cursor-pointer rounded-lg" 
-          onClick={() => window.open(url, '_blank')} 
+        <img
+          src={url}
+          alt="gif"
+          className="max-w-[300px] max-h-[300px] w-auto h-auto object-contain cursor-pointer rounded-lg"
+          onClick={() => window.open(url, '_blank')}
         />
       );
     }
     if (msg.type === 'video' && msg.media_url?.length) {
-      return <video src={typeof msg.media_url[0] === 'string' ? msg.media_url[0] : ''} controls className="max-w-[280px] rounded-lg" />;
+      return (
+        <video
+          src={typeof msg.media_url[0] === 'string' ? msg.media_url[0] : ''}
+          controls
+          className="max-w-[280px] rounded-lg"
+        />
+      );
     }
     if (msg.type === 'audio' && msg.media_url?.length) {
       const src = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
-      console.log('Rendering audio message:', { src, type: msg.type, isMine: msg.senderID === user?.userID });
+      console.log('Rendering audio message:', {
+        src,
+        type: msg.type,
+        isMine: msg.senderID === user?.userID,
+      });
       return <AudioPlayer src={src} isMine={msg.senderID === user?.userID} />;
     }
     if (msg.type === 'file' && msg.media_url?.length) {
       const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
       const fileName = msg.content || 'file';
-      return <FileDisplay fileName={fileName} fileUrl={url} isMine={msg.senderID === user?.userID} />;
+      return (
+        <FileDisplay fileName={fileName} fileUrl={url} isMine={msg.senderID === user?.userID} />
+      );
     }
     return <span className="text-sm whitespace-pre-wrap break-words">{msg.content}</span>;
   };
@@ -847,21 +1079,29 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           <div className="w-20 h-20 bg-linear-to-br from-[#0e9de8] to-[#0077c2] rounded-full flex items-center justify-center text-white text-4xl shadow-[0_4px_16px_rgba(14,157,232,0.35)]">
             <FaComments />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 m-0">Chào mừng, {user?.name}!</h2>
-          <p className="text-sm text-gray-400 dark:text-gray-500 m-0">Chọn một cuộc trò chuyện để bắt đầu nhắn tin</p>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 m-0">
+            Chào mừng, {user?.name}!
+          </h2>
+          <p className="text-sm text-gray-400 dark:text-gray-500 m-0">
+            Chọn một cuộc trò chuyện để bắt đầu nhắn tin
+          </p>
         </div>
       </div>
     );
   }
 
-  const chatName = selectedChat.type === 'private' ? (memberInfo?.name || selectedChat.name) : selectedChat.name;
-  const chatAvatar = selectedChat.type === 'private'
-    ? (memberInfo?.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + memberInfo?.userID)
-    : (selectedChat.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + selectedChat.chatID);
+  const chatName =
+    selectedChat.type === 'private' ? memberInfo?.name || selectedChat.name : selectedChat.name;
+  const chatAvatar =
+    selectedChat.type === 'private'
+      ? memberInfo?.anhDaiDien ||
+        'https://api.dicebear.com/7.x/avataaars/svg?seed=' + memberInfo?.userID
+      : selectedChat.avatar ||
+        'https://api.dicebear.com/7.x/identicon/svg?seed=' + selectedChat.chatID;
 
   type TimelineItem =
     | { kind: 'message'; data: Message; key: string; ts: number }
-    | { kind: 'reminder'; data: typeof reminderEvents[0]; key: string; ts: number };
+    | { kind: 'reminder'; data: (typeof reminderEvents)[0]; key: string; ts: number };
 
   const timeline: TimelineItem[] = [
     ...messages.map((m) => ({
@@ -882,11 +1122,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     <>
       <div
         className="flex-1 flex flex-col h-screen bg-gray-100 dark:bg-gray-800"
-        onClick={() => { setActionMsgId(null); setShowEmoji(false); }}
+        onClick={() => {
+          setActionMsgId(null);
+          setShowEmoji(false);
+        }}
       >
         <div className="flex-1 flex w-full h-full overflow-hidden">
           <div className="flex-1 h-full bg-white dark:bg-gray-900 flex flex-col overflow-hidden">
-
             {/* Header */}
             <div className="flex items-center px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_1px_4px_rgba(0,0,0,0.05)] flex-shrink-0">
               <img
@@ -895,48 +1137,64 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 dark:border-blue-800"
               />
               <div className="flex-1">
-                <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900 dark:text-gray-100">{chatName}</h2>
+                <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900 dark:text-gray-100">
+                  {chatName}
+                </h2>
                 <p className="text-xs text-gray-400 m-0">
-                  {memberInfo?.trangThai === 'online'
-                    ? <span className="text-green-500">● Đang hoạt động</span>
-                    : <span>● Ngoại tuyến</span>}
+                  {memberInfo?.trangThai === 'online' ? (
+                    <span className="text-green-500">● Đang hoạt động</span>
+                  ) : (
+                    <span>● Ngoại tuyến</span>
+                  )}
                 </p>
               </div>
 
               {/* Action buttons */}
               <div className="flex items-center gap-2">
-                {/* 📞 CALL THƯỜNG */}
+                {/* 📞 VOICE CALL */}
                 <button
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition hover:cursor-pointer"
-                  title="Gọi thường"
-                  onClick={() => onStartVideoCall?.()}
+                  className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8] dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-[#0e9de8]"
+                  title="Gọi thoại"
+                  onClick={() => onStartVideoCall?.('voice')}
                 >
-                  <FaPhone className="text-green-500 dark:text-green-400 text-lg" />
+                  <FaPhone />
                 </button>
 
                 {/* 🎥 VIDEO CALL */}
                 <button
-                  onClick={() => onStartVideoCall?.()}
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition hover:cursor-pointer"
+                  onClick={() => onStartVideoCall?.('video')}
+                  className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8] dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-[#0e9de8]"
                   title="Gọi video"
                 >
-                  <FaVideo className="text-blue-500 dark:text-blue-400 text-lg" />
+                  <FaVideo />
                 </button>
 
-                {/* Nút tìm kiếm */}
+                {/* 🔍 SEARCH */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowSearch((v) => !v); setShowInfo(false); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowSearch((v) => !v);
+                    setShowInfo(false);
+                  }}
                   title="Tìm kiếm"
-                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showSearch ? 'bg-blue-50 text-[#0e9de8]' : 'text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'}`}
+                  className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
+                    showSearch
+                      ? 'bg-blue-50 text-[#0e9de8]'
+                      : 'text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'
+                  }`}
                 >
                   <FaSearch />
                 </button>
 
                 {/* Nút thông tin hội thoại */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowInfo((v) => !v); setShowSearch(false); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowInfo((v) => !v);
+                    setShowSearch(false);
+                  }}
                   title="Thông tin hội thoại"
-                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showInfo ? 'bg-blue-50 text-[#0e9de8]' : 'text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'}`}
+                  className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showInfo ? 'bg-blue-50 text-[#0e9de8]' : 'text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'}`}
                 >
                   <FaInfoCircle />
                 </button>
@@ -950,7 +1208,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 <span className="text-xs text-yellow-700 dark:text-yellow-400 truncate flex-1">
                   {pinnedMessages[pinnedMessages.length - 1]?.content || '[Media]'}
                 </span>
-                <span className="text-xs text-yellow-500">{pinnedMessages.length} tin nhắn đã ghim</span>
+                <span className="text-xs text-yellow-500">
+                  {pinnedMessages.length} tin nhắn đã ghim
+                </span>
               </div>
             )}
 
@@ -968,27 +1228,57 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           <span>
                             <strong className="text-gray-700 dark:text-gray-200">
                               {evt.userID === user?.userID ? 'Bạn' : evt.userName}
-                            </strong> tạo nhắc hẹn mới <strong className="text-gray-700 dark:text-gray-200">{evt.reminder.title}</strong>
-                            {' - '}{(() => { const d = new Date(evt.reminder.datetime); const days = ['CN','T2','T3','T4','T5','T6','T7']; return `${days[d.getDay()]}, ${d.getDate()} Tháng ${d.getMonth()+1} lúc ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}
+                            </strong>{' '}
+                            tạo nhắc hẹn mới{' '}
+                            <strong className="text-gray-700 dark:text-gray-200">
+                              {evt.reminder.title}
+                            </strong>
+                            {' - '}
+                            {(() => {
+                              const d = new Date(evt.reminder.datetime);
+                              const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+                              return `${days[d.getDay()]}, ${d.getDate()} Tháng ${d.getMonth() + 1} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                            })()}
                             {' . '}
-                            <button onClick={() => setShowReminder(true)} className="text-[#0e9de8] hover:underline font-medium">Xem</button>
+                            <button
+                              onClick={() => setShowReminder(true)}
+                              className="text-[#0e9de8] hover:underline font-medium"
+                            >
+                              Xem
+                            </button>
                           </span>
                         ) : (
                           <span>
                             <strong className="text-gray-700 dark:text-gray-200">
                               {evt.userID === user?.userID ? 'Bạn' : evt.userName}
-                            </strong> xóa nhắc hẹn <strong className="text-gray-700 dark:text-gray-200">{evt.reminder.title}</strong>
+                            </strong>{' '}
+                            xóa nhắc hẹn{' '}
+                            <strong className="text-gray-700 dark:text-gray-200">
+                              {evt.reminder.title}
+                            </strong>
                             {' . '}
-                            <button onClick={() => setShowReminder(true)} className="text-[#0e9de8] hover:underline font-medium">Tạo mới</button>
+                            <button
+                              onClick={() => setShowReminder(true)}
+                              className="text-[#0e9de8] hover:underline font-medium"
+                            >
+                              Tạo mới
+                            </button>
                           </span>
                         )}
                       </div>
                       {evt.type === 'created' && (
                         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 w-[280px] flex flex-col items-center gap-2 shadow-sm">
                           <span className="text-2xl">🔔</span>
-                          <p className="text-[15px] font-bold text-gray-900 dark:text-gray-100 text-center m-0">{evt.reminder.title}</p>
+                          <p className="text-[15px] font-bold text-gray-900 dark:text-gray-100 text-center m-0">
+                            {evt.reminder.title}
+                          </p>
                           <p className="text-[12px] text-gray-500 dark:text-gray-400 flex items-center gap-1 m-0">
-                            🕐 {(() => { const d = new Date(evt.reminder.datetime); const days = ['CN','T2','T3','T4','T5','T6','T7']; return `${days[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}
+                            🕐{' '}
+                            {(() => {
+                              const d = new Date(evt.reminder.datetime);
+                              const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+                              return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                            })()}
                           </p>
                           <button
                             onClick={() => setShowReminder(true)}
@@ -1011,7 +1301,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 if (isNotif) {
                   return (
                     <div key={msgKey} className="flex justify-center my-1">
-                      <span className="text-xs text-gray-500 bg-white/70 dark:bg-gray-700/70 px-3 py-1 rounded-full">{msg.content}</span>
+                      <span className="text-xs text-gray-500 bg-white/70 dark:bg-gray-700/70 px-3 py-1 rounded-full">
+                        {msg.content}
+                      </span>
                     </div>
                   );
                 }
@@ -1027,21 +1319,30 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     {/* Avatar */}
                     {!isMine && (
                       <img
-                        src={msg.senderInfo?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + msg.senderID}
+                        src={
+                          msg.senderInfo?.avatar ||
+                          'https://api.dicebear.com/7.x/avataaars/svg?seed=' + msg.senderID
+                        }
                         alt="av"
                         className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1"
                       />
                     )}
 
-                    <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
+                    <div
+                      className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}
+                    >
                       {/* Sender name (group) */}
                       {!isMine && selectedChat.type === 'group' && (
-                        <span className="text-[11px] text-gray-500 mb-0.5 ml-1">{msg.senderInfo?.name}</span>
+                        <span className="text-[11px] text-gray-500 mb-0.5 ml-1">
+                          {msg.senderInfo?.name}
+                        </span>
                       )}
 
                       {/* Reply preview */}
                       {msg.replyTo?.content && (
-                        <div className={`text-xs px-2 py-1 rounded-t-lg border-l-2 border-[#0e9de8] bg-gray-100 dark:bg-gray-700 text-gray-500 max-w-full truncate mb-0.5 ${isMine ? 'self-end' : 'self-start'}`}>
+                        <div
+                          className={`text-xs px-2 py-1 rounded-t-lg border-l-2 border-[#0e9de8] bg-gray-100 dark:bg-gray-700 text-gray-500 max-w-full truncate mb-0.5 ${isMine ? 'self-end' : 'self-start'}`}
+                        >
                           <FaReply className="inline mr-1 text-[10px]" />
                           {msg.replyTo.content}
                         </div>
@@ -1051,7 +1352,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       <div className="relative">
                         <div
                           className={`${
-                            msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif'
+                            msg.type === 'image' ||
+                            msg.type === 'video' ||
+                            msg.type === 'sticker' ||
+                            msg.type === 'gif'
                               ? '' // Không có background cho ảnh/video/sticker/gif
                               : `px-3 py-2 rounded-2xl shadow-sm ${
                                   isMine
@@ -1059,14 +1363,19 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                                     : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-bl-sm'
                                 }`
                           } ${msg.type === 'unsend' ? 'opacity-60' : ''} cursor-pointer select-text`}
-                          onContextMenu={(e) => { e.preventDefault(); setActionMsgId(msgKey); }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setActionMsgId(msgKey);
+                          }}
                         >
                           {renderMessageContent(msg)}
                         </div>
 
                         {/* Pinned indicator */}
                         {msg.pinnedInfo && (
-                          <BsPin className={`absolute -top-1.5 ${isMine ? '-left-4' : '-right-4'} text-yellow-500 text-xs`} />
+                          <BsPin
+                            className={`absolute -top-1.5 ${isMine ? '-left-4' : '-right-4'} text-yellow-500 text-xs`}
+                          />
                         )}
 
                         {/* Action menu */}
@@ -1077,7 +1386,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           >
                             <button
                               className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                              onClick={() => { setReplyTo(msg); setActionMsgId(null); inputRef.current?.focus(); }}
+                              onClick={() => {
+                                setReplyTo(msg);
+                                setActionMsgId(null);
+                                inputRef.current?.focus();
+                              }}
                             >
                               <FaReply className="text-gray-400 text-xs" /> Trả lời
                             </button>
@@ -1115,8 +1428,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       </div>
 
                       {/* Time + status + read receipts */}
-                      <div className={`flex items-center gap-1 mt-0.5 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
-                        <span className="text-[10px] text-gray-400">{formatTime(msg.timestamp)}</span>
+                      <div
+                        className={`flex items-center gap-1 mt-0.5 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}
+                      >
+                        <span className="text-[10px] text-gray-400">
+                          {formatTime(msg.timestamp)}
+                        </span>
                         {isMine && (
                           <span className="text-[10px] text-gray-400">
                             {msg.status === 'read' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : '✓'}
@@ -1130,7 +1447,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               .map((r) => (
                                 <img
                                   key={r.userID}
-                                  src={r.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.userID}`}
+                                  src={
+                                    r.avatar ||
+                                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.userID}`
+                                  }
                                   alt={r.userName}
                                   title={`${r.userName} đã xem lúc ${new Date(r.readAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
                                   className="w-3.5 h-3.5 rounded-full object-cover border border-white"
@@ -1171,7 +1491,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   <span className="font-medium text-[#0e9de8]">Trả lời </span>
                   {replyTo.content || '[Media]'}
                 </div>
-                <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <button
+                  onClick={() => setReplyTo(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
                   <FaTimes className="text-xs" />
                 </button>
               </div>
@@ -1181,13 +1504,23 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             {files.length > 0 && (
               <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 flex-shrink-0 flex-wrap">
                 {files.map((f, i) => (
-                  <div key={i} className="flex items-center gap-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-xs text-gray-700 dark:text-gray-300">
+                  <div
+                    key={i}
+                    className="flex items-center gap-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-xs text-gray-700 dark:text-gray-300"
+                  >
                     {f.type.startsWith('image/') ? (
-                      <img src={URL.createObjectURL(f)} alt="" className="w-8 h-8 rounded object-cover" />
+                      <img
+                        src={URL.createObjectURL(f)}
+                        alt=""
+                        className="w-8 h-8 rounded object-cover"
+                      />
                     ) : (
                       <span className="text-[10px] truncate max-w-[80px]">{f.name}</span>
                     )}
-                    <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 ml-1">
+                    <button
+                      onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-gray-400 hover:text-red-500 ml-1"
+                    >
                       <FaTimes className="text-[10px]" />
                     </button>
                   </div>
@@ -1207,7 +1540,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               {/* Toolbar icons */}
               <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowEmoji((v) => !v); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowEmoji((v) => !v);
+                  }}
                   title="Emoji"
                   className={`w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors ${showEmoji ? 'text-[#0e9de8] bg-blue-50' : 'text-gray-500 hover:text-[#0e9de8] hover:bg-gray-100'}`}
                 >
@@ -1220,13 +1556,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 >
                   <FaImage />
                 </button>
-                <input 
-                  ref={imageInputRef} 
-                  type="file" 
-                  accept="image/*,video/*" 
-                  multiple 
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
                   className="hidden"
-                  onChange={(e) => { 
+                  onChange={(e) => {
                     if (e.target.files) {
                       const fileArray = Array.from(e.target.files);
                       setFiles(fileArray);
@@ -1237,9 +1573,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         }
                       }, 100);
                     }
-                  }} 
+                  }}
                 />
-                
+
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   title="Gửi file"
@@ -1247,8 +1583,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 >
                   <FaPaperclip />
                 </button>
-                <input ref={fileInputRef} type="file" multiple className="hidden"
-                  onChange={(e) => { 
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
                     if (e.target.files) {
                       const fileArray = Array.from(e.target.files);
                       setFiles(fileArray);
@@ -1259,8 +1599,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         }
                       }, 100);
                     }
-                  }} />
-                
+                  }}
+                />
+
                 {!isRecording && !audioBlob && (
                   <button
                     onClick={startRecording}
@@ -1270,9 +1611,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     <FaMicrophone />
                   </button>
                 )}
-                
+
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowReminder(true); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowReminder(true);
+                  }}
                   title="Nhắc hẹn"
                   className={`w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors ${showReminder ? 'text-[#0e9de8] bg-blue-50' : 'text-gray-500 hover:text-[#0e9de8] hover:bg-gray-100'}`}
                 >
@@ -1282,7 +1626,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
               {/* Emoji picker modal */}
               {showEmoji && (
-                <StickerEmojiPicker 
+                <StickerEmojiPicker
                   onEmojiClick={sendEmoji}
                   onStickerClick={sendSticker}
                   onGifClick={sendGif}
@@ -1296,7 +1640,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
                   {/* Waveform bars */}
                   <div className="flex items-center gap-[3px] h-6">
-                    {[1,2,3,4,5,6,7].map((i) => (
+                    {[1, 2, 3, 4, 5, 6, 7].map((i) => (
                       <span
                         key={i}
                         className="w-[3px] rounded-full bg-red-500"
@@ -1308,11 +1652,20 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       />
                     ))}
                   </div>
-                  <span className="text-sm text-red-600 font-medium flex-1">{formatRecordTime(recordingTime)}</span>
-                  <button onClick={cancelRecording} className="text-gray-400 hover:text-red-500 transition-colors" title="Hủy">
+                  <span className="text-sm text-red-600 font-medium flex-1">
+                    {formatRecordTime(recordingTime)}
+                  </span>
+                  <button
+                    onClick={cancelRecording}
+                    className="text-gray-400 hover:text-red-500 transition-colors"
+                    title="Hủy"
+                  >
                     <FaTimes className="text-sm" />
                   </button>
-                  <button onClick={stopRecording} className="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors flex items-center gap-1">
+                  <button
+                    onClick={stopRecording}
+                    className="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors flex items-center gap-1"
+                  >
                     <FaStop className="text-[10px]" /> Dừng
                   </button>
                 </div>
@@ -1322,7 +1675,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               {audioBlob && !isRecording && (
                 <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-100">
                   <audio src={URL.createObjectURL(audioBlob)} controls className="h-8 flex-1" />
-                  <button onClick={cancelRecording} className="text-gray-400 hover:text-red-500 transition-colors" title="Hủy">
+                  <button
+                    onClick={cancelRecording}
+                    className="text-gray-400 hover:text-red-500 transition-colors"
+                    title="Hủy"
+                  >
                     <FaTimes className="text-sm" />
                   </button>
                   <button
@@ -1342,7 +1699,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   type="text"
                   value={inputText}
                   onChange={(e) => handleInputChange(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendText();
+                    }
+                  }}
                   placeholder="Nhập tin nhắn..."
                   className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-[22px] outline-none text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:border-[#0e9de8] focus:bg-white dark:focus:bg-gray-700 transition-colors"
                 />
@@ -1364,9 +1726,15 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-                <h3 className="text-[14px] font-semibold text-gray-800 dark:text-gray-100 flex-1">Tìm kiếm tin nhắn</h3>
+                <h3 className="text-[14px] font-semibold text-gray-800 dark:text-gray-100 flex-1">
+                  Tìm kiếm tin nhắn
+                </h3>
                 <button
-                  onClick={() => { setShowSearch(false); setSearchResults([]); setSearchKeyword(''); }}
+                  onClick={() => {
+                    setShowSearch(false);
+                    setSearchResults([]);
+                    setSearchKeyword('');
+                  }}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <FaTimes />
@@ -1382,12 +1750,19 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     placeholder="Nhập từ khóa..."
                     className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:border-[#0e9de8] bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100"
                   />
-                  <button onClick={handleSearch} className="px-3 py-1.5 bg-[#0e9de8] text-white rounded-lg text-sm hover:bg-[#0077c2] transition-colors">Tìm</button>
+                  <button
+                    onClick={handleSearch}
+                    className="px-3 py-1.5 bg-[#0e9de8] text-white rounded-lg text-sm hover:bg-[#0077c2] transition-colors"
+                  >
+                    Tìm
+                  </button>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2">
                 {searchResults.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center mt-8">{searchKeyword ? 'Không tìm thấy kết quả' : 'Nhập từ khóa để tìm kiếm'}</p>
+                  <p className="text-sm text-gray-400 text-center mt-8">
+                    {searchKeyword ? 'Không tìm thấy kết quả' : 'Nhập từ khóa để tìm kiếm'}
+                  </p>
                 ) : (
                   searchResults.map((r, i) => (
                     <div
@@ -1397,17 +1772,37 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     >
                       {r.type === 'message' && (
                         <p className="text-gray-700 dark:text-gray-200 text-[13px] leading-snug line-clamp-2">
-                          {r.content?.split(new RegExp(`(${searchKeyword})`, 'gi')).map((part, j) =>
-                            part.toLowerCase() === searchKeyword.toLowerCase()
-                              ? <mark key={j} className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-gray-100 rounded px-0.5">{part}</mark>
-                              : part
-                          )}
+                          {r.content
+                            ?.split(new RegExp(`(${searchKeyword})`, 'gi'))
+                            .map((part, j) =>
+                              part.toLowerCase() === searchKeyword.toLowerCase() ? (
+                                <mark
+                                  key={j}
+                                  className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-gray-100 rounded px-0.5"
+                                >
+                                  {part}
+                                </mark>
+                              ) : (
+                                part
+                              )
+                            )}
                         </p>
                       )}
-                      {r.type === 'file' && <a href={r.url} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">{r.name}</a>}
+                      {r.type === 'file' && (
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-500 hover:underline"
+                        >
+                          {r.name}
+                        </a>
+                      )}
                       <p className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-1">
                         🕐 {new Date(r.timestamp).toLocaleString('vi-VN')}
-                        {r.messageID && <span className="text-[#0e9de8] ml-auto text-[10px]">Nhấn để xem →</span>}
+                        {r.messageID && (
+                          <span className="text-[#0e9de8] ml-auto text-[10px]">Nhấn để xem →</span>
+                        )}
                       </p>
                     </div>
                   ))
