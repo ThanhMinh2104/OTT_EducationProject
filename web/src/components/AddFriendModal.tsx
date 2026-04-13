@@ -1,16 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-  FaTimes,
-  FaChevronLeft,
-  FaPen,
-} from 'react-icons/fa';
+import { FaTimes, FaChevronLeft, FaPen } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
-import { io, Socket } from 'socket.io-client';
+import socket from '../utils/socket';
 import OtherProfileModal from './OtherProfileModal';
 
-// Kết nối Socket.io để đồng bộ trạng thái real-time
-const socket: Socket = io('http://localhost:5000');
+// Kết nối Socket.io để đồng bộ trạng thái real-time (sử dụng socket instance chung)
 
 interface Props {
   onClose: () => void;
@@ -78,56 +73,64 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
     socket.emit('join_user', currentUser.userID);
 
     // Xử lý khi lời mời bị thu hồi
-    const handleCancelled = (data: { senderID: string, recipientID: string }) => {
+    const handleCancelled = (data: { senderID: string; recipientID: string }) => {
       // Xác định người cần cập nhật trạng thái về 'none'
       const targetID = data.senderID === currentUser.userID ? data.recipientID : data.senderID;
 
-      setRecentFound(prev => {
-        const updated = prev.map(u => u.userID === targetID ? { ...u, friendStatus: 'none' as const } : u);
+      setRecentFound((prev) => {
+        const updated = prev.map((u) =>
+          u.userID === targetID ? { ...u, friendStatus: 'none' as const } : u
+        );
         // Đồng bộ localStorage ngay để tránh dữ liệu cũ khi reload
         localStorage.setItem('recentSearches', JSON.stringify(updated));
         return updated;
       });
 
       if (selectedUser?.userID === targetID) {
-        setSelectedUser(prev => prev ? { ...prev, friendStatus: 'none' } : null);
+        setSelectedUser((prev) => (prev ? { ...prev, friendStatus: 'none' } : null));
       }
     };
 
     // Xử lý khi lời mời được chấp nhận
-    const handleAccepted = (data: { userID: string, name: string }) => {
+    const handleAccepted = (data: { userID: string; name: string }) => {
       const targetID = data.userID;
-      setRecentFound(prev => {
-        const updated = prev.map(u => u.userID === targetID ? { ...u, friendStatus: 'accepted' as const } : u);
+      setRecentFound((prev) => {
+        const updated = prev.map((u) =>
+          u.userID === targetID ? { ...u, friendStatus: 'accepted' as const } : u
+        );
         localStorage.setItem('recentSearches', JSON.stringify(updated));
         return updated;
       });
       if (selectedUser?.userID === targetID) {
-        setSelectedUser(prev => prev ? { ...prev, friendStatus: 'accepted' } : null);
+        setSelectedUser((prev) => (prev ? { ...prev, friendStatus: 'accepted' } : null));
       }
     };
 
-    const handleRejected = (data: { senderID: string, recipientID: string }) => {
+    const handleRejected = (data: { senderID: string; recipientID: string }) => {
       const targetID = data.senderID === currentUser.userID ? data.recipientID : data.senderID;
-      setRecentFound(prev => {
-        const updated = prev.map(u => u.userID === targetID ? { ...u, friendStatus: 'none' as const } : u);
+      setRecentFound((prev) => {
+        const updated = prev.map((u) =>
+          u.userID === targetID ? { ...u, friendStatus: 'none' as const } : u
+        );
         localStorage.setItem('recentSearches', JSON.stringify(updated));
         return updated;
       });
       if (selectedUser?.userID === targetID) {
-        setSelectedUser(prev => prev ? { ...prev, friendStatus: 'none' } : null);
+        setSelectedUser((prev) => (prev ? { ...prev, friendStatus: 'none' } : null));
       }
     };
 
-    const handleUnfriended = (data: { userID: string, friendID: string }) => {
+    const handleUnfriended = (data: { userID: string; friendID: string }) => {
       const targetID = data.userID === currentUser.userID ? data.friendID : data.userID;
-      setRecentFound(prev => {
-        const updated = prev.map(u => u.userID === targetID ? { ...u, friendStatus: 'none' as const } : u);
+      setRecentFound((prev) => {
+        const updated = prev.map((u) =>
+          u.userID === targetID ? { ...u, friendStatus: 'none' as const } : u
+        );
         localStorage.setItem('recentSearches', JSON.stringify(updated));
         return updated;
       });
       if (selectedUser?.userID === targetID) {
-        setSelectedUser(prev => prev ? { ...prev, friendStatus: 'none' } : null);
+        setSelectedUser((prev) => (prev ? { ...prev, friendStatus: 'none' } : null));
       }
     };
 
@@ -149,12 +152,14 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
     if (!phone.trim()) return;
     setLoading(true);
     try {
-      const res = await axiosInstance.post('/contacts/search-friend-by-phone', { phoneNumber: phone });
+      const res = await axiosInstance.post('/contacts/search-friend-by-phone', {
+        phoneNumber: phone,
+      });
       const user = res.data;
 
       // Thêm vào danh sách tìm kiếm gần đây (tối đa 10)
-      setRecentFound(prev => {
-        const filtered = prev.filter(u => u.userID !== user.userID);
+      setRecentFound((prev) => {
+        const filtered = prev.filter((u) => u.userID !== user.userID);
         return [{ ...user, alias: user.name }, ...filtered].slice(0, 10);
       });
 
@@ -172,25 +177,29 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
   const handleUserClick = async (user: FoundUser) => {
     try {
       // Re-fetch để lấy friendStatus chính xác nhất từ server
-      const res = await axiosInstance.post('/contacts/search-friend-by-phone', { phoneNumber: user.sdt });
+      const res = await axiosInstance.post('/contacts/search-friend-by-phone', {
+        phoneNumber: user.sdt,
+      });
       const freshUser: FoundUser = { ...res.data, alias: user.alias || res.data.name };
 
       // Cập nhật lại danh sách gần đây với dữ liệu mới
-      setRecentFound(prev =>
-        prev.map(u => u.userID === freshUser.userID ? freshUser : u)
-      );
+      setRecentFound((prev) => prev.map((u) => (u.userID === freshUser.userID ? freshUser : u)));
 
       setSelectedUser(freshUser);
       setAlias(freshUser.alias || freshUser.name);
       setIsEditingAlias(false);
-      setMessage(`Xin chào, mình là ${currentUser?.name || ''}. Mình tìm thấy bạn bằng số điện thoại. Kết bạn với mình nhé!`);
+      setMessage(
+        `Xin chào, mình là ${currentUser?.name || ''}. Mình tìm thấy bạn bằng số điện thoại. Kết bạn với mình nhé!`
+      );
       setStep('profile');
     } catch {
       // Nếu API lỗi, fallback dùng dữ liệu cache cũ
       setSelectedUser(user);
       setAlias(user.alias || user.name);
       setIsEditingAlias(false);
-      setMessage(`Xin chào, mình là ${currentUser?.name || ''}. Mình tìm thấy bạn bằng số điện thoại. Kết bạn với mình nhé!`);
+      setMessage(
+        `Xin chào, mình là ${currentUser?.name || ''}. Mình tìm thấy bạn bằng số điện thoại. Kết bạn với mình nhé!`
+      );
       setStep('profile');
     }
   };
@@ -204,8 +213,8 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
     // Cập nhật alias trong danh sách tìm kiếm gần đây
     if (selectedUser) {
       setSelectedUser({ ...selectedUser, alias: newAlias });
-      setRecentFound(prev =>
-        prev.map(u => u.userID === selectedUser.userID ? { ...u, alias: newAlias } : u)
+      setRecentFound((prev) =>
+        prev.map((u) => (u.userID === selectedUser.userID ? { ...u, alias: newAlias } : u))
       );
     }
   };
@@ -213,7 +222,7 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
   // Xóa một user khỏi danh sách tìm kiếm gần đây
   const handleRemoveRecent = (e: React.MouseEvent, userID: string) => {
     e.stopPropagation(); // Tránh trigger onClick của thẻ cha
-    setRecentFound(prev => prev.filter(u => u.userID !== userID));
+    setRecentFound((prev) => prev.filter((u) => u.userID !== userID));
   };
 
   // Gửi lời mời kết bạn
@@ -224,12 +233,16 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
       await axiosInstance.post('/contacts/send-friend-request', {
         recipientPhone: selectedUser.sdt,
         alias: alias.trim(),
-        message: message.trim()
+        message: message.trim(),
       });
 
       // Cập nhật trạng thái sang 'pending_sent' (đã gửi yêu cầu)
       setSelectedUser({ ...selectedUser, friendStatus: 'pending_sent' });
-      setRecentFound(prev => prev.map(u => u.userID === selectedUser.userID ? { ...u, friendStatus: 'pending_sent' } : u));
+      setRecentFound((prev) =>
+        prev.map((u) =>
+          u.userID === selectedUser.userID ? { ...u, friendStatus: 'pending_sent' } : u
+        )
+      );
 
       toast.success('Đã gửi lời mời kết bạn');
       setStep('profile'); // Quay lại xem profile
@@ -290,24 +303,35 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
           {recentFound.length > 0 && !loading && (
             <div className="mt-4">
               <p className="px-5 text-[13px] text-gray-500 mb-2 font-medium">Kết quả gần nhất</p>
-              {recentFound.map(user => (
+              {recentFound.map((user) => (
                 <div
                   key={user.userID}
                   className="flex items-center px-5 py-3 hover:bg-gray-50 cursor-pointer group transition-colors"
                   onClick={() => handleUserClick(user)}
                 >
                   <img
-                    src={user.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.userID}
+                    src={
+                      user.anhDaiDien ||
+                      'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.userID
+                    }
                     alt="avatar"
                     className="w-[44px] h-[44px] rounded-full object-cover mr-3 bg-gray-100 border border-gray-200"
                   />
                   <div className="flex-1">
-                    <p className="text-[14.5px] font-semibold text-gray-900">{user.alias || user.name}</p>
+                    <p className="text-[14.5px] font-semibold text-gray-900">
+                      {user.alias || user.name}
+                    </p>
                     <p className="text-[13px] text-gray-500 mt-0.5 ml-0.5">
                       {/* Hiển thị trạng thái quan hệ bên cạnh SĐT */}
-                      {user.friendStatus === 'pending_sent' && <span className="text-orange-500 mr-2">[Đã gửi lời mời]</span>}
-                      {user.friendStatus === 'pending_received' && <span className="text-blue-500 mr-2">[Lời mời kết bạn]</span>}
-                      {user.friendStatus === 'accepted' && <span className="text-green-500 mr-2">[Bạn bè]</span>}
+                      {user.friendStatus === 'pending_sent' && (
+                        <span className="text-orange-500 mr-2">[Đã gửi lời mời]</span>
+                      )}
+                      {user.friendStatus === 'pending_received' && (
+                        <span className="text-blue-500 mr-2">[Lời mời kết bạn]</span>
+                      )}
+                      {user.friendStatus === 'accepted' && (
+                        <span className="text-green-500 mr-2">[Bạn bè]</span>
+                      )}
                       {user.sdt}
                     </p>
                   </div>
@@ -353,7 +377,10 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
         <div className="bg-white w-full sm:w-[400px] h-full sm:h-auto sm:rounded-md shadow-2xl flex flex-col text-gray-800 relative">
           {/* Header overlay trên ảnh bìa */}
           <div className="absolute top-0 left-0 w-full flex items-center justify-between px-4 py-3 z-10 bg-gradient-to-b from-black/60 to-transparent rounded-t-md">
-            <div className="flex items-center gap-4 cursor-pointer" onClick={() => setStep('profile')}>
+            <div
+              className="flex items-center gap-4 cursor-pointer"
+              onClick={() => setStep('profile')}
+            >
               <FaChevronLeft className="text-white text-[15px]" />
               <span className="text-white text-[15px] font-semibold">Thông tin tài khoản</span>
             </div>
@@ -366,19 +393,27 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
             {/* Ảnh bìa & Avatar */}
             <div className="relative mb-12 shrink-0">
               <img
-                src={selectedUser.anhBia || "https://images.unsplash.com/photo-1542224566-6e85f2e6772f?q=80&w=600&auto=format"}
+                src={
+                  selectedUser.anhBia ||
+                  'https://images.unsplash.com/photo-1542224566-6e85f2e6772f?q=80&w=600&auto=format'
+                }
                 alt="cover"
                 className="w-full h-[160px] object-cover sm:rounded-t-md bg-gray-200"
               />
               <div className="absolute -bottom-6 left-5 flex items-end gap-3">
                 <img
-                  src={selectedUser.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + selectedUser.userID}
+                  src={
+                    selectedUser.anhDaiDien ||
+                    'https://api.dicebear.com/7.x/avataaars/svg?seed=' + selectedUser.userID
+                  }
                   alt="avatar"
                   className="w-[72px] h-[72px] rounded-full object-cover border-[3px] border-white bg-gray-100 shadow-sm"
                 />
               </div>
               <div className="absolute -bottom-1 left-[110px] flex items-center gap-1.5">
-                <h2 className="text-[17px] font-bold text-gray-900">{alias || selectedUser.name}</h2>
+                <h2 className="text-[17px] font-bold text-gray-900">
+                  {alias || selectedUser.name}
+                </h2>
                 <FaPen
                   className="text-gray-500 text-[11px] cursor-pointer"
                   title="Sửa tên gợi nhớ"
