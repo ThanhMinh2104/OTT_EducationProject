@@ -3,14 +3,15 @@ import {
   FaComments, FaPaperPlane, FaSmile, FaPaperclip, FaTimes,
   FaReply, FaTrash, FaThumbsUp, FaDownload, FaInfoCircle,
   FaSearch, FaImage, FaVideo, FaMicrophone, FaPen,
-  FaStop, FaBell, FaPhone,
+  FaStop, FaBell, FaPhone, FaPlay, FaPause,
 } from 'react-icons/fa';
 import { BsPin, BsPinAngleFill } from 'react-icons/bs';
-import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
+import { EmojiClickData } from 'emoji-picker-react';
 import { io, Socket } from 'socket.io-client';
 import { getToken } from '../utils/auth';
 import ReminderModal from './ReminderModal';
 import ChatInfoPanel from './ChatInfoPanel';
+import StickerEmojiPicker from './StickerEmojiPicker';
 import OtherProfileModal from './OtherProfileModal';
 import AliasModal from './AliasModal';
 import axiosInstance from '../utils/axios';
@@ -74,6 +75,216 @@ const authHeaders = (): Record<string, string> => {
 const formatTime = (ts: string) => {
   if (!ts) return '';
   return new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+};
+
+// ==================== File Icon Component ====================
+const getFileIcon = (fileName: string) => {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+
+  // Word documents
+  if (['doc', 'docx'].includes(ext || '')) {
+    return (
+      <div className="w-12 h-12 bg-[#2b579a] rounded-lg flex items-center justify-center text-white font-bold text-xl">
+        W
+      </div>
+    );
+  }
+  // Excel
+  if (['xls', 'xlsx'].includes(ext || '')) {
+    return (
+      <div className="w-12 h-12 bg-[#217346] rounded-lg flex items-center justify-center text-white font-bold text-xl">
+        X
+      </div>
+    );
+  }
+  // PowerPoint
+  if (['ppt', 'pptx'].includes(ext || '')) {
+    return (
+      <div className="w-12 h-12 bg-[#d24726] rounded-lg flex items-center justify-center text-white font-bold text-xl">
+        P
+      </div>
+    );
+  }
+  // PDF
+  if (ext === 'pdf') {
+    return (
+      <div className="w-12 h-12 bg-[#f40f02] rounded-lg flex items-center justify-center text-white font-bold text-xl">
+        PDF
+      </div>
+    );
+  }
+  // ZIP/RAR
+  if (['zip', 'rar', '7z'].includes(ext || '')) {
+    return (
+      <div className="w-12 h-12 bg-[#ffa500] rounded-lg flex items-center justify-center text-white">
+        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" />
+        </svg>
+      </div>
+    );
+  }
+  // Default file icon
+  return (
+    <div className="w-12 h-12 bg-gray-500 rounded-lg flex items-center justify-center text-white">
+      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+      </svg>
+    </div>
+  );
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+};
+
+// ==================== File Display Component ====================
+const FileDisplay = ({ fileName, fileUrl, isMine }: { fileName: string; fileUrl: string; isMine: boolean }) => {
+  const [fileSize, setFileSize] = useState<number | null>(null);
+
+  // Fetch file size
+  useEffect(() => {
+    fetch(fileUrl, { method: 'HEAD' })
+      .then(res => {
+        const size = res.headers.get('content-length');
+        if (size) setFileSize(parseInt(size));
+      })
+      .catch(() => { });
+  }, [fileUrl]);
+
+  const handleDownload = async () => {
+    try {
+      // Fetch file as blob
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+
+      // Create download link with correct filename
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName; // Sử dụng tên file gốc
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download error:', err);
+      // Fallback: open in new tab
+      window.open(fileUrl, '_blank');
+    }
+  };
+
+  return (
+    <div
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl min-w-[300px] max-w-[420px] ${isMine ? 'bg-[#2c3e50]' : 'bg-[#2c3e50] dark:bg-gray-700'
+        }`}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+    >
+      {/* File Icon */}
+      {getFileIcon(fileName)}
+
+      {/* File Info */}
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-semibold text-[15px] truncate mb-1.5">{fileName}</p>
+        <div className="flex items-center gap-2 text-gray-400 text-[13px]">
+          <span>{fileSize ? formatFileSize(fileSize) : 'Đang tải...'}</span>
+        </div>
+      </div>
+
+      {/* Download Icon */}
+      <button
+        onClick={handleDownload}
+        className="w-11 h-11 flex items-center justify-center rounded-lg bg-[#34495e] hover:bg-[#3d5a73] transition-colors text-white shrink-0"
+        title="Tải xuống"
+      >
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </button>
+    </div>
+  );
+};
+
+// ==================== TV3: Audio Player Component ====================
+const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [current, setCurrent] = useState(0);
+
+  const toggle = () => {
+    if (!audioRef.current) return;
+    if (playing) { audioRef.current.pause(); setPlaying(false); }
+    else { audioRef.current.play(); setPlaying(true); }
+  };
+
+  const fmt = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+
+  return (
+    <div
+      className={`flex items-center gap-3 px-4 py-3 rounded-2xl min-w-[240px] max-w-[280px] ${isMine ? 'bg-[#0e9de8]' : 'bg-[#2c3e50] dark:bg-gray-700'}`}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+    >
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={() => {
+          if (!audioRef.current) return;
+          setCurrent(audioRef.current.currentTime);
+          setProgress(audioRef.current.duration ? (audioRef.current.currentTime / audioRef.current.duration) * 100 : 0);
+        }}
+        onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
+        onEnded={() => { setPlaying(false); setProgress(0); setCurrent(0); }}
+      />
+
+      {/* Play/Pause Button */}
+      <button
+        onClick={toggle}
+        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-[#0e9de8] text-white hover:bg-[#0077c2] transition-colors shadow-md"
+      >
+        {playing ? <FaPause className="text-sm" /> : <FaPlay className="text-sm ml-0.5" />}
+      </button>
+
+      {/* Waveform Bars */}
+      <div className="flex items-center gap-[3px] h-8 flex-1">
+        {[20, 35, 50, 40, 55, 30, 45, 38, 52, 28, 42, 35].map((height, i) => (
+          <div
+            key={i}
+            className={`w-[3px] rounded-full transition-all ${isMine ? 'bg-white/70' : 'bg-[#0e9de8]'
+              }`}
+            style={{
+              height: `${progress > (i / 12) * 100 ? height : height * 0.4}%`,
+              opacity: progress > (i / 12) * 100 ? 1 : 0.5,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Duration */}
+      <span className={`text-xs font-medium shrink-0 ${isMine ? 'text-white' : 'text-gray-200'}`}>
+        {fmt(duration)}
+      </span>
+
+      {/* Cloud Download Icon */}
+      <a
+        href={src}
+        download
+        className={`shrink-0 ${isMine ? 'text-white/80 hover:text-white' : 'text-gray-300 hover:text-white'} transition-colors`}
+        onClick={(e) => e.stopPropagation()}
+        title="Tải xuống"
+      >
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M10 3a1 1 0 011 1v5.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z" />
+          <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+          <path d="M6.5 9.5a1 1 0 011-1h5a1 1 0 110 2h-5a1 1 0 01-1-1z" />
+        </svg>
+      </a>
+    </div>
+  );
 };
 
 const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
@@ -155,7 +366,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               setMemberInfo({ ...d, alias: friend?.alias, friendStatus: friend ? 'accepted' : 'none' });
             }).catch(() => setMemberInfo(d));
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     }
 
@@ -271,7 +482,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('reminder_event', onReminderEvent);
       setTypingUsers([]);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.chatID, user?.userID]);
 
   useEffect(() => {
@@ -355,6 +566,24 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setReplyTo(null);
   };
 
+  const sendSticker = async (stickerUrl: string) => {
+    if (!selectedChat || !user) return;
+    const msg = buildMsg({ content: '', type: 'sticker', media_url: [stickerUrl] });
+    socket.emit('send_message', msg);
+    setMessages((prev) => [...prev, msg]);
+    setShowEmoji(false);
+    setReplyTo(null);
+  };
+
+  const sendGif = async (gifUrl: string) => {
+    if (!selectedChat || !user) return;
+    const msg = buildMsg({ content: '', type: 'gif', media_url: [gifUrl] });
+    socket.emit('send_message', msg);
+    setMessages((prev) => [...prev, msg]);
+    setShowEmoji(false);
+    setReplyTo(null);
+  };
+
   const sendFiles = async () => {
     if (!files.length || !selectedChat || !user) return;
     setIsUploading(true);
@@ -395,6 +624,74 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       setReplyTo(null);
     } catch {
       alert('Lỗi upload file');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const sendFilesDirectly = async (fileList: File[]) => {
+    if (!fileList.length || !selectedChat || !user) return;
+    setIsUploading(true);
+
+    const groups: Record<string, File[]> = { image: [], video: [], file: [] };
+    fileList.forEach((f) => {
+      if (f.type.startsWith('image/')) groups.image.push(f);
+      else if (f.type.startsWith('video/')) groups.video.push(f);
+      else groups.file.push(f);
+    });
+
+    console.log('Uploading files:', {
+      total: fileList.length,
+      images: groups.image.length,
+      videos: groups.video.length,
+      files: groups.file.length
+    });
+
+    try {
+      for (const [type, files] of Object.entries(groups)) {
+        if (!files.length) continue;
+
+        console.log(`Uploading ${type}:`, files.map(f => ({ name: f.name, size: f.size, type: f.type })));
+
+        const form = new FormData();
+        files.forEach((f) => form.append('files', f));
+
+        const res = await fetch(`${API}/upload`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: form,
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Upload error:', errorText);
+          throw new Error(`Upload failed: ${res.status} - ${errorText}`);
+        }
+
+        const data = await res.json();
+        console.log('Upload success:', data);
+
+        // Gửi từng ảnh/video/file riêng biệt
+        if (type === 'image' || type === 'video') {
+          // Mỗi ảnh/video là một tin nhắn riêng
+          data.urls.forEach((url: string) => {
+            const msg = buildMsg({ content: '', type, media_url: [url] });
+            socket.emit('send_message', msg);
+            setMessages((prev) => [...prev, msg]);
+          });
+        } else {
+          files.forEach((f, i) => {
+            const msg = buildMsg({ content: f.name, type: 'file', media_url: [data.urls[i]] });
+            socket.emit('send_message', msg);
+            setMessages((prev) => [...prev, msg]);
+          });
+        }
+      }
+      setFiles([]);
+      setReplyTo(null);
+    } catch (err) {
+      console.error('Upload error:', err);
+      alert('Lỗi upload file: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsUploading(false);
     }
@@ -481,16 +778,26 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setIsUploading(true);
     try {
       const form = new FormData();
-      form.append('files', audioBlob, 'voice-message.webm');
-      const res = await fetch(`${API}/upload`, { method: 'POST', headers: authHeaders(), body: form });
+      form.append('file', audioBlob, 'voice-message.webm');
+      const res = await fetch(`${API}/upload/audio`, { method: 'POST', headers: authHeaders(), body: form });
       const data = await res.json();
-      const msg = buildMsg({ content: '', type: 'audio', media_url: data.urls });
+      console.log('Upload response:', data);
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      const msg = buildMsg({ content: '', type: 'audio', media_url: [data.url] });
+      console.log('Sending audio message:', msg);
       socket.emit('send_message', msg);
       setMessages((prev) => [...prev, msg]);
       setAudioBlob(null);
       setRecordingTime(0);
       setReplyTo(null);
-    } catch { alert('Lỗi gửi audio'); }
+    } catch (err) {
+      console.error('Error sending audio:', err);
+      alert('Lỗi gửi audio: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
     finally { setIsUploading(false); }
   };
 
@@ -534,28 +841,50 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       return <span className="text-xs text-gray-500 italic">{msg.content}</span>;
     }
     if (msg.type === 'image' && msg.media_url?.length) {
+      const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
       return (
-        <div className="flex flex-wrap gap-1 max-w-[280px]">
-          {msg.media_url.map((url, i) => (
-            <img key={i} src={url} alt="img" className="max-w-[200px] max-h-[200px] rounded-lg object-cover cursor-pointer" onClick={() => window.open(url, '_blank')} />
-          ))}
-        </div>
+        <img
+          src={url}
+          alt="img"
+          className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg"
+          onClick={() => window.open(url, '_blank')}
+        />
+      );
+    }
+    if (msg.type === 'sticker' && msg.media_url?.length) {
+      const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
+      return (
+        <img
+          src={url}
+          alt="sticker"
+          className="w-[150px] h-[150px] object-contain cursor-pointer"
+          onClick={() => window.open(url, '_blank')}
+        />
+      );
+    }
+    if (msg.type === 'gif' && msg.media_url?.length) {
+      const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
+      return (
+        <img
+          src={url}
+          alt="gif"
+          className="max-w-[300px] max-h-[300px] w-auto h-auto object-contain cursor-pointer rounded-lg"
+          onClick={() => window.open(url, '_blank')}
+        />
       );
     }
     if (msg.type === 'video' && msg.media_url?.length) {
       return <video src={typeof msg.media_url[0] === 'string' ? msg.media_url[0] : ''} controls className="max-w-[280px] rounded-lg" />;
     }
     if (msg.type === 'audio' && msg.media_url?.length) {
-      return <audio src={typeof msg.media_url[0] === 'string' ? msg.media_url[0] : ''} controls className="max-w-[260px]" />;
+      const src = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
+      console.log('Rendering audio message:', { src, type: msg.type, isMine: msg.senderID === user?.userID });
+      return <AudioPlayer src={src} isMine={msg.senderID === user?.userID} />;
     }
     if (msg.type === 'file' && msg.media_url?.length) {
       const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
-      return (
-        <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
-          <FaDownload className="text-xs" />
-          {msg.content || 'Tải file'}
-        </a>
-      );
+      const fileName = msg.content || 'file';
+      return <FileDisplay fileName={fileName} fileUrl={url} isMine={msg.senderID === user?.userID} />;
     }
     return <span className="text-sm whitespace-pre-wrap break-words">{msg.content}</span>;
   };
@@ -616,9 +945,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 onClick={() => selectedChat.type === 'private' && memberInfo && handleOpenProfile(memberInfo.userID)}
               />
               <div className="flex-1 overflow-hidden">
-                <div 
-                   className="flex items-center gap-2 group cursor-pointer" 
-                   onClick={() => selectedChat.type === 'private' && setShowAliasModal(true)}
+                <div
+                  className="flex items-center gap-2 group cursor-pointer"
+                  onClick={() => selectedChat.type === 'private' && setShowAliasModal(true)}
                 >
                   <h2 className="text-[17px] font-bold m-0 text-gray-900 dark:text-gray-100 truncate">{chatName}</h2>
                   {selectedChat.type === 'private' && (
@@ -696,7 +1025,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             <strong className="text-gray-700 dark:text-gray-200">
                               {evt.userID === user?.userID ? 'Bạn' : evt.userName}
                             </strong> tạo nhắc hẹn mới <strong className="text-gray-700 dark:text-gray-200">{evt.reminder.title}</strong>
-                            {' - '}{(() => { const d = new Date(evt.reminder.datetime); const days = ['CN','T2','T3','T4','T5','T6','T7']; return `${days[d.getDay()]}, ${d.getDate()} Tháng ${d.getMonth()+1} lúc ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}
+                            {' - '}{(() => { const d = new Date(evt.reminder.datetime); const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']; return `${days[d.getDay()]}, ${d.getDate()} Tháng ${d.getMonth() + 1} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })()}
                             {' . '}
                             <button onClick={() => setShowReminder(true)} className="text-[#0e9de8] hover:underline font-medium">Xem</button>
                           </span>
@@ -715,7 +1044,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           <span className="text-2xl">🔔</span>
                           <p className="text-[15px] font-bold text-gray-900 dark:text-gray-100 text-center m-0">{evt.reminder.title}</p>
                           <p className="text-[12px] text-gray-500 dark:text-gray-400 flex items-center gap-1 m-0">
-                            🕐 {(() => { const d = new Date(evt.reminder.datetime); const days = ['CN','T2','T3','T4','T5','T6','T7']; return `${days[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}
+                            🕐 {(() => { const d = new Date(evt.reminder.datetime); const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']; return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })()}
                           </p>
                           <button
                             onClick={() => setShowReminder(true)}
@@ -778,11 +1107,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       {/* Bubble */}
                       <div className="relative">
                         <div
-                          className={`px-3 py-2 rounded-2xl shadow-sm cursor-pointer select-text ${
-                            isMine
-                              ? 'bg-[#0e9de8] text-white rounded-br-sm'
-                              : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-bl-sm'
-                          } ${msg.type === 'unsend' ? 'opacity-60' : ''}`}
+                          className={`${msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif'
+                              ? '' // Không có background cho ảnh/video/sticker/gif
+                              : `px-3 py-2 rounded-2xl shadow-sm ${isMine
+                                ? 'bg-[#0e9de8] text-white rounded-br-sm'
+                                : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-bl-sm'
+                              }`
+                            } ${msg.type === 'unsend' ? 'opacity-60' : ''} cursor-pointer select-text`}
                           onContextMenu={(e) => { e.preventDefault(); setActionMsgId(msgKey); }}
                         >
                           {renderMessageContent(msg)}
@@ -944,8 +1275,26 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 >
                   <FaImage />
                 </button>
-                <input ref={imageInputRef} type="file" accept="image/*,video/*" multiple className="hidden"
-                  onChange={(e) => { if (e.target.files) setFiles(Array.from(e.target.files)); }} />
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      const fileArray = Array.from(e.target.files);
+                      setFiles(fileArray);
+                      // Tự động gửi sau khi chọn ảnh/video
+                      setTimeout(() => {
+                        if (fileArray.length > 0) {
+                          sendFilesDirectly(fileArray);
+                        }
+                      }, 100);
+                    }
+                  }}
+                />
+
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   title="Gửi file"
@@ -954,7 +1303,19 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   <FaPaperclip />
                 </button>
                 <input ref={fileInputRef} type="file" multiple className="hidden"
-                  onChange={(e) => { if (e.target.files) setFiles(Array.from(e.target.files)); }} />
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      const fileArray = Array.from(e.target.files);
+                      setFiles(fileArray);
+                      // Tự động gửi sau khi chọn file
+                      setTimeout(() => {
+                        if (fileArray.length > 0) {
+                          sendFilesDirectly(fileArray);
+                        }
+                      }, 100);
+                    }
+                  }} />
+
                 {!isRecording && !audioBlob && (
                   <button
                     onClick={startRecording}
@@ -964,7 +1325,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     <FaMicrophone />
                   </button>
                 )}
-                
+
                 <button
                   onClick={(e) => { e.stopPropagation(); setShowReminder(true); }}
                   title="Nhắc hẹn"
@@ -974,18 +1335,35 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 </button>
               </div>
 
-              {/* Emoji picker */}
+              {/* Emoji picker modal */}
               {showEmoji && (
-                <div className="px-3 pb-1" onClick={(e) => e.stopPropagation()}>
-                  <EmojiPicker onEmojiClick={sendEmoji} height={320} width="100%" />
-                </div>
+                <StickerEmojiPicker
+                  onEmojiClick={sendEmoji}
+                  onStickerClick={sendSticker}
+                  onGifClick={sendGif}
+                  onClose={() => setShowEmoji(false)}
+                />
               )}
 
-              {/* Recording bar */}
+              {/* Recording bar — waveform animation */}
               {isRecording && (
                 <div className="flex items-center gap-3 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-t border-red-100">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
-                  <span className="text-sm text-red-600 font-medium flex-1">Đang ghi âm... {formatRecordTime(recordingTime)}</span>
+                  {/* Waveform bars */}
+                  <div className="flex items-center gap-[3px] h-6">
+                    {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                      <span
+                        key={i}
+                        className="w-[3px] rounded-full bg-red-500"
+                        style={{
+                          height: `${Math.random() * 60 + 20}%`,
+                          animation: `waveBar 0.${4 + i}s ease-in-out infinite alternate`,
+                          animationDelay: `${i * 0.07}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm text-red-600 font-medium flex-1">{formatRecordTime(recordingTime)}</span>
                   <button onClick={cancelRecording} className="text-gray-400 hover:text-red-500 transition-colors" title="Hủy">
                     <FaTimes className="text-sm" />
                   </button>
@@ -1147,7 +1525,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         />
       )}
       {/* MODALS */}
-      <ProfileAndAliasModals 
+      <ProfileAndAliasModals
         showOtherProfile={showOtherProfile}
         profileUser={profileUser}
         user={user}
@@ -1168,8 +1546,8 @@ const ProfileAndAliasModals = ({ showOtherProfile, profileUser, user, setShowOth
   return (
     <>
       {showOtherProfile && profileUser && (
-        <OtherProfileModal 
-          user={profileUser} currentUser={user} 
+        <OtherProfileModal
+          user={profileUser} currentUser={user}
           onClose={() => setShowOtherProfile(false)}
           onStartChat={() => setShowOtherProfile(false)}
           onAccept={() => handeActionFromProfile('/contacts/accept-friend-request', 'accepted')}
@@ -1180,7 +1558,7 @@ const ProfileAndAliasModals = ({ showOtherProfile, profileUser, user, setShowOth
         />
       )}
       {showAliasModal && memberInfo && (
-        <AliasModal 
+        <AliasModal
           user={{ userID: memberInfo.userID, name: memberInfo.name, avatar: memberInfo.anhDaiDien }}
           currentAlias={memberInfo.alias || ''}
           onClose={() => setShowAliasModal(false)}
