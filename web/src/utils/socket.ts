@@ -5,8 +5,8 @@ const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 // Tạo một socket instance duy nhất để dùng chung trong toàn bộ app
 const socket: Socket = io(SOCKET_URL, {
-  transports: ['websocket', 'polling'], // Thử websocket trước, fallback về polling
-  reconnection: true, // Tự động reconnect
+  transports: ['websocket'], // Chỉ dùng websocket, không fallback polling
+  reconnection: true,
   reconnectionDelay: 1000,
   reconnectionAttempts: 5,
 });

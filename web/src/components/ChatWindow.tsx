@@ -9,7 +9,6 @@ import {
   FaReply,
   FaTrash,
   FaThumbsUp,
-  FaDownload,
   FaInfoCircle,
   FaSearch,
   FaImage,
@@ -20,6 +19,7 @@ import {
   FaPhone,
   FaPlay,
   FaPause,
+  FaUserFriends,
 } from 'react-icons/fa';
 import { BsPin, BsPinAngleFill } from 'react-icons/bs';
 import { EmojiClickData } from 'emoji-picker-react';
@@ -33,10 +33,7 @@ import ImageViewerModal from './ImageViewerModal';
 import OtherProfileModal from './OtherProfileModal';
 import {
   loadReminderEvents,
-  createReminder,
-  deleteReminder,
   type ReminderEvent,
-  type Reminder,
 } from '../hooks/useReminderChecker';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
@@ -107,59 +104,24 @@ const formatTime = (ts: string) => {
 const getFileIcon = (fileName: string) => {
   const ext = fileName.split('.').pop()?.toLowerCase();
 
-  // Word documents
-  if (['doc', 'docx'].includes(ext || '')) {
-    return (
-      <div className="w-12 h-12 bg-[#2b579a] rounded-lg flex items-center justify-center text-gray-900 font-bold text-xl">
-        W
-      </div>
-    );
-  }
-  // Excel
-  if (['xls', 'xlsx'].includes(ext || '')) {
-    return (
-      <div className="w-12 h-12 bg-[#217346] rounded-lg flex items-center justify-center text-gray-900 font-bold text-xl">
-        X
-      </div>
-    );
-  }
-  // PowerPoint
-  if (['ppt', 'pptx'].includes(ext || '')) {
-    return (
-      <div className="w-12 h-12 bg-[#d24726] rounded-lg flex items-center justify-center text-gray-900 font-bold text-xl">
-        P
-      </div>
-    );
-  }
-  // PDF
-  if (ext === 'pdf') {
-    return (
-      <div className="w-12 h-12 bg-[#f40f02] rounded-lg flex items-center justify-center text-gray-900 font-bold text-xl">
-        PDF
-      </div>
-    );
-  }
-  // ZIP/RAR
-  if (['zip', 'rar', '7z'].includes(ext || '')) {
-    return (
-      <div className="w-12 h-12 bg-[#ffa500] rounded-lg flex items-center justify-center text-gray-900">
-        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-          <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" />
-        </svg>
-      </div>
-    );
-  }
-  // Default file icon
+  type IconConfig = { bg: string; label: string };
+  let config: IconConfig = { bg: '#8e8e93', label: 'FILE' };
+
+  if (['doc', 'docx'].includes(ext || '')) config = { bg: '#4285f4', label: 'W' };
+  else if (['xls', 'xlsx'].includes(ext || '')) config = { bg: '#34a853', label: 'X' };
+  else if (['ppt', 'pptx'].includes(ext || '')) config = { bg: '#ea4335', label: 'P' };
+  else if (ext === 'pdf') config = { bg: '#ea4335', label: 'PDF' };
+  else if (['zip', 'rar', '7z'].includes(ext || '')) config = { bg: '#ff9500', label: 'ZIP' };
+
+  // Dog-ear document shape via SVG
   return (
-    <div className="w-12 h-12 bg-gray-500 rounded-lg flex items-center justify-center text-gray-900">
-      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-        <path
-          fillRule="evenodd"
-          d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
-          clipRule="evenodd"
-        />
-      </svg>
-    </div>
+    <svg width="44" height="52" viewBox="0 0 44 52" fill="none">
+      <path d="M4 0h26l10 10v38a4 4 0 01-4 4H4a4 4 0 01-4-4V4a4 4 0 014-4z" fill={config.bg} />
+      <path d="M30 0l10 10H34a4 4 0 01-4-4V0z" fill="rgba(0,0,0,0.2)" />
+      <text x="22" y="34" textAnchor="middle" fill="white" fontSize={config.label.length > 2 ? "11" : "16"} fontWeight="bold" fontFamily="Arial, sans-serif">
+        {config.label}
+      </text>
+    </svg>
   );
 };
 
@@ -173,11 +135,11 @@ const formatFileSize = (bytes: number): string => {
 const FileDisplay = ({
   fileName,
   fileUrl,
-  isMine,
+  isMine = false,
 }: {
   fileName: string;
   fileUrl: string;
-  isMine: boolean;
+  isMine?: boolean;
 }) => {
   const [fileSize, setFileSize] = useState<number | null>(null);
 
@@ -215,34 +177,23 @@ const FileDisplay = ({
 
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl min-w-[300px] max-w-[420px] ${
-        isMine ? 'bg-white' : 'bg-white'
-      }`}
+      className="flex items-center gap-3 px-3 py-2.5 min-w-[280px] max-w-[400px]"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* File Icon */}
       {getFileIcon(fileName)}
-
-      {/* File Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-gray-900 font-semibold text-[15px] truncate mb-1.5">{fileName}</p>
-        <div className="flex items-center gap-2 text-gray-400 text-[13px]">
+        <p className={`font-semibold text-[14px] truncate mb-0.5 ${isMine ? 'text-gray-900' : 'text-gray-900'}`}>{fileName}</p>
+        <div className={`text-[12px] ${isMine ? 'text-gray-500' : 'text-gray-500'}`}>
           <span>{fileSize ? formatFileSize(fileSize) : 'Đang tải...'}</span>
         </div>
       </div>
-
-      {/* Download Icon */}
       <button
         onClick={handleDownload}
-        className="w-11 h-11 flex items-center justify-center rounded-lg bg-gray-50 hover:bg-[#3d5a73] transition-colors text-gray-900 shrink-0"
+        className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors shrink-0 ${isMine ? 'bg-blue-100 hover:bg-blue-200 text-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
         title="Tải xuống"
       >
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-          <path
-            fillRule="evenodd"
-            d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
-            clipRule="evenodd"
-          />
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
         </svg>
       </button>
     </div>
@@ -277,7 +228,7 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
 
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-2xl min-w-[240px] max-w-[280px] ${isMine ? 'bg-[#0e9de8]' : 'bg-white'}`}
+      className={`flex items-center gap-3 px-4 py-3 rounded-2xl min-w-[240px] max-w-[280px] ${isMine ? 'bg-blue-50' : 'bg-white'}`}
       onClick={(e) => e.stopPropagation()}
     >
       <audio
@@ -316,7 +267,7 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
           <div
             key={i}
             className={`w-[3px] rounded-full transition-all ${
-              isMine ? 'bg-white/70' : 'bg-[#0e9de8]'
+              isMine ? 'bg-blue-400/70' : 'bg-[#0084ff]'
             }`}
             style={{
               height: `${progress > (i / 12) * 100 ? height : height * 0.4}%`,
@@ -327,7 +278,7 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
       </div>
 
       {/* Duration */}
-      <span className={`text-xs font-medium shrink-0 ${isMine ? 'text-gray-900' : 'text-gray-700'}`}>
+      <span className={`text-xs font-medium shrink-0 ${isMine ? 'text-gray-600' : 'text-gray-700'}`}>
         {fmt(duration)}
       </span>
 
@@ -359,6 +310,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
   const [actionMsgId, setActionMsgId] = useState<string | null>(null);
   const [memberInfo, setMemberInfo] = useState<User | null>(null);
+  const [isStranger, setIsStranger] = useState(false);
+  const [isSendingFriendRequest, setIsSendingFriendRequest] = useState(false);
+  const [friendRequestSent, setFriendRequestSent] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState<
@@ -392,7 +346,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   >({});
 
   const [showOtherProfile, setShowOtherProfile] = useState(false);
-  const [selectedUserForProfile, setSelectedUserForProfile] = useState<any | null>(null);
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<unknown | null>(null);
 
   const [showPinnedList, setShowPinnedList] = useState(false);
   const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
@@ -435,6 +389,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setInputText('');
     setTypingUsers([]);
     setSeenMap({});
+    setIsStranger(false);
+    setFriendRequestSent(false);
     
     // Load reminder events from API
     loadReminderEvents(selectedChat.chatID).then((events) => {
@@ -470,7 +426,17 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           .then((r) => r.json())
           .then((d) => setMemberInfo(d))
           .catch(() => {});
+
+        // Check stranger status
+        fetch(`${API}/contacts/friend-status/${otherId}`, {
+          headers: { ...authHeaders() },
+        })
+          .then((r) => r.json())
+          .then((d) => setIsStranger(d.friendStatus === 'none'))
+          .catch(() => setIsStranger(false));
       }
+    } else {
+      setIsStranger(false);
     }
 
     // Emit bulk_seen
@@ -659,6 +625,16 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     };
     socket.on('call-system-message', onCallSystemMessage);
 
+    // Ẩn banner khi đối phương chấp nhận kết bạn
+    const onFriendAccepted = (data: { userID: string; friendID: string }) => {
+      const otherID = selectedChat.members.find((m) => m.userID !== userID)?.userID;
+      if (data.userID === otherID || data.friendID === otherID) {
+        setIsStranger(false);
+        setFriendRequestSent(false);
+      }
+    };
+    socket.on('friend_request_accepted', onFriendAccepted);
+
     // Cleanup function
     return () => {
       console.log('🧹 Cleaning up socket listeners for chat:', chatID);
@@ -676,9 +652,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('bulk_seen', onBulkSeen);
       socket.off('reminder_event', onReminderEvent);
       socket.off('call-system-message', onCallSystemMessage);
+      socket.off('friend_request_accepted', onFriendAccepted);
       setTypingUsers([]);
     };
-  }, [selectedChat?.chatID, user?.userID]); // Only re-run when chat or user changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.chatID, user?.userID]);
 
   // Debug: Track useEffect runs
   useEffect(() => {
@@ -1212,25 +1190,93 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     }
     if (msg.type === 'call-missed') {
       return (
-        <div className="flex items-center gap-2 text-sm text-red-500">
-          <FaPhone className="text-xs" />
-          <span>Cuộc gọi nhỡ</span>
+        <div className="min-w-[200px] bg-blue-50 rounded-2xl overflow-hidden">
+          <div className="px-4 pt-3 pb-2">
+            <p className="text-gray-800 font-semibold text-sm mb-2">
+              {isMine ? 'Cuộc gọi nhỡ đi' : 'Cuộc gọi nhỡ đến'}
+            </p>
+            <div className="flex items-center gap-2 text-gray-500 text-sm">
+              <div className="relative">
+                <FaPhone className="text-base text-gray-500" />
+                <span className="absolute -top-1 -right-2 text-red-500 text-[10px] font-bold">↗</span>
+              </div>
+              <span>Cuộc gọi nhỡ</span>
+            </div>
+          </div>
+          <div className="border-t border-blue-100 px-4 py-2">
+            <button
+              className="text-[#0e9de8] font-semibold text-sm w-full text-center"
+              onClick={() => onStartVideoCall?.('voice')}
+            >
+              Gọi lại
+            </button>
+          </div>
         </div>
       );
     }
     if (msg.type === 'call-rejected') {
       return (
-        <div className="flex items-center gap-2 text-sm text-orange-500">
-          <FaPhone className="text-xs" />
-          <span>Cuộc gọi bị từ chối</span>
+        <div className="min-w-[200px] bg-blue-50 rounded-2xl overflow-hidden">
+          <div className="px-4 pt-3 pb-2">
+            <p className="text-gray-800 font-semibold text-sm mb-2">
+              {isMine ? 'Cuộc gọi thoại đi' : 'Cuộc gọi thoại đến'}
+            </p>
+            <div className="flex items-center gap-2 text-gray-500 text-sm">
+              <div className="relative">
+                <FaPhone className="text-base text-gray-500" />
+                <span className="absolute -top-1 -right-2 text-green-500 text-[10px] font-bold">↗</span>
+              </div>
+              <span>Cuộc gọi bị từ chối</span>
+            </div>
+          </div>
+          <div className="border-t border-blue-100 px-4 py-2">
+            <button
+              className="text-[#0e9de8] font-semibold text-sm w-full text-center"
+              onClick={() => onStartVideoCall?.('voice')}
+            >
+              Gọi lại
+            </button>
+          </div>
         </div>
       );
     }
-    if (msg.type === 'call-ended' && msg.content) {
+    if (msg.type === 'call-ended') {
+      const formatCallDuration = (content: string) => {
+        // content dạng "MM:SS" hoặc "HH:MM:SS"
+        if (!content) return '';
+        const parts = content.split(':').map(Number);
+        if (parts.length === 2) {
+          const [mins, secs] = parts;
+          return `${mins} phút ${secs} giây`;
+        }
+        if (parts.length === 3) {
+          const [hours, mins, secs] = parts;
+          return hours > 0 ? `${hours} giờ ${mins} phút ${secs} giây` : `${mins} phút ${secs} giây`;
+        }
+        return content;
+      };
       return (
-        <div className="flex items-center gap-2 text-sm text-green-500">
-          <FaPhone className="text-xs" />
-          <span>Cuộc gọi • {msg.content}</span>
+        <div className="min-w-[200px] bg-blue-50 rounded-2xl overflow-hidden">
+          <div className="px-4 pt-3 pb-2">
+            <p className="text-gray-800 font-semibold text-sm mb-2">
+              {isMine ? 'Cuộc gọi thoại đi' : 'Cuộc gọi thoại đến'}
+            </p>
+            <div className="flex items-center gap-2 text-gray-500 text-sm">
+              <div className="relative">
+                <FaPhone className="text-base text-gray-500" />
+                <span className="absolute -top-1 -right-2 text-green-500 text-[10px] font-bold">↗</span>
+              </div>
+              <span>{msg.content ? formatCallDuration(msg.content) : 'Cuộc gọi kết thúc'}</span>
+            </div>
+          </div>
+          <div className="border-t border-blue-100 px-4 py-2">
+            <button
+              className="text-[#0e9de8] font-semibold text-sm w-full text-center"
+              onClick={() => onStartVideoCall?.('voice')}
+            >
+              Gọi lại
+            </button>
+          </div>
         </div>
       );
     }
@@ -1296,7 +1342,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
       const fileName = msg.content || 'file';
       return (
-        <FileDisplay fileName={fileName} fileUrl={url} isMine={msg.senderID === user?.userID} />
+        <FileDisplay fileName={fileName} fileUrl={url} isMine={isMine} />
       );
     }
     return <span className="text-sm whitespace-pre-wrap break-words">{msg.content}</span>;
@@ -1367,18 +1413,20 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                 onClick={async () => {
                   if (selectedChat.type === 'private' && memberInfo) {
-                    // Fetch full user info with friendStatus
                     try {
-                      const res = await fetch(`${API}/usersID`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userID: memberInfo.userID }),
-                      });
-                      const userData = await res.json();
-                      // Add friendStatus if not present (default to 'accepted' since they're in chat)
-                      if (!userData.friendStatus) {
-                        userData.friendStatus = 'accepted';
-                      }
+                      const [userRes, statusRes] = await Promise.all([
+                        fetch(`${API}/usersID`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ userID: memberInfo.userID }),
+                        }),
+                        fetch(`${API}/contacts/friend-status/${memberInfo.userID}`, {
+                          headers: { ...authHeaders() },
+                        }),
+                      ]);
+                      const userData = await userRes.json();
+                      const statusData = await statusRes.json();
+                      userData.friendStatus = statusData.friendStatus || 'none';
                       setSelectedUserForProfile(userData);
                       setShowOtherProfile(true);
                     } catch (err) {
@@ -1388,14 +1436,26 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 }}
               />
               <div className="flex-1">
-                <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900">
-                  {chatName}
-                </h2>
-                <p className="text-xs text-gray-400 m-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900">
+                    {chatName}
+                  </h2>
+                  {isStranger && (
+                    <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                      Người lạ
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 m-0 flex items-center gap-2">
                   {memberInfo?.trangThai === 'online' ? (
                     <span className="text-green-500">● Đang hoạt động</span>
                   ) : (
                     <span>● Ngoại tuyến</span>
+                  )}
+                  {isStranger && (
+                    <span className="flex items-center gap-1 text-gray-400">
+                      <FaUserFriends className="text-[10px]" /> Không có nhóm chung
+                    </span>
                   )}
                 </p>
               </div>
@@ -1404,18 +1464,20 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               <div className="flex items-center gap-2">
                 {/* 📞 VOICE CALL */}
                 <button
-                  className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]"
-                  title="Gọi thoại"
-                  onClick={() => onStartVideoCall?.('voice')}
+                  disabled={isStranger}
+                  title={isStranger ? 'Không thể gọi cho người lạ' : 'Gọi thoại'}
+                  onClick={() => !isStranger && onStartVideoCall?.('voice')}
+                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${isStranger ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'}`}
                 >
                   <FaPhone />
                 </button>
 
                 {/* 🎥 VIDEO CALL */}
                 <button
-                  onClick={() => onStartVideoCall?.('video')}
-                  className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]"
-                  title="Gọi video"
+                  disabled={isStranger}
+                  title={isStranger ? 'Không thể gọi cho người lạ' : 'Gọi video'}
+                  onClick={() => !isStranger && onStartVideoCall?.('video')}
+                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${isStranger ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'}`}
                 >
                   <FaVideo />
                 </button>
@@ -1452,6 +1514,49 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               </div>
             </div>
 
+            {/* Stranger banner */}
+            {isStranger && (
+              <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                <FaUserFriends className="text-gray-400 text-base shrink-0" />
+                {friendRequestSent ? (
+                  <span className="flex-1 text-[13px] text-gray-500">
+                    Bạn đã gửi yêu cầu kết bạn và đang chờ người này đồng ý
+                  </span>
+                ) : (
+                  <>
+                    <span className="flex-1 text-[13px] text-gray-500">Gửi yêu cầu kết bạn tới người này</span>
+                    <button
+                      disabled={isSendingFriendRequest}
+                      onClick={async () => {
+                        if (!memberInfo?.sdt) return;
+                        setIsSendingFriendRequest(true);
+                        try {
+                          const res = await fetch(`${API}/contacts/send-friend-request`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                            body: JSON.stringify({ recipientPhone: memberInfo.sdt }),
+                          });
+                          if (res.ok) {
+                            setFriendRequestSent(true);
+                          } else {
+                            const d = await res.json();
+                            toast.error(d.message || 'Không thể gửi lời mời');
+                          }
+                        } catch {
+                          toast.error('Lỗi kết nối');
+                        } finally {
+                          setIsSendingFriendRequest(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0084ff] text-[13px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isSendingFriendRequest ? 'Đang gửi...' : 'Gửi kết bạn'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Pinned messages bar */}
             {pinnedMessages.length > 0 && (
               <div className="relative bg-white border-b border-gray-200 flex-shrink-0">
@@ -1469,11 +1574,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     }
                   }}
                 >
-                  <BsPinAngleFill className="text-blue-400 text-[15px] flex-shrink-0" />
+                  <BsPinAngleFill className="text-[#0084ff] text-[15px] flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-gray-700 mb-0.5">Tin nhắn</div>
-                    <div className="text-[13px] text-gray-300 truncate">
-                      {pinnedMessages[pinnedMessages.length - 1]?.senderInfo?.name}: {pinnedMessages[pinnedMessages.length - 1]?.content || '[Media]'}
+                    <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
+                      {pinnedMessages[pinnedMessages.length - 1]?.senderInfo?.name || 'Tin nhắn'}
+                    </div>
+                    <div className="text-[12px] text-gray-500 truncate">
+                      {pinnedMessages[pinnedMessages.length - 1]?.content || '[Media]'}
                     </div>
                   </div>
                   {pinnedMessages.length > 1 && (
@@ -1520,7 +1627,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         key={msg.messageID}
                         className="relative flex items-start gap-3 px-4 py-3 hover:bg-gray-50 border-b border-gray-200/50"
                       >
-                        <BsPinAngleFill className="text-blue-400 text-[13px] flex-shrink-0 mt-0.5" />
+                        <BsPinAngleFill className="text-[#0084ff] text-[13px] flex-shrink-0 mt-0.5" />
                         <div 
                           className="flex-1 min-w-0 cursor-pointer"
                           onClick={() => {
@@ -1534,9 +1641,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             }
                           }}
                         >
-                          <div className="text-[13px] font-semibold text-gray-700 mb-1">Tin nhắn</div>
-                          <div className="text-[12px] text-gray-300">
-                            <span className="font-medium">{msg.senderInfo?.name}:</span>{' '}
+                          <div className="text-[13px] font-semibold text-gray-800 mb-0.5">{msg.senderInfo?.name || 'Tin nhắn'}</div>
+                          <div className="text-[12px] text-gray-500">
                             {msg.type === 'text' || msg.type === 'emoji' ? (
                               <span className="line-clamp-2">{msg.content}</span>
                             ) : msg.type === 'image' ? (
@@ -1615,7 +1721,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             )}
 
             {/* Messages */}
-            <div className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-gray-50 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
+            <div className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-[#eef0f3] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
               {timeline.map((item) => {
                 // ── Reminder event ──────────────────────────────────────────
                 if (item.kind === 'reminder') {
@@ -1696,6 +1802,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 const msg = item.data;
                 const isMine = msg.senderID === user?.userID;
                 const isNotif = msg.type === 'notification';
+                const isCallMsg = ['call-ended', 'call-missed', 'call-rejected'].includes(msg.type);
                 const msgKey = item.key;
 
                 if (isNotif) {
@@ -1714,7 +1821,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     ref={(el) => {
                       if (el && msg.messageID) msgRefsMap.current.set(msg.messageID, el);
                     }}
-                    className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-yellow-100/60 rounded-xl px-1 -mx-1' : ''}`}
+                    className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-blue-200/50 rounded-xl px-1 -mx-1' : ''}`}
                   >
                     {/* Avatar */}
                     {!isMine && (
@@ -1727,16 +1834,19 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                         onClick={async () => {
                           try {
-                            const res = await fetch(`${API}/usersID`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ userID: msg.senderID }),
-                            });
-                            const userData = await res.json();
-                            // Add friendStatus if not present (default to 'accepted' since they're in chat)
-                            if (!userData.friendStatus) {
-                              userData.friendStatus = 'accepted';
-                            }
+                            const [userRes, statusRes] = await Promise.all([
+                              fetch(`${API}/usersID`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userID: msg.senderID }),
+                              }),
+                              fetch(`${API}/contacts/friend-status/${msg.senderID}`, {
+                                headers: { ...authHeaders() },
+                              }),
+                            ]);
+                            const userData = await userRes.json();
+                            const statusData = await statusRes.json();
+                            userData.friendStatus = statusData.friendStatus || 'none';
                             setSelectedUserForProfile(userData);
                             setShowOtherProfile(true);
                           } catch (err) {
@@ -1750,53 +1860,15 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}
                     >
                       {/* Sender name (group) */}
-                      {!isMine && selectedChat.type === 'group' && (
+                      {!isMine && selectedChat.type === 'group' && !isCallMsg && (
                         <span className="text-[11px] text-gray-500 mb-0.5 ml-1">
                           {msg.senderInfo?.name}
                         </span>
                       )}
 
                       {/* Reply preview */}
-                      {msg.replyTo && (
-                        <div
-                          className={`px-3 py-2 rounded-lg bg-white mb-1 cursor-pointer hover:bg-gray-50 transition-colors ${isMine ? 'self-end' : 'self-start'} max-w-[280px]`}
-                          onClick={() => {
-                            if (msg.replyTo?.messageID) {
-                              setHighlightedMsgId(msg.replyTo.messageID);
-                              msgRefsMap.current.get(msg.replyTo.messageID)?.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'center' 
-                              });
-                            }
-                          }}
-                        >
-                          <div className="flex items-start gap-2 border-l-2 border-blue-400 pl-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-semibold text-gray-700 mb-0.5">
-                                {msg.replyTo.senderID === user?.userID ? 'Bạn' : (messages.find(m => m.messageID === msg.replyTo?.messageID)?.senderInfo?.name || 'Người dùng')}
-                              </div>
-                              <div className="text-[12px] text-gray-300 truncate">
-                                {msg.replyTo.type === 'text' || msg.replyTo.type === 'emoji' ? (
-                                  msg.replyTo.content
-                                ) : msg.replyTo.type === 'image' ? (
-                                  <span className="flex items-center gap-1">
-                                    <FaImage className="text-[10px]" /> Hình ảnh
-                                  </span>
-                                ) : msg.replyTo.type === 'video' ? (
-                                  <span className="flex items-center gap-1">
-                                    <FaVideo className="text-[10px]" /> Video
-                                  </span>
-                                ) : msg.replyTo.type === 'file' ? (
-                                  <span className="flex items-center gap-1">
-                                    <FaPaperclip className="text-[10px]" /> File
-                                  </span>
-                                ) : (
-                                  '[Media]'
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                      {msg.replyTo && !isCallMsg && (
+                        <div style={{display:'none'}}></div>
                       )}
 
                       {/* Bubble */}
@@ -1806,11 +1878,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             msg.type === 'image' ||
                             msg.type === 'video' ||
                             msg.type === 'sticker' ||
-                            msg.type === 'gif'
-                              ? '' // Không có background cho ảnh/video/sticker/gif
-                              : `px-3 py-2 rounded-2xl shadow-sm ${
+                            msg.type === 'gif' ||
+                            isCallMsg
+                              ? '' // Không có background cho ảnh/video/sticker/gif/call
+                              : `rounded-2xl shadow-sm overflow-hidden ${
                                   isMine
-                                    ? 'bg-[#0e9de8] text-gray-900 rounded-br-sm'
+                                    ? 'bg-blue-50 text-gray-800 rounded-br-sm'
                                     : 'bg-white text-gray-800 rounded-bl-sm'
                                 }`
                           } ${msg.type === 'unsend' ? 'opacity-60' : ''} cursor-pointer select-text`}
@@ -1832,11 +1905,51 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             setActionMsgId(msgKey);
                           }}
                         >
-                          {renderMessageContent(msg, msgKey, isMine)}
+                          {/* Reply preview bên trong bubble */}
+                          {msg.replyTo && !isCallMsg && (
+                            <div
+                              className={`px-3 pt-2 pb-1 cursor-pointer ${
+                                isMine ? 'bg-blue-100' : 'bg-gray-100'
+                              }`}
+                              onClick={() => {
+                                if (msg.replyTo?.messageID) {
+                                  setHighlightedMsgId(msg.replyTo.messageID);
+                                  msgRefsMap.current.get(msg.replyTo.messageID)?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'center',
+                                  });
+                                }
+                              }}
+                            >
+                              <div className={`border-l-[3px] pl-2 ${isMine ? 'border-blue-400' : 'border-[#0084ff]'}`}>
+                                <div className={`text-[12px] font-semibold mb-0.5 ${isMine ? 'text-gray-700' : 'text-gray-800'}`}>
+                                  {msg.replyTo.senderID === user?.userID ? 'Bạn' : (messages.find(m => m.messageID === msg.replyTo?.messageID)?.senderInfo?.name || 'Người dùng')}
+                                </div>
+                                <div className={`text-[12px] truncate ${isMine ? 'text-gray-500' : 'text-gray-500'}`}>
+                                  {msg.replyTo.type === 'text' || msg.replyTo.type === 'emoji' ? (
+                                    msg.replyTo.content
+                                  ) : msg.replyTo.type === 'image' ? (
+                                    <span className="flex items-center gap-1"><FaImage className="text-[10px]" /> Hình ảnh</span>
+                                  ) : msg.replyTo.type === 'video' ? (
+                                    <span className="flex items-center gap-1"><FaVideo className="text-[10px]" /> Video</span>
+                                  ) : msg.replyTo.type === 'file' ? (
+                                    <span className="flex items-center gap-1"><FaPaperclip className="text-[10px]" /> File</span>
+                                  ) : '[Media]'}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          <div className={`${
+                            msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif' || isCallMsg
+                              ? ''
+                              : msg.type === 'file' ? '' : 'px-3 py-2'
+                          }`}>
+                            {renderMessageContent(msg, msgKey, isMine)}
+                          </div>
                         </div>
 
                         {/* Pinned indicator */}
-                        {msg.pinnedInfo && (
+                        {msg.pinnedInfo && !isCallMsg && (
                           <BsPin
                             className={`absolute -top-1.5 ${isMine ? '-left-4' : '-right-4'} text-yellow-500 text-xs`}
                           />
@@ -2246,7 +2359,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               part.toLowerCase() === searchKeyword.toLowerCase() ? (
                                 <mark
                                   key={j}
-                                  className="bg-yellow-200 text-gray-900 rounded px-0.5"
+                                  className="bg-blue-200/50 text-gray-900 rounded px-0.5"
                                 >
                                   {part}
                                 </mark>
@@ -2269,7 +2382,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       <p className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-1">
                         🕐 {new Date(r.timestamp).toLocaleString('vi-VN')}
                         {r.messageID && (
-                          <span className="text-[#0e9de8] ml-auto text-[10px]">Nhấn để xem →</span>
+                          <span className="text-[#0e9de8] ml-auto text-[10px]">Nhấn để xem</span>
                         )}
                       </p>
                     </div>

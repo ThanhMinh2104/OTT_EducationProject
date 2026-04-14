@@ -150,14 +150,14 @@ const OtherProfileModal = ({
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4 font-['Segoe_UI',sans-serif]">
       <div className="bg-white w-full sm:w-[400px] h-full sm:h-[700px] sm:rounded-md shadow-2xl flex flex-col text-gray-800 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 relative animate-modal-pop">
 
-        {/* Header content */}
-        <div className="absolute top-0 left-0 w-full flex items-center justify-between px-4 py-3 z-10 bg-gradient-to-b from-black/60 to-transparent sm:rounded-t-md">
-          <div className="flex items-center gap-4">
-            {onBack && <FaChevronLeft className="text-white text-[15px] cursor-pointer" onClick={onBack} />}
-            <span className="text-white text-[15px] font-semibold shadow-sm">Thông tin tài khoản</span>
+        {/* Header - nằm ngoài ảnh, không overlay */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0 sm:rounded-t-md bg-white">
+          <div className="flex items-center gap-3">
+            {onBack && <FaChevronLeft className="text-gray-600 text-[15px] cursor-pointer hover:text-gray-900" onClick={onBack} />}
+            <span className="text-gray-900 text-[15px] font-semibold">Thông tin tài khoản</span>
           </div>
-          <button onClick={onClose} className="text-gray-900/90 hover:text-gray-900 transition-colors">
-            <FaTimes className="text-xl" />
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors">
+            <FaTimes className="text-base" />
           </button>
         </div>
 
@@ -166,7 +166,7 @@ const OtherProfileModal = ({
           <img
             src={user.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.userID}
             alt="cover"
-            className="w-full h-[220px] object-cover bg-gray-200 sm:rounded-t-md brightness-90"
+            className="w-full h-[200px] object-cover bg-gray-200 brightness-90"
           />
           <div className="absolute -bottom-10 left-5">
             <img

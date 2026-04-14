@@ -34,6 +34,13 @@ const VideoCallModal = ({
   const [callDuration, setCallDuration] = useState(0);
   const [endMessage, setEndMessage] = useState<string | null>(null);
 
+  const callStateRef = useRef<'calling' | 'connected'>('calling');
+
+  // Sync callStateRef với callState
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
+
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -64,22 +71,41 @@ const VideoCallModal = ({
     pc.ontrack = (e) => {
       if (remoteVideoRef.current && e.streams[0]) {
         remoteVideoRef.current.srcObject = e.streams[0];
-        setCallState('connected');
       }
+      setCallState('connected');
     };
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') setCallState('connected');
     };
 
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        setCallState('connected');
+      }
+    };
+
     return pc;
   };
 
   const getLocalStream = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: callType === 'video',
-      audio: true,
-    });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: callType === 'video',
+        audio: true,
+      });
+    } catch {
+      try {
+        // Camera bị chiếm (test cùng máy) hoặc không có camera → fallback audio only
+        stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        setIsLocalVideoOff(true);
+      } catch {
+        // Cả audio cũng fail → tạo stream rỗng để WebRTC vẫn hoạt động
+        stream = new MediaStream();
+        setIsLocalVideoOff(true);
+      }
+    }
     localStreamRef.current = stream;
     if (localVideoRef.current) localVideoRef.current.srcObject = stream;
     return stream;
@@ -120,10 +146,14 @@ const VideoCallModal = ({
     await pc.setLocalDescription(answer);
 
     socket.emit('make-answer', {
-      to: remoteUserID, // route tới userID room của người gọi
+      to: remoteUserID,
       answer,
       from: user.userID,
     });
+
+    // Người nhận đã chấp nhận và gửi answer → set connected ngay
+    setCallState('connected');
+    callStartTimeRef.current = Date.now();
   };
 
   const endCall = () => {
@@ -131,28 +161,23 @@ const VideoCallModal = ({
     pcRef.current?.close();
 
     if (remoteUserIDRef.current) {
-      // Nếu chưa kết nối (đang gọi), emit call-cancelled thay vì call-ended
-      if (callState === 'calling' && !incomingOffer) {
+      if (callStateRef.current === 'calling' && !incomingOffer) {
         socket.emit('call-cancelled', {
           to: remoteUserIDRef.current,
           from: user.userID,
           chatID: chatID,
         });
-        // Đóng modal ngay lập tức cho người gọi
         onClose();
-      } else if (callState === 'connected') {
-        // Chỉ emit call-ended khi đã kết nối
+      } else if (callStateRef.current === 'connected') {
         socket.emit('call-ended', {
           to: remoteUserIDRef.current,
           from: user.userID,
           duration: callDuration,
           chatID: chatID,
         });
-        // Hiển thị thông báo trước khi đóng
         setEndMessage('Cuộc gọi kết thúc');
         setTimeout(() => onClose(), 2000);
       } else {
-        // Trường hợp khác, đóng ngay
         onClose();
       }
     } else {
@@ -218,14 +243,14 @@ const VideoCallModal = ({
     }
 
     const onAnswerMade = async (data: { answer: RTCSessionDescriptionInit; from: string }) => {
-      if (!isActiveRef.current) return; // Ignore if this call is no longer active
-      // Cập nhật remoteUserID nếu chưa có
+      if (!isActiveRef.current) return;
       if (!remoteUserIDRef.current) remoteUserIDRef.current = data.from;
-      setCallState('connected');
       callStartTimeRef.current = Date.now();
       if (pcRef.current && pcRef.current.signalingState !== 'stable') {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
       }
+      // Người gọi nhận được answer → set connected ngay
+      setCallState('connected');
     };
 
     const onIceCandidate = async (data: { candidate: RTCIceCandidateInit; from: string }) => {

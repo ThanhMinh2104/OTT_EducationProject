@@ -157,6 +157,11 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
     // Listen for new messages from strangers
     socket.on('new_message', (msg: Message) => {
       setStrangerChats((prev) => {
+        // Nếu tin nhắn do chính mình gửi → xóa chat khỏi stranger list (đã reply)
+        if (msg.senderID === user.userID) {
+          return prev.filter((c) => c.chatID !== msg.chatID);
+        }
+
         const updated = prev.map((c) => {
           if (c.chatID !== msg.chatID) return c;
           const msgs = c.lastMessage || [];

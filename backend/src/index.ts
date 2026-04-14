@@ -90,7 +90,9 @@ io.on('connection', (socket) => {
   registerCallEvents(io, socket);
 
   socket.on('updateStatus', async (user) => {
-    io.emit('userStatusUpdated', user);
+    // Chỉ broadcast tới user room của chính họ, không broadcast toàn bộ
+    io.to(user.userID).emit('userStatusUpdated', user);
+    socket.broadcast.emit('userStatusUpdated', user);
   });
 
   socket.on('updateUser', (user) => {

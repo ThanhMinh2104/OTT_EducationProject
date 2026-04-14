@@ -45,21 +45,26 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
   if (!chatIDs.length) return [];
 
   const chats = await Chat.find({ chatID: { $in: chatIDs } }).lean();
-  const allMessages = await Message.find({ 
-    chatID: { $in: chatIDs },
-    deletedFor: { $ne: userID } // ⭐ Filter out messages deleted by this user
-  }).sort({ timestamp: 1 }).lean();
 
-  const senderIDs = [...new Set(allMessages.map((m) => m.senderID))];
+  // Chỉ lấy 20 tin nhắn gần nhất mỗi chat thay vì toàn bộ
+  const allMessages = await Message.aggregate([
+    { $match: { chatID: { $in: chatIDs }, deletedFor: { $ne: userID } } },
+    { $sort: { timestamp: 1 } },
+    { $group: { _id: '$chatID', messages: { $push: '$$ROOT' } } },
+    { $project: { messages: { $slice: ['$messages', -50] } } }, // 50 tin nhắn gần nhất
+  ]);
+
+  const flatMessages = allMessages.flatMap((g: any) => g.messages);
+  const senderIDs = [...new Set(flatMessages.map((m: any) => m.senderID))];
   const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
 
-  const enriched = allMessages.map((msg) => {
+  const enriched = flatMessages.map((msg: any) => {
     const s = senders.find((u) => u.userID === msg.senderID);
     return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
   });
 
   const msgByChat: Record<string, typeof enriched> = {};
-  enriched.forEach((m) => {
+  enriched.forEach((m: any) => {
     if (!msgByChat[m.chatID]) msgByChat[m.chatID] = [];
     msgByChat[m.chatID].push(m);
   });
@@ -69,67 +74,83 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
     membersByChat[doc.chatID] = doc.members.map((m) => ({ userID: m.userID, role: m.role }));
   });
 
-  // Check if users are friends
-  const checkIsFriend = async (userID: string, otherUserID: string): Promise<boolean> => {
-    const contact = await Contacts.findOne({
-      $or: [
-        { userID, contactID: otherUserID, status: 'accepted' },
-        { userID: otherUserID, contactID: userID, status: 'accepted' },
-      ],
-    });
-    return !!contact;
-  };
-
-  // Filter out chats where current user has deletedAt set
-  const filteredChats = await Promise.all(
-    chats
-      .filter((c) => {
-        const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
-        const currentMember = memberDoc?.members.find((m) => m.userID === userID);
-        return !currentMember?.deletedAt; // Only include if deletedAt is not set
-      })
-      .map(async (c) => {
-        const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
-        const currentMember = memberDoc?.members.find((m) => m.userID === userID);
-        const historyDeletedAt = currentMember?.historyDeletedAt;
-        
-        // Filter messages by historyDeletedAt
-        let messages = msgByChat[c.chatID] || [];
-        if (historyDeletedAt) {
-          messages = messages.filter((msg) => new Date(msg.timestamp) > historyDeletedAt);
-        }
-        
-        // Calculate unread count: messages from others that are not 'read'
-        const unreadCount = messages.filter(
-          (msg) => msg.senderID !== userID && msg.status !== 'read'
-        ).length;
-        
-        // Check if this is a stranger chat (private chat with non-friend)
-        let isStranger = false;
-        if (c.type === 'private') {
-          const otherMember = membersByChat[c.chatID]?.find((m) => m.userID !== userID);
-          if (otherMember) {
-            const isFriend = await checkIsFriend(userID, otherMember.userID);
-            isStranger = !isFriend;
-          }
-        }
-        
-        return {
-          ...c,
-          lastMessage: messages,
-          members: membersByChat[c.chatID] || [],
-          unreadCount,
-          isStranger, // ⭐ Mark if this is a stranger chat
-        };
-      })
+  // Batch load tất cả contacts của user 1 lần thay vì query từng cái
+  const allContacts = await Contacts.find({
+    $or: [{ userID }, { contactID: userID }],
+    status: 'accepted',
+  }).lean();
+  const friendIDs = new Set(
+    allContacts.map((c) => (c.userID === userID ? c.contactID : c.userID))
   );
 
-  // Filter based on includeStrangers flag
+  // Batch load private chats cần check stranger
+  const privateChatIDs = chats
+    .filter((c) => c.type === 'private')
+    .map((c) => c.chatID);
+
+  // Lấy tin nhắn đầu tiên của tất cả private chats 1 lần
+  const firstMsgs = privateChatIDs.length > 0 ? await Message.aggregate([
+    { $match: { chatID: { $in: privateChatIDs }, type: { $nin: ['notification'] } } },
+    { $sort: { timestamp: 1 } },
+    { $group: { _id: '$chatID', firstSenderID: { $first: '$senderID' } } },
+  ]) : [];
+  const firstMsgMap: Record<string, string> = {};
+  firstMsgs.forEach((m: any) => { firstMsgMap[m._id] = m.firstSenderID; });
+
+  // Lấy danh sách chat mà user đã reply (có ít nhất 1 tin nhắn từ user)
+  const myRepliedChats = privateChatIDs.length > 0 ? await Message.aggregate([
+    { $match: { chatID: { $in: privateChatIDs }, senderID: userID, type: { $nin: ['notification'] } } },
+    { $group: { _id: '$chatID' } },
+  ]) : [];
+  const myRepliedSet = new Set(myRepliedChats.map((m: any) => m._id));
+
+  // Filter out chats where current user has deletedAt set
+  const filteredChats = chats
+    .filter((c) => {
+      const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
+      const currentMember = memberDoc?.members.find((m) => m.userID === userID);
+      return !currentMember?.deletedAt;
+    })
+    .map((c) => {
+      const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
+      const currentMember = memberDoc?.members.find((m) => m.userID === userID);
+      const historyDeletedAt = currentMember?.historyDeletedAt;
+
+      let messages = msgByChat[c.chatID] || [];
+      if (historyDeletedAt) {
+        messages = messages.filter((msg) => new Date(msg.timestamp) > historyDeletedAt);
+      }
+
+      const unreadCount = messages.filter(
+        (msg) => msg.senderID !== userID && msg.status !== 'read'
+      ).length;
+
+      // Stranger check — không cần thêm DB query
+      let isStranger = false;
+      if (c.type === 'private') {
+        const otherMember = membersByChat[c.chatID]?.find((m) => m.userID !== userID);
+        if (otherMember && !friendIDs.has(otherMember.userID)) {
+          const initiatorID = firstMsgMap[c.chatID];
+          if (initiatorID === userID) {
+            isStranger = false; // Mình gửi trước → không vào folder
+          } else {
+            isStranger = !myRepliedSet.has(c.chatID); // Chưa reply → stranger
+          }
+        }
+      }
+
+      return {
+        ...c,
+        lastMessage: messages,
+        members: membersByChat[c.chatID] || [],
+        unreadCount,
+        isStranger,
+      };
+    });
+
   if (includeStrangers) {
-    // Return only stranger chats
     return filteredChats.filter((c) => c.isStranger);
   } else {
-    // Return only non-stranger chats (friends + groups)
     return filteredChats.filter((c) => !c.isStranger);
   }
 };
@@ -530,6 +551,38 @@ export default function chatRoutes(io: Server) {
         gioTinh: target.gioTinh,
         friendStatus,
       });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Kiểm tra trạng thái bạn bè theo userID
+  router.get('/contacts/friend-status/:targetUserID', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const { targetUserID } = req.params;
+
+      if (userID === targetUserID) return res.json({ friendStatus: 'self' }) as any;
+
+      const contact = await Contacts.findOne({
+        $or: [
+          { userID, contactID: targetUserID },
+          { userID: targetUserID, contactID: userID },
+        ],
+      });
+
+      let friendStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'blocked' = 'none';
+      if (contact) {
+        if (contact.status === 'pending') {
+          friendStatus = contact.contactID === userID ? 'pending_sent' : 'pending_received';
+        } else if (contact.status === 'accepted') {
+          friendStatus = 'accepted';
+        } else if (contact.status === 'blocked') {
+          friendStatus = 'blocked';
+        }
+      }
+
+      res.json({ friendStatus });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
