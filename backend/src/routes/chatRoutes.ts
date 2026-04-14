@@ -41,10 +41,22 @@ const generateChatID = async (): Promise<string> => {
 // Helper: lấy danh sách chat đầy đủ cho user
 export const getChatsForUser = async (userID: string, includeStrangers: boolean = false) => {
   const memberDocs = await ChatMember.find({ 'members.userID': userID }).lean();
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`  → Found ${memberDocs.length} ChatMember records for ${userID}`);
+  }
+  
   const chatIDs = memberDocs.map((m) => m.chatID);
-  if (!chatIDs.length) return [];
+  if (!chatIDs.length) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  → No chats found for ${userID}`);
+    }
+    return [];
+  }
 
   const chats = await Chat.find({ chatID: { $in: chatIDs } }).lean();
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`  → Found ${chats.length} Chat records`);
+  }
 
   // Chỉ lấy 20 tin nhắn gần nhất mỗi chat thay vì toàn bộ
   const allMessages = await Message.aggregate([

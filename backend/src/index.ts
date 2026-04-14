@@ -81,6 +81,9 @@ io.on('connection', (socket) => {
   socket.on('getChat', async (userID: string) => {
     try {
       const chats = await getChatsForUser(userID);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📋 getChat for ${userID}: ${chats.length} chats`);
+      }
       // Emit tới user room, không phải chỉ socket hiện tại
       io.to(userID).emit('ChatByUserID', chats);
     } catch (e) {
