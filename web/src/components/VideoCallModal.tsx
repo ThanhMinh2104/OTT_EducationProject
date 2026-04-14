@@ -28,7 +28,7 @@ const VideoCallModal = ({
   callType = 'video', // Mặc định là video call
   onClose,
 }: Props) => {
-  const [callState, setCallState] = useState<'calling' | 'connected'>('calling');
+  const [callState, setCallState] = useState<'calling' | 'connected' | 'busy'>('calling');
   const [isMuted, setIsMuted] = useState(false);
   const [isLocalVideoOff, setIsLocalVideoOff] = useState(callType === 'voice');
   const [callDuration, setCallDuration] = useState(0);
@@ -273,12 +273,24 @@ const VideoCallModal = ({
       setTimeout(() => onClose(), 2000);
     };
 
+    const onUserBusy = (data: { userID: string; message: string }) => {
+      console.log('⚠️ User busy:', data);
+      setCallState('busy');
+      // Tự động đóng sau 3 giây
+      setTimeout(() => {
+        if (isActiveRef.current) {
+          onClose();
+        }
+      }, 3000);
+    };
+
     socket.on('answer-made', onAnswerMade);
     socket.on('ice-candidate', onIceCandidate);
     socket.on('call-rejected', onCallRejected);
     socket.on('call-missed', onCallMissed);
     socket.on('call-cancelled', onCallCancelled);
     socket.on('call-ended', onCallEnded);
+    socket.on('user-busy', onUserBusy);
 
     return () => {
       isActiveRef.current = false; // Mark this call as inactive
@@ -288,6 +300,7 @@ const VideoCallModal = ({
       socket.off('call-missed', onCallMissed);
       socket.off('call-cancelled', onCallCancelled);
       socket.off('call-ended', onCallEnded);
+      socket.off('user-busy', onUserBusy);
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       pcRef.current?.close();
     };
@@ -350,7 +363,11 @@ const VideoCallModal = ({
             />
             <p className="text-white text-xl font-bold mb-2">{displayName}</p>
             <p className="text-gray-400 text-sm animate-pulse">
-              {incomingOffer ? 'Đang kết nối...' : 'Đang gọi...'}
+              {callState === 'busy' 
+                ? 'Người dùng đang bận' 
+                : incomingOffer 
+                  ? 'Đang kết nối...' 
+                  : 'Đang gọi...'}
             </p>
           </div>
         )}

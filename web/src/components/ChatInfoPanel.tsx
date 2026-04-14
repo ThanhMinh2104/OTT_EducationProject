@@ -154,11 +154,18 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
         headers: authHeaders(),
       });
       if (res.ok) {
-        onHistoryDeleted();
+        console.log('Delete history success');
         setShowDeleteConfirm(false);
+        // Clear messages immediately and notify parent
+        onHistoryDeleted();
+      } else {
+        console.error('Delete history failed:', await res.text());
       }
-    } catch { /* ignore */ }
-    finally { setIsDeleting(false); }
+    } catch (err) {
+      console.error('Delete history error:', err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const chatName = chat.type === 'private' ? (memberInfo?.name || chat.name) : chat.name;

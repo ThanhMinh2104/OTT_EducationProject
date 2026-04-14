@@ -11,9 +11,10 @@ import userRoutes from './routes/userRoutes';
 import sessionRoutes from './routes/sessionRoutes';
 import adminRoutes from './routes/adminRoutes';
 import chatRoutes, { getChatsForUser } from './routes/chatRoutes';
+import reminderRoutes from './routes/reminderRoutes';
 import { registerMessageEvents } from './socket/messageEvents';
 import { registerNotificationEvents } from './socket/notificationEvents';
-import { registerCallEvents } from './socket/index';
+import { registerCallEvents, getActiveCallsMap, clearActiveCallsMap } from './socket/index';
 
 const app = express();
 
@@ -38,6 +39,23 @@ app.use('/api', userRoutes);
 app.use('/api', sessionRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', chatRoutes(io));
+app.use('/api/reminders', reminderRoutes);
+
+// Debug route để xem active calls
+app.get('/api/debug/active-calls', (req, res) => {
+  const calls = Array.from(getActiveCallsMap().entries()).map(([userID, info]) => ({
+    userID,
+    with: info.with,
+    duration: Math.floor((Date.now() - info.startTime) / 1000),
+  }));
+  res.json({ activeCalls: calls, count: calls.length / 2 });
+});
+
+// Route để clear active calls (chỉ dùng khi debug)
+app.post('/api/debug/clear-active-calls', (req, res) => {
+  clearActiveCallsMap();
+  res.json({ message: 'Active calls cleared' });
+});
 
 io.on('connection', (socket) => {
   console.log('🟢 Client connected:', socket.id);

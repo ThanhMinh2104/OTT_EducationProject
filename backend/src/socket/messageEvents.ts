@@ -79,8 +79,13 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
   // ==================== 3. THU HỒI TIN NHẮN ====================
   socket.on('unsend_message', async ({ messageID, chatID, senderID }: any) => {
     try {
+      console.log('🔄 Unsend message request:', { messageID, chatID, senderID });
+      
       const msg = await Message.findOne({ messageID });
-      if (!msg || msg.senderID !== senderID) return;
+      if (!msg || msg.senderID !== senderID) {
+        console.log('❌ Unsend failed: message not found or not sender');
+        return;
+      }
 
       // Đổi type thành unsend và xóa nội dung
       msg.type = 'unsend';
@@ -88,13 +93,21 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       msg.media_url = [];
       await msg.save();
 
+      console.log('✅ Message unsent, notifying members...');
+
       // Lấy danh sách thành viên
       const chatMemberDoc = await ChatMember.findOne({ chatID });
       const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
 
+      console.log('📤 Emitting unsend_notification to:', memberIDs);
+
       // Thông báo cho tất cả thành viên
-      memberIDs.forEach((id) => io.to(id).emit('unsend_notification', msg));
+      memberIDs.forEach((id) => {
+        io.to(id).emit('unsend_notification', msg);
+        console.log(`  → Sent to user room: ${id}`);
+      });
       io.to(chatID).emit('unsend_notification', msg);
+      console.log(`  → Sent to chat room: ${chatID}`);
     } catch (e) {
       console.error('unsend_message error:', e);
     }
