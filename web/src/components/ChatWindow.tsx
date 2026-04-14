@@ -11,6 +11,7 @@ import { io, Socket } from 'socket.io-client';
 import { getToken } from '../utils/auth';
 import ReminderModal from './ReminderModal';
 import ChatInfoPanel from './ChatInfoPanel';
+import ForwardMessageModal from './ForwardMessageModal';
 import { loadReminderEvents, saveReminderEvent, type ReminderEvent } from '../hooks/useReminderChecker';
 
 const socket: Socket = io('http://localhost:5000');
@@ -87,6 +88,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const msgRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const [showReminder, setShowReminder] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
   // Reminder system messages hiển thị trong chat — persist qua localStorage
   const [reminderEvents, setReminderEvents] = useState<ReminderEvent[]>([]);
@@ -403,11 +405,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   // ==================== TV2: Forward message ====================
   const handleForwardMessage = (msg: Message) => {
-    // TODO: Mở ForwardMessageModal
-    // Tạm thời copy nội dung vào input
-    if (msg.content) setInputText(msg.content);
+    setForwardingMessage(msg);
     setActionMsgId(null);
-    inputRef.current?.focus();
   };
 
   // Ghi âm
@@ -740,7 +739,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             <FaReply className="text-gray-400 text-xs" /> Trả lời
                           </button>
                           <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                            onClick={() => handleForward(msg)}>
+                            onClick={() => handleForwardMessage(msg)}>
                             <FaThumbsUp className="text-gray-400 text-xs" /> Chuyển tiếp
                           </button>
                           <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -1071,6 +1070,15 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           setReminderEvents((prev) => [...prev, evt]);
           socket.emit('reminder_event', evt);
         }}
+      />
+    )}
+
+    {/* Forward Message Modal */}
+    {forwardingMessage && (
+      <ForwardMessageModal
+        message={forwardingMessage}
+        onClose={() => setForwardingMessage(null)}
+        user={user}
       />
     )}
     </>

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { FaTimes, FaPaperPlane } from 'react-icons/fa';
 import { io, Socket } from 'socket.io-client';
+import axiosInstance from '../utils/axios';
 
 const socket: Socket = io('http://localhost:5000');
-const API = 'http://localhost:5000/api';
 
 interface Message {
   messageID?: string;
@@ -46,15 +46,12 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
     const fetchChats = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch(`${API}/chats`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
-        const data = await response.json();
-        setChats(data || []);
+        const response = await axiosInstance.post('/chats/userID');
+        const data = Array.isArray(response.data) ? response.data : [];
+        setChats(data);
       } catch (error) {
         console.error('Error fetching chats:', error);
+        setChats([]);
       } finally {
         setIsLoading(false);
       }
