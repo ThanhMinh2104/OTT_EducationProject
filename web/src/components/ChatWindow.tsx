@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
+import axiosInstance from '../utils/axios';
 import {
   FaComments,
   FaPaperPlane,
@@ -20,12 +21,14 @@ import {
   FaPlay,
   FaPause,
   FaUserFriends,
+  FaBan,
 } from 'react-icons/fa';
 import { BsPin, BsPinAngleFill } from 'react-icons/bs';
 import { EmojiClickData } from 'emoji-picker-react';
 import socket from '../utils/socket';
 import { getToken } from '../utils/auth';
 import ReminderModal from './ReminderModal';
+import ConfirmModal from './ConfirmModal';
 import ChatInfoPanel from './ChatInfoPanel';
 import StickerEmojiPicker from './StickerEmojiPicker';
 import ForwardMessageModal from './ForwardMessageModal';
@@ -79,6 +82,7 @@ interface User {
   anhDaiDien?: string;
   sdt?: string;
   trangThai?: string;
+  friendStatus?: string;
 }
 interface Props {
   selectedChat: Chat | null;
@@ -150,7 +154,7 @@ const FileDisplay = ({
         const size = res.headers.get('content-length');
         if (size) setFileSize(parseInt(size));
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [fileUrl]);
 
   const handleDownload = async () => {
@@ -223,8 +227,8 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
     `${Math.floor(s / 60)
       .toString()
       .padStart(2, '0')}:${Math.floor(s % 60)
-      .toString()
-      .padStart(2, '0')}`;
+        .toString()
+        .padStart(2, '0')}`;
 
   return (
     <div
@@ -256,7 +260,7 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
       {/* Play/Pause Button */}
       <button
         onClick={toggle}
-        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-[#0e9de8] text-gray-900 hover:bg-[#0077c2] transition-colors shadow-md"
+        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-[#0068ff] text-gray-900 hover:bg-[#0077c2] transition-colors shadow-md"
       >
         {playing ? <FaPause className="text-sm" /> : <FaPlay className="text-sm ml-0.5" />}
       </button>
@@ -266,9 +270,8 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
         {[20, 35, 50, 40, 55, 30, 45, 38, 52, 28, 42, 35].map((height, i) => (
           <div
             key={i}
-            className={`w-[3px] rounded-full transition-all ${
-              isMine ? 'bg-blue-400/70' : 'bg-[#0084ff]'
-            }`}
+            className={`w-[3px] rounded-full transition-all ${isMine ? 'bg-blue-400/70' : 'bg-[#0068ff]'
+              }`}
             style={{
               height: `${progress > (i / 12) * 100 ? height : height * 0.4}%`,
               opacity: progress > (i / 12) * 100 ? 1 : 0.5,
@@ -333,6 +336,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   // Image viewer state
   const [showImageViewer, setShowImageViewer] = useState(false);
+  const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
+  const [isBlockingOrUnblocking, setIsBlockingOrUnblocking] = useState(false);
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
   const [chatImages, setChatImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
 
@@ -391,12 +396,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setSeenMap({});
     setIsStranger(false);
     setFriendRequestSent(false);
-    
+
     // Load reminder events from API
     loadReminderEvents(selectedChat.chatID).then((events) => {
       setReminderEvents(events);
     });
-    
+
     msgRefsMap.current.clear();
     setHighlightedMsgId(null);
 
@@ -425,14 +430,17 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         })
           .then((r) => r.json())
           .then((d) => setMemberInfo(d))
-          .catch(() => {});
+          .catch(() => { });
 
         // Check stranger status
         fetch(`${API}/contacts/friend-status/${otherId}`, {
           headers: { ...authHeaders() },
         })
           .then((r) => r.json())
-          .then((d) => setIsStranger(d.friendStatus === 'none'))
+          .then((d) => {
+            setIsStranger(d.friendStatus === 'none');
+            setMemberInfo(prev => prev?.userID === otherId ? { ...prev, friendStatus: d.friendStatus } : prev);
+          })
           .catch(() => setIsStranger(false));
       }
     } else {
@@ -506,8 +514,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       }
     };
 
-    const onUpdateUser = (updatedUser: User) => {
-      setMemberInfo((prev) => (prev?.userID === updatedUser.userID ? updatedUser : prev));
+    const onUpdateUser = (updatedUser: Partial<User> & { userID: string }) => {
+      setMemberInfo((prev) =>
+        (prev?.userID === updatedUser.userID ? { ...prev, ...updatedUser } : prev)
+      );
     };
 
     socket.on('new_message', onNewMessage);
@@ -517,7 +527,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     socket.on('ghim_notification', onGhim);
     socket.on('unghim_notification', onUnghim);
     socket.on(`status_update_${chatID}`, onStatusUpdate);
-    socket.on('updatee_user', onUpdateUser);
+    socket.on('friend_status_update', onUpdateUser);
 
     const onTypingStart = ({
       chatID: evtChatID,
@@ -645,7 +655,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('ghim_notification', onGhim);
       socket.off('unghim_notification', onUnghim);
       socket.off(`status_update_${chatID}`, onStatusUpdate);
-      socket.off('updatee_user', onUpdateUser);
+      socket.off('friend_status_update', onUpdateUser);
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
       socket.off('message_seen', onMessageSeen);
@@ -655,13 +665,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('friend_request_accepted', onFriendAccepted);
       setTypingUsers([]);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.chatID, user?.userID]);
 
-  // Debug: Track useEffect runs
-  useEffect(() => {
-    console.log('⚠️ ChatWindow useEffect ran - this should only happen when chat changes');
-  }, [selectedChat?.chatID, user?.userID]);
+  // Cleanup loop debug log
+
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -688,12 +696,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       senderInfo: { name: user!.name, avatar: user!.anhDaiDien || null },
       replyTo: replyTo
         ? {
-            messageID: replyTo.messageID,
-            senderID: replyTo.senderID,
-            content: replyTo.content,
-            type: replyTo.type,
-            media_url: replyTo.media_url,
-          }
+          messageID: replyTo.messageID,
+          senderID: replyTo.senderID,
+          content: replyTo.content,
+          type: replyTo.type,
+          media_url: replyTo.media_url,
+        }
         : null,
       ...extra,
     }) as Message;
@@ -901,7 +909,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           for (let i = 0; i < data.urls.length; i++) {
             const url = data.urls[i];
             const msg = buildMsg({ content: '', type, media_url: [url] });
-            
+
             // Thêm vào state trước
             setMessages((prev) => {
               // Kiểm tra xem đã có message với tempID này chưa
@@ -910,10 +918,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               }
               return [...prev, msg];
             });
-            
+
             // Sau đó emit socket
             socket.emit('send_message', msg);
-            
+
             // Delay nhỏ giữa các lần gửi để tránh race condition
             if (i < data.urls.length - 1) {
               await new Promise(resolve => setTimeout(resolve, 100));
@@ -924,7 +932,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           for (let i = 0; i < files.length; i++) {
             const f = files[i];
             const msg = buildMsg({ content: f.name, type: 'file', media_url: [data.urls[i]] });
-            
+
             // Thêm vào state trước
             setMessages((prev) => {
               // Kiểm tra xem đã có message với tempID này chưa
@@ -933,10 +941,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               }
               return [...prev, msg];
             });
-            
+
             // Sau đó emit socket
             socket.emit('send_message', msg);
-            
+
             // Delay nhỏ giữa các lần gửi
             if (i < files.length - 1) {
               await new Promise(resolve => setTimeout(resolve, 100));
@@ -955,20 +963,20 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   };
 
   const handleUnsend = (msg: Message) => {
-    console.log('🎯 handleUnsend called:', { 
-      messageID: msg.messageID, 
-      senderID: msg.senderID, 
+    console.log('🎯 handleUnsend called:', {
+      messageID: msg.messageID,
+      senderID: msg.senderID,
       userID: user?.userID,
-      match: msg.senderID === user?.userID 
+      match: msg.senderID === user?.userID
     });
-    
+
     if (!msg.messageID || msg.senderID !== user?.userID) {
       console.log('❌ Cannot unsend: validation failed');
       return;
     }
-    
+
     console.log('🔄 Unsending message:', { messageID: msg.messageID, chatID: selectedChat!.chatID });
-    
+
     // Cập nhật UI ngay lập tức (optimistic update)
     setMessages((prev) =>
       prev.map((m) =>
@@ -977,16 +985,16 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           : m
       )
     );
-    
+
     // Gửi socket event
     socket.emit('unsend_message', {
       messageID: msg.messageID,
       chatID: selectedChat!.chatID,
       senderID: user!.userID,
     });
-    
+
     console.log('📤 Emitted unsend_message event');
-    
+
     setActionMsgId(null);
   };
 
@@ -1050,18 +1058,18 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   const handleDeleteLocal = (msg: Message) => {
     if (!msg.messageID || !user?.userID) return;
-    
+
     // Xóa tin nhắn khỏi UI ngay lập tức (optimistic update)
     setMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
     setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
-    
+
     // Gửi socket event để lưu vào database
     socket.emit('delete_message_local', {
       messageID: msg.messageID,
       userID: user.userID,
       chatID: selectedChat!.chatID,
     });
-    
+
     setActionMsgId(null);
   };
 
@@ -1205,7 +1213,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           </div>
           <div className="border-t border-blue-100 px-4 py-2">
             <button
-              className="text-[#0e9de8] font-semibold text-sm w-full text-center"
+              className="text-[#0068ff] font-semibold text-sm w-full text-center"
               onClick={() => onStartVideoCall?.('voice')}
             >
               Gọi lại
@@ -1231,7 +1239,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           </div>
           <div className="border-t border-blue-100 px-4 py-2">
             <button
-              className="text-[#0e9de8] font-semibold text-sm w-full text-center"
+              className="text-[#0068ff] font-semibold text-sm w-full text-center"
               onClick={() => onStartVideoCall?.('voice')}
             >
               Gọi lại
@@ -1271,7 +1279,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           </div>
           <div className="border-t border-blue-100 px-4 py-2">
             <button
-              className="text-[#0e9de8] font-semibold text-sm w-full text-center"
+              className="text-[#0068ff] font-semibold text-sm w-full text-center"
               onClick={() => onStartVideoCall?.('voice')}
             >
               Gọi lại
@@ -1283,7 +1291,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     if (msg.type === 'image' && msg.media_url?.length) {
       const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
       const imageIndex = chatImages.findIndex((img) => img.url === url);
-      
+
       return (
         <img
           src={url}
@@ -1352,7 +1360,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     return (
       <div className="flex-1 flex flex-col h-screen bg-gray-100">
         <div className="flex-1 flex flex-col justify-center items-center gap-4 bg-linear-to-br from-blue-50 to-gray-50">
-          <div className="w-20 h-20 bg-linear-to-br from-[#0e9de8] to-[#0077c2] rounded-full flex items-center justify-center text-white text-4xl shadow-[0_4px_16px_rgba(14,157,232,0.35)]">
+          <div className="w-20 h-20 bg-linear-to-br from-[#0068ff] to-[#0077c2] rounded-full flex items-center justify-center text-white text-4xl shadow-[0_4px_16px_rgba(14,157,232,0.35)]">
             <FaComments />
           </div>
           <h2 className="text-xl font-bold text-gray-900 m-0">
@@ -1371,9 +1379,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const chatAvatar =
     selectedChat.type === 'private'
       ? memberInfo?.anhDaiDien ||
-        'https://api.dicebear.com/7.x/avataaars/svg?seed=' + memberInfo?.userID
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=' + memberInfo?.userID
       : selectedChat.avatar ||
-        'https://api.dicebear.com/7.x/identicon/svg?seed=' + selectedChat.chatID;
+      'https://api.dicebear.com/7.x/identicon/svg?seed=' + selectedChat.chatID;
 
   type TimelineItem =
     | { kind: 'message'; data: Message; key: string; ts: number }
@@ -1406,35 +1414,42 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         <div className="flex-1 flex w-full h-full overflow-hidden">
           <div className="flex-1 h-full bg-white flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center px-4 py-3 border-b border-gray-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.05)] flex-shrink-0">
-              <img
-                src={chatAvatar}
-                alt="avatar"
-                className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
-                onClick={async () => {
-                  if (selectedChat.type === 'private' && memberInfo) {
-                    try {
-                      const [userRes, statusRes] = await Promise.all([
-                        fetch(`${API}/usersID`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ userID: memberInfo.userID }),
-                        }),
-                        fetch(`${API}/contacts/friend-status/${memberInfo.userID}`, {
-                          headers: { ...authHeaders() },
-                        }),
-                      ]);
-                      const userData = await userRes.json();
-                      const statusData = await statusRes.json();
-                      userData.friendStatus = statusData.friendStatus || 'none';
-                      setSelectedUserForProfile(userData);
-                      setShowOtherProfile(true);
-                    } catch (err) {
-                      console.error('Failed to fetch user:', err);
+            <div className="flex items-center px-4 py-3 bg-white/85 backdrop-blur-xl border-b border-gray-100/80 shadow-[0_1px_3px_rgba(0,0,0,0.02),0_1px_2px_rgba(0,0,0,0.04)] flex-shrink-0 sticky top-0 z-30">
+              <div className="relative flex-shrink-0 mr-3">
+                <img
+                  src={chatAvatar}
+                  alt="avatar"
+                  className="w-[42px] h-[42px] rounded-full object-cover border-2 border-[#0068ff]/10 cursor-pointer hover:ring-2 hover:ring-[#0068ff] transition-all"
+                  onClick={async () => {
+                    if (selectedChat.type === 'private' && memberInfo) {
+                      try {
+                        const [userRes, statusRes] = await Promise.all([
+                          fetch(`${API}/usersID`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userID: memberInfo.userID }),
+                          }),
+                          fetch(`${API}/contacts/friend-status/${memberInfo.userID}`, {
+                            headers: { ...authHeaders() },
+                          }),
+                        ]);
+                        const userData = await userRes.json();
+                        const statusData = await statusRes.json();
+                        userData.friendStatus = statusData.friendStatus || 'none';
+                        setSelectedUserForProfile(userData);
+                        setShowOtherProfile(true);
+                      } catch (err) {
+                        console.error('Failed to fetch user:', err);
+                      }
                     }
-                  }
-                }}
-              />
+                  }}
+                />
+                {memberInfo?.friendStatus === 'blocked' && (
+                  <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
+                    <FaBan className="text-red-500 text-[14px]" />
+                  </div>
+                )}
+              </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900">
@@ -1464,20 +1479,20 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               <div className="flex items-center gap-2">
                 {/* 📞 VOICE CALL */}
                 <button
-                  disabled={isStranger}
-                  title={isStranger ? 'Không thể gọi cho người lạ' : 'Gọi thoại'}
-                  onClick={() => !isStranger && onStartVideoCall?.('voice')}
-                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${isStranger ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'}`}
+                  disabled={isStranger || memberInfo?.friendStatus === 'blocked' || memberInfo?.friendStatus === 'blocked_by_other'}
+                  title={isStranger ? 'Không thể gọi cho người lạ' : memberInfo?.friendStatus === 'blocked' ? 'Hãy bỏ chặn để gọi' : memberInfo?.friendStatus === 'blocked_by_other' ? 'Người này đã chặn bạn' : 'Gọi thoại'}
+                  onClick={() => !isStranger && memberInfo?.friendStatus !== 'blocked' && memberInfo?.friendStatus !== 'blocked_by_other' && onStartVideoCall?.('voice')}
+                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${isStranger || memberInfo?.friendStatus === 'blocked' || memberInfo?.friendStatus === 'blocked_by_other' ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
                 >
                   <FaPhone />
                 </button>
 
                 {/* 🎥 VIDEO CALL */}
                 <button
-                  disabled={isStranger}
-                  title={isStranger ? 'Không thể gọi cho người lạ' : 'Gọi video'}
-                  onClick={() => !isStranger && onStartVideoCall?.('video')}
-                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${isStranger ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'}`}
+                  disabled={isStranger || memberInfo?.friendStatus === 'blocked' || memberInfo?.friendStatus === 'blocked_by_other'}
+                  title={isStranger ? 'Không thể gọi cho người lạ' : memberInfo?.friendStatus === 'blocked' ? 'Hãy bỏ chặn để gọi' : memberInfo?.friendStatus === 'blocked_by_other' ? 'Người này đã chặn bạn' : 'Gọi video'}
+                  onClick={() => !isStranger && memberInfo?.friendStatus !== 'blocked' && memberInfo?.friendStatus !== 'blocked_by_other' && onStartVideoCall?.('video')}
+                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${isStranger || memberInfo?.friendStatus === 'blocked' || memberInfo?.friendStatus === 'blocked_by_other' ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
                 >
                   <FaVideo />
                 </button>
@@ -1490,11 +1505,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     setShowInfo(false);
                   }}
                   title="Tìm kiếm"
-                  className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
-                    showSearch
-                      ? 'bg-blue-50 text-[#0e9de8]'
-                      : 'text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'
-                  }`}
+                  className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showSearch
+                    ? 'bg-blue-50 text-[#0068ff]'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-[#0068ff]'
+                    }`}
                 >
                   <FaSearch />
                 </button>
@@ -1507,7 +1521,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     setShowSearch(false);
                   }}
                   title="Thông tin hội thoại"
-                  className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showInfo ? 'bg-blue-50 text-[#0e9de8]' : 'text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]'}`}
+                  className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showInfo ? 'bg-blue-50 text-[#0068ff]' : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
                 >
                   <FaInfoCircle />
                 </button>
@@ -1548,7 +1562,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           setIsSendingFriendRequest(false);
                         }
                       }}
-                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0084ff] text-[13px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0068ff] text-[13px] font-semibold rounded-lg transition-colors disabled:opacity-50"
                     >
                       {isSendingFriendRequest ? 'Đang gửi...' : 'Gửi kết bạn'}
                     </button>
@@ -1561,20 +1575,20 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             {pinnedMessages.length > 0 && (
               <div className="relative bg-white border-b border-gray-200 flex-shrink-0">
                 {/* Main pinned message display */}
-                <div 
+                <div
                   className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
                   onClick={() => {
                     const lastPinned = pinnedMessages[pinnedMessages.length - 1];
                     if (lastPinned?.messageID) {
                       setHighlightedMsgId(lastPinned.messageID);
-                      msgRefsMap.current.get(lastPinned.messageID)?.scrollIntoView({ 
-                        behavior: 'smooth', 
-                        block: 'center' 
+                      msgRefsMap.current.get(lastPinned.messageID)?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
                       });
                     }
                   }}
                 >
-                  <BsPinAngleFill className="text-[#0084ff] text-[15px] flex-shrink-0" />
+                  <BsPinAngleFill className="text-[#0068ff] text-[15px] flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
                       {pinnedMessages[pinnedMessages.length - 1]?.senderInfo?.name || 'Tin nhắn'}
@@ -1592,9 +1606,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       className="px-3 py-1 bg-gray-50 hover:bg-[#3d566e] rounded-lg text-[12px] text-gray-700 font-medium transition-colors flex items-center gap-1"
                     >
                       +{pinnedMessages.length - 1} ghim
-                      <svg 
-                        className={`w-3 h-3 transition-transform ${showPinnedList ? 'rotate-180' : ''}`} 
-                        fill="currentColor" 
+                      <svg
+                        className={`w-3 h-3 transition-transform ${showPinnedList ? 'rotate-180' : ''}`}
+                        fill="currentColor"
                         viewBox="0 0 20 20"
                       >
                         <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -1615,7 +1629,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       <span className="text-[13px] font-semibold text-gray-700">
                         Danh sách ghim ({pinnedMessages.length})
                       </span>
-                      <button 
+                      <button
                         onClick={() => setShowPinnedList(false)}
                         className="text-gray-400 hover:text-gray-700"
                       >
@@ -1627,15 +1641,15 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         key={msg.messageID}
                         className="relative flex items-start gap-3 px-4 py-3 hover:bg-gray-50 border-b border-gray-200/50"
                       >
-                        <BsPinAngleFill className="text-[#0084ff] text-[13px] flex-shrink-0 mt-0.5" />
-                        <div 
+                        <BsPinAngleFill className="text-[#0068ff] text-[13px] flex-shrink-0 mt-0.5" />
+                        <div
                           className="flex-1 min-w-0 cursor-pointer"
                           onClick={() => {
                             if (msg.messageID) {
                               setHighlightedMsgId(msg.messageID);
-                              msgRefsMap.current.get(msg.messageID)?.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'center' 
+                              msgRefsMap.current.get(msg.messageID)?.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'center'
                               });
                               setShowPinnedList(false);
                             }
@@ -1663,7 +1677,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           </div>
                         </div>
                         <div className="relative">
-                          <button 
+                          <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setPinnedMenuId(pinnedMenuId === msg.messageID ? null : msg.messageID || null);
@@ -1674,10 +1688,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                             </svg>
                           </button>
-                          
+
                           {/* Menu dropdown - show above if last item */}
                           {pinnedMenuId === msg.messageID && (
-                            <div 
+                            <div
                               className={`absolute right-0 ${idx >= pinnedMessages.length - 1 ? 'bottom-full mb-1' : 'top-full mt-1'} bg-[#1e2a38] rounded-lg shadow-xl border border-gray-600 py-1 min-w-[180px] z-20`}
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -1721,7 +1735,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             )}
 
             {/* Messages */}
-            <div className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-[#eef0f3] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
+            <div className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-[#eef0f3] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded">
               {timeline.map((item) => {
                 // ── Reminder event ──────────────────────────────────────────
                 if (item.kind === 'reminder') {
@@ -1748,7 +1762,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             {' . '}
                             <button
                               onClick={() => setShowReminder(true)}
-                              className="text-[#0e9de8] hover:underline font-medium"
+                              className="text-[#0068ff] hover:underline font-medium"
                             >
                               Xem
                             </button>
@@ -1765,7 +1779,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             {' . '}
                             <button
                               onClick={() => setShowReminder(true)}
-                              className="text-[#0e9de8] hover:underline font-medium"
+                              className="text-[#0068ff] hover:underline font-medium"
                             >
                               Tạo mới
                             </button>
@@ -1788,7 +1802,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           </p>
                           <button
                             onClick={() => setShowReminder(true)}
-                            className="w-full mt-1 py-2 border-2 border-[#0e9de8] text-[#0e9de8] rounded-xl text-[13px] font-bold hover:bg-blue-50 transition-colors"
+                            className="w-full mt-1 py-2 border-2 border-[#0068ff] text-[#0068ff] rounded-xl text-[13px] font-bold hover:bg-blue-50 transition-colors"
                           >
                             Xem chi tiết
                           </button>
@@ -1868,25 +1882,23 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
                       {/* Reply preview */}
                       {msg.replyTo && !isCallMsg && (
-                        <div style={{display:'none'}}></div>
+                        <div style={{ display: 'none' }}></div>
                       )}
 
                       {/* Bubble */}
                       <div className="relative">
                         <div
-                          className={`${
-                            msg.type === 'image' ||
+                          className={`${msg.type === 'image' ||
                             msg.type === 'video' ||
                             msg.type === 'sticker' ||
                             msg.type === 'gif' ||
                             isCallMsg
-                              ? '' // Không có background cho ảnh/video/sticker/gif/call
-                              : `rounded-2xl shadow-sm overflow-hidden ${
-                                  isMine
-                                    ? 'bg-blue-50 text-gray-800 rounded-br-sm'
-                                    : 'bg-white text-gray-800 rounded-bl-sm'
-                                }`
-                          } ${msg.type === 'unsend' ? 'opacity-60' : ''} cursor-pointer select-text`}
+                            ? '' // Không có background cho ảnh/video/sticker/gif/call
+                            : `rounded-2xl shadow-sm overflow-hidden ${isMine
+                              ? 'bg-[#e3f2ff] text-gray-800 rounded-br-sm border border-[#d1e9ff]'
+                              : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
+                            }`
+                            } ${msg.type === 'unsend' ? 'opacity-60' : ''} cursor-pointer select-text`}
                           onContextMenu={(e) => {
                             e.preventDefault();
                             // Calculate if menu should show above or below
@@ -1894,23 +1906,22 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             const windowHeight = window.innerHeight;
                             const spaceBelow = windowHeight - rect.bottom;
                             const spaceAbove = rect.top;
-                            
+
                             // If more space below or near bottom, show below; otherwise show above
                             if (spaceBelow > 200 || spaceBelow > spaceAbove) {
                               setMenuPosition('bottom');
                             } else {
                               setMenuPosition('top');
                             }
-                            
+
                             setActionMsgId(msgKey);
                           }}
                         >
                           {/* Reply preview bên trong bubble */}
                           {msg.replyTo && !isCallMsg && (
                             <div
-                              className={`px-3 pt-2 pb-1 cursor-pointer ${
-                                isMine ? 'bg-blue-100' : 'bg-gray-100'
-                              }`}
+                              className={`px-3 pt-2 pb-1 cursor-pointer ${isMine ? 'bg-[#dceeff]' : 'bg-gray-50'
+                                }`}
                               onClick={() => {
                                 if (msg.replyTo?.messageID) {
                                   setHighlightedMsgId(msg.replyTo.messageID);
@@ -1921,7 +1932,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                                 }
                               }}
                             >
-                              <div className={`border-l-[3px] pl-2 ${isMine ? 'border-blue-400' : 'border-[#0084ff]'}`}>
+                              <div className={`border-l-[3px] pl-2 ${isMine ? 'border-[#0068ff]/30' : 'border-[#0068ff]'}`}>
                                 <div className={`text-[12px] font-semibold mb-0.5 ${isMine ? 'text-gray-700' : 'text-gray-800'}`}>
                                   {msg.replyTo.senderID === user?.userID ? 'Bạn' : (messages.find(m => m.messageID === msg.replyTo?.messageID)?.senderInfo?.name || 'Người dùng')}
                                 </div>
@@ -1939,11 +1950,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               </div>
                             </div>
                           )}
-                          <div className={`${
-                            msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif' || isCallMsg
-                              ? ''
-                              : msg.type === 'file' ? '' : 'px-3 py-2'
-                          }`}>
+                          <div className={`${msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif' || isCallMsg
+                            ? ''
+                            : msg.type === 'file' ? '' : 'px-3 py-2'
+                            }`}>
                             {renderMessageContent(msg, msgKey, isMine)}
                           </div>
                         </div>
@@ -1984,7 +1994,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               <BsPin className="text-gray-400 text-xs" />
                               {msg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
                             </button>
-                            
+
                             {/* Xóa phía tôi - có thể xóa tin nhắn của bất kỳ ai */}
                             {msg.type !== 'unsend' && (
                               <button
@@ -1994,7 +2004,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                                 <FaTrash className="text-xs" /> Xóa phía tôi
                               </button>
                             )}
-                            
+
                             {/* Thu hồi - chỉ có thể thu hồi tin nhắn của mình */}
                             {isMine && msg.type !== 'unsend' && (
                               <button
@@ -2067,9 +2077,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             {/* Reply bar */}
             {replyTo && (
               <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border-t border-blue-100 flex-shrink-0">
-                <FaReply className="text-[#0e9de8] text-sm flex-shrink-0" />
+                <FaReply className="text-[#0068ff] text-sm flex-shrink-0" />
                 <div className="flex-1 text-xs text-gray-600 truncate">
-                  <span className="font-medium text-[#0e9de8]">Trả lời </span>
+                  <span className="font-medium text-[#0068ff]">Trả lời </span>
                   {replyTo.content || '[Media]'}
                 </div>
                 <button
@@ -2109,7 +2119,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 <button
                   onClick={sendFiles}
                   disabled={isUploading}
-                  className="ml-auto px-3 py-1.5 bg-[#0e9de8] text-white text-xs rounded-lg hover:bg-[#0077c2] transition-colors disabled:opacity-50"
+                  className="ml-auto px-3 py-1.5 bg-[#0068ff] text-white text-xs rounded-lg hover:bg-[#0077c2] transition-colors disabled:opacity-50"
                 >
                   {isUploading ? 'Đang gửi...' : 'Gửi'}
                 </button>
@@ -2118,185 +2128,209 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
             {/* Input area */}
             <div className="flex-shrink-0">
-              {/* Toolbar icons */}
-              <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-t border-gray-100 bg-white">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowEmoji((v) => !v);
-                  }}
-                  title="Emoji"
-                  className={`w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors ${showEmoji ? 'text-[#0e9de8] bg-blue-50' : 'text-gray-500 hover:text-[#0e9de8] hover:bg-gray-100'}`}
-                >
-                  <FaSmile />
-                </button>
-                <button
-                  onClick={() => imageInputRef.current?.click()}
-                  title="Gửi ảnh"
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0e9de8] hover:bg-gray-100 transition-colors"
-                >
-                  <FaImage />
-                </button>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files) {
-                      const fileArray = Array.from(e.target.files);
-                      setFiles(fileArray);
-                      // Tự động gửi sau khi chọn ảnh/video
-                      setTimeout(() => {
-                        if (fileArray.length > 0) {
-                          sendFilesDirectly(fileArray);
+              {memberInfo?.friendStatus === 'blocked' ? (
+                <div className="flex items-center justify-center p-4 bg-white border-t border-gray-100 gap-2.5">
+                  <FaInfoCircle className="text-[#0068ff] text-[17px] shrink-0" />
+                  <p className="text-[14px] text-gray-500 m-0">
+                    Bỏ chặn để gửi tin nhắn tới người này.{" "}
+                    <button
+                      onClick={() => setShowUnblockConfirm(true)}
+                      className="text-[#0068ff] font-semibold hover:underline bg-transparent border-none p-0 cursor-pointer text-[14px]"
+                    >
+                      Bỏ chặn
+                    </button>
+                  </p>
+                </div>
+              ) : memberInfo?.friendStatus === 'blocked_by_other' ? (
+                <div className="flex items-center justify-center p-6 bg-white border-t border-gray-100 gap-3">
+                  <FaBan className="text-gray-400 text-[15px] shrink-0" />
+                  <p className="text-[14px] text-gray-400 m-0 italic font-medium">
+                    Xin lỗi! Bạn hiện không thể gửi tin nhắn tới người này.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Toolbar icons */}
+                  <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-t border-gray-100 bg-white">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowEmoji((v) => !v);
+                      }}
+                      title="Emoji"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors ${showEmoji ? 'text-[#0068ff] bg-blue-50' : 'text-gray-500 hover:text-[#0068ff] hover:bg-gray-100'}`}
+                    >
+                      <FaSmile />
+                    </button>
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      title="Gửi ảnh"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
+                    >
+                      <FaImage />
+                    </button>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          const fileArray = Array.from(e.target.files);
+                          setFiles(fileArray);
+                          // Tự động gửi sau khi chọn ảnh/video
+                          setTimeout(() => {
+                            if (fileArray.length > 0) {
+                              sendFilesDirectly(fileArray);
+                            }
+                          }, 100);
                         }
-                      }, 100);
-                    }
-                  }}
-                />
+                      }}
+                    />
 
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Gửi file"
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0e9de8] hover:bg-gray-100 transition-colors"
-                >
-                  <FaPaperclip />
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files) {
-                      const fileArray = Array.from(e.target.files);
-                      setFiles(fileArray);
-                      // Tự động gửi sau khi chọn file
-                      setTimeout(() => {
-                        if (fileArray.length > 0) {
-                          sendFilesDirectly(fileArray);
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Gửi file"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
+                    >
+                      <FaPaperclip />
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          const fileArray = Array.from(e.target.files);
+                          setFiles(fileArray);
+                          // Tự động gửi sau khi chọn file
+                          setTimeout(() => {
+                            if (fileArray.length > 0) {
+                              sendFilesDirectly(fileArray);
+                            }
+                          }, 100);
                         }
-                      }, 100);
-                    }
-                  }}
-                />
+                      }}
+                    />
 
-                {!isRecording && !audioBlob && (
-                  <button
-                    onClick={startRecording}
-                    title="Ghi âm"
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0e9de8] hover:bg-gray-100 transition-colors"
-                  >
-                    <FaMicrophone />
-                  </button>
-                )}
+                    {!isRecording && !audioBlob && (
+                      <button
+                        onClick={startRecording}
+                        title="Ghi âm"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
+                      >
+                        <FaMicrophone />
+                      </button>
+                    )}
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowReminder(true);
-                  }}
-                  title="Nhắc hẹn"
-                  className={`w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors ${showReminder ? 'text-[#0e9de8] bg-blue-50' : 'text-gray-500 hover:text-[#0e9de8] hover:bg-gray-100'}`}
-                >
-                  <FaBell />
-                </button>
-              </div>
-
-              {/* Emoji picker modal */}
-              {showEmoji && (
-                <StickerEmojiPicker
-                  onEmojiClick={sendEmoji}
-                  onStickerClick={sendSticker}
-                  onGifClick={sendGif}
-                  onClose={() => setShowEmoji(false)}
-                />
-              )}
-
-              {/* Recording bar — waveform animation */}
-              {isRecording && (
-                <div className="flex items-center gap-3 px-4 py-2 bg-red-50 border-t border-red-100">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
-                  {/* Waveform bars */}
-                  <div className="flex items-center gap-[3px] h-6">
-                    {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-                      <span
-                        key={i}
-                        className="w-[3px] rounded-full bg-red-500"
-                        style={{
-                          height: `${Math.random() * 60 + 20}%`,
-                          animation: `waveBar 0.${4 + i}s ease-in-out infinite alternate`,
-                          animationDelay: `${i * 0.07}s`,
-                        }}
-                      />
-                    ))}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowReminder(true);
+                      }}
+                      title="Nhắc hẹn"
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors ${showReminder ? 'text-[#0068ff] bg-blue-50' : 'text-gray-500 hover:text-[#0068ff] hover:bg-gray-100'}`}
+                    >
+                      <FaBell />
+                    </button>
                   </div>
-                  <span className="text-sm text-red-600 font-medium flex-1">
-                    {formatRecordTime(recordingTime)}
-                  </span>
-                  <button
-                    onClick={cancelRecording}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
-                    title="Hủy"
-                  >
-                    <FaTimes className="text-sm" />
-                  </button>
-                  <button
-                    onClick={stopRecording}
-                    className="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors flex items-center gap-1"
-                  >
-                    <FaStop className="text-[10px]" /> Dừng
-                  </button>
-                </div>
-              )}
 
-              {/* Audio preview */}
-              {audioBlob && !isRecording && (
-                <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border-t border-blue-100">
-                  <audio src={URL.createObjectURL(audioBlob)} controls className="h-8 flex-1" />
-                  <button
-                    onClick={cancelRecording}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
-                    title="Hủy"
-                  >
-                    <FaTimes className="text-sm" />
-                  </button>
-                  <button
-                    onClick={sendAudio}
-                    disabled={isUploading}
-                    className="px-3 py-1 bg-[#0e9de8] text-white text-xs rounded-lg hover:bg-[#0077c2] transition-colors disabled:opacity-50"
-                  >
-                    {isUploading ? '...' : 'Gửi'}
-                  </button>
-                </div>
-              )}
+                  {/* Emoji picker modal */}
+                  {showEmoji && (
+                    <StickerEmojiPicker
+                      onEmojiClick={sendEmoji}
+                      onStickerClick={sendSticker}
+                      onGifClick={sendGif}
+                      onClose={() => setShowEmoji(false)}
+                    />
+                  )}
 
-              {/* Text input row */}
-              <div className="flex items-center px-3 pb-2.5 pt-1 bg-white gap-2">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => handleInputChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      sendText();
-                    }
-                  }}
-                  placeholder="Nhập tin nhắn..."
-                  className="flex-1 px-4 py-2 border border-gray-200 rounded-[22px] outline-none text-sm bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:border-[#0e9de8] focus:bg-white transition-colors"
-                />
-                <button
-                  onClick={sendText}
-                  disabled={!inputText.trim()}
-                  className="w-9 h-9 flex items-center justify-center bg-[#0e9de8] text-gray-900 rounded-full hover:bg-[#0077c2] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 text-sm"
-                >
-                  <FaPaperPlane />
-                </button>
-              </div>
+                  {/* Recording bar — waveform animation */}
+                  {isRecording && (
+                    <div className="flex items-center gap-3 px-4 py-2 bg-red-50 border-t border-red-100">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+                      {/* Waveform bars */}
+                      <div className="flex items-center gap-[3px] h-6">
+                        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                          <span
+                            key={i}
+                            className="w-[3px] rounded-full bg-red-500"
+                            style={{
+                              height: `${Math.random() * 60 + 20}%`,
+                              animation: `waveBar 0.${4 + i}s ease-in-out infinite alternate`,
+                              animationDelay: `${i * 0.07}s`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm text-red-600 font-medium flex-1">
+                        {formatRecordTime(recordingTime)}
+                      </span>
+                      <button
+                        onClick={cancelRecording}
+                        className="text-gray-400 hover:text-red-500 transition-colors"
+                        title="Hủy"
+                      >
+                        <FaTimes className="text-sm" />
+                      </button>
+                      <button
+                        onClick={stopRecording}
+                        className="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors flex items-center gap-1"
+                      >
+                        <FaStop className="text-[10px]" /> Dừng
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Audio preview */}
+                  {audioBlob && !isRecording && (
+                    <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border-t border-blue-100">
+                      <audio src={URL.createObjectURL(audioBlob)} controls className="h-8 flex-1" />
+                      <button
+                        onClick={cancelRecording}
+                        className="text-gray-400 hover:text-red-500 transition-colors"
+                        title="Hủy"
+                      >
+                        <FaTimes className="text-sm" />
+                      </button>
+                      <button
+                        onClick={sendAudio}
+                        disabled={isUploading}
+                        className="px-3 py-1 bg-[#0068ff] text-white text-xs rounded-lg hover:bg-[#0077c2] transition-colors disabled:opacity-50"
+                      >
+                        {isUploading ? '...' : 'Gửi'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Text input row */}
+                  <div className="flex items-center px-3 pb-2.5 pt-1 bg-white gap-2">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => handleInputChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendText();
+                        }
+                      }}
+                      placeholder="Nhập tin nhắn..."
+                      className="flex-1 px-4 py-2 border border-gray-200 rounded-[22px] outline-none text-sm bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:border-[#0068ff] focus:bg-white focus:shadow-[0_0_0_2px_rgba(0,104,255,0.1)] transition-all"
+                    />
+                    <button
+                      onClick={sendText}
+                      disabled={!inputText.trim()}
+                      className="w-9 h-9 flex items-center justify-center bg-[#0068ff] text-gray-900 rounded-full hover:bg-[#0077c2] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 text-sm"
+                    >
+                      <FaPaperPlane />
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -2329,11 +2363,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     onChange={(e) => setSearchKeyword(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     placeholder="Nhập từ khóa..."
-                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0e9de8] bg-gray-50 text-gray-800"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0068ff] bg-gray-50 text-gray-800"
                   />
                   <button
                     onClick={handleSearch}
-                    className="px-3 py-1.5 bg-[#0e9de8] text-gray-900 rounded-lg text-sm hover:bg-[#0077c2] transition-colors"
+                    className="px-3 py-1.5 bg-[#0068ff] text-gray-900 rounded-lg text-sm hover:bg-[#0077c2] transition-colors"
                   >
                     Tìm
                   </button>
@@ -2348,7 +2382,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   searchResults.map((r, i) => (
                     <div
                       key={i}
-                      className={`p-2.5 rounded-xl text-sm cursor-pointer border transition-colors ${r.messageID ? 'bg-gray-50 border-gray-100 hover:bg-blue-50 hover:border-[#0e9de8]/30' : 'bg-gray-50 border-transparent'}`}
+                      className={`p-2.5 rounded-xl text-sm cursor-pointer border transition-colors ${r.messageID ? 'bg-gray-50 border-gray-100 hover:bg-blue-50 hover:border-[#0068ff]/30' : 'bg-gray-50 border-transparent'}`}
                       onClick={() => r.messageID && handleScrollToMessage(r.messageID)}
                     >
                       {r.type === 'message' && (
@@ -2382,7 +2416,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       <p className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-1">
                         🕐 {new Date(r.timestamp).toLocaleString('vi-VN')}
                         {r.messageID && (
-                          <span className="text-[#0e9de8] ml-auto text-[10px]">Nhấn để xem</span>
+                          <span className="text-[#0068ff] ml-auto text-[10px]">Nhấn để xem</span>
                         )}
                       </p>
                     </div>
@@ -2400,6 +2434,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               memberInfo={memberInfo}
               messages={messages}
               onClose={() => setShowInfo(false)}
+              onStatusChange={(status) => {
+                setMemberInfo(prev => prev ? { ...prev, friendStatus: status as any } : null);
+              }}
               onHistoryDeleted={() => {
                 setMessages([]);
                 setShowInfo(false);
@@ -2458,6 +2495,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           onClose={() => {
             setShowOtherProfile(false);
             setSelectedUserForProfile(null);
+          }}
+          onStatusChange={(status) => {
+            if (memberInfo) {
+              setMemberInfo({ ...memberInfo, friendStatus: status });
+            }
           }}
         />
       )}
@@ -2525,13 +2567,38 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             {/* Button */}
             <button
               onClick={() => setShowFileSizeError(false)}
-              className="w-full py-3 bg-[#0e9de8] hover:bg-[#0077c2] text-gray-900 font-medium rounded-lg transition-colors"
+              className="w-full py-3 bg-[#0068ff] hover:bg-[#0077c2] text-gray-900 font-medium rounded-lg transition-colors"
             >
               Đã hiểu
             </button>
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        show={showUnblockConfirm}
+        title="Xác nhận bỏ chặn"
+        message={`Bạn có muốn bỏ chặn liên lạc với ${memberInfo?.name}?`}
+        onConfirm={async () => {
+          if (!memberInfo?.userID || !user?.userID) return;
+          setShowUnblockConfirm(false);
+          try {
+            await axiosInstance.post('/contacts/unblock', { targetUserID: String(memberInfo.userID) });
+            toast.success('Đã bỏ chặn');
+            if (socket) {
+              socket.emit('friend_status_update', {
+                userID: String(memberInfo.userID),
+                friendStatus: 'none',
+                ownerID: String(user.userID)
+              });
+            }
+            setMemberInfo(prev => prev ? { ...prev, friendStatus: 'none' } : null);
+          } catch (err) {
+            toast.error('Lỗi khi bỏ chặn');
+          }
+        }}
+        onCancel={() => setShowUnblockConfirm(false)}
+      />
     </>
   );
 };

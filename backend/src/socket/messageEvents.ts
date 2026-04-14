@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import Message from '../models/Messages';
 import ChatMember from '../models/ChatMember';
+import Users from '../models/User';
 
 // Helper: tạo messageID tự động
 const generateMessageID = async (): Promise<string> => {
@@ -34,6 +35,22 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       // Lấy danh sách thành viên trong chat
       const chatMemberDoc = await ChatMember.findOne({ chatID: data.chatID });
       const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
+
+      // KIỂM TRA CHẶN (Chỉ áp dụng cho chat 1-1)
+      if (memberIDs.length === 2) {
+        const recipientID = memberIDs.find(id => id !== data.senderID);
+        if (recipientID) {
+          const recipient = await Users.findOne({ userID: recipientID });
+          if (recipient?.blockedUsers?.includes(data.senderID)) {
+            // Người nhận đang chặn người gửi
+            socket.emit('error_notification', {
+              message: 'Tin nhắn không thể gửi. Bạn đã bị người này chặn.',
+              chatID: data.chatID
+            });
+            return;
+          }
+        }
+      }
 
       const fullMessage = {
         ...data,
@@ -80,7 +97,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
   socket.on('unsend_message', async ({ messageID, chatID, senderID }: any) => {
     try {
       console.log('🔄 Unsend message request:', { messageID, chatID, senderID });
-      
+
       const msg = await Message.findOne({ messageID });
       if (!msg || msg.senderID !== senderID) {
         console.log('❌ Unsend failed: message not found or not sender');
@@ -125,7 +142,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
 
       const chatMemberDoc = await ChatMember.findOne({ chatID });
       const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
-      
+
       memberIDs.forEach((id) => io.to(id).emit('ghim_notification', msg));
       io.to(chatID).emit('ghim_notification', msg);
     } catch (e) {
@@ -145,7 +162,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
 
       const chatMemberDoc = await ChatMember.findOne({ chatID });
       const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
-      
+
       memberIDs.forEach((id) => io.to(id).emit('unghim_notification', msg));
       io.to(chatID).emit('unghim_notification', msg);
     } catch (e) {
@@ -154,10 +171,10 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
   });
 
   // ==================== 6.  XÓA TIN NHẮN PHÍA CLIENT (MỚI) ====================
-  socket.on('delete_message_local', async (data: { 
-    messageID: string; 
-    userID: string; 
-    chatID: string 
+  socket.on('delete_message_local', async (data: {
+    messageID: string;
+    userID: string;
+    chatID: string
   }) => {
     try {
       // Thêm userID vào mảng deletedFor

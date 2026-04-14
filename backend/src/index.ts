@@ -1,6 +1,16 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Bắt lỗi toàn cục để tránh sập Server đột ngột
+process.on('uncaughtException', (err) => {
+  console.error('🔥 CRITICAL ERROR (uncaughtException):', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 CRITICAL ERROR (unhandledRejection):', reason);
+});
+
+
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
@@ -106,8 +116,11 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('userStatusUpdated', user);
   });
 
-  socket.on('updateUser', (user) => {
-    io.emit('userUpdated', user);
+  socket.on('updateUser', (user: any) => {
+    console.log('🔄 Socket: updateUser received (index.ts):', user);
+    if (user && user.userID) {
+      io.emit('userUpdated', user);
+    }
   });
 
   socket.on('disconnect', () => {
