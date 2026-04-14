@@ -297,6 +297,49 @@ export default function chatRoutes(io: Server) {
     }
   });
 
+  // Debug: Fix tất cả alias trong database (cho admin)
+  router.post('/debug/fix-all-alias', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const contacts = await Contacts.find({}).lean();
+      let fixed = 0;
+      
+      for (const contact of contacts) {
+        // ⭐ alias phải là tên của contactID, không phải userID
+        const friend = await Users.findOne({ userID: contact.contactID });
+        if (friend && contact.alias !== friend.name) {
+          await Contacts.findByIdAndUpdate(contact._id, { alias: friend.name });
+          fixed++;
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`Fixed: userID=${contact.userID}, contactID=${contact.contactID}, old alias="${contact.alias}" → new alias="${friend.name}"`);
+          }
+        }
+      }
+      
+      res.json({ message: `Fixed ${fixed}/${contacts.length} contacts`, total: contacts.length, fixed });
+    } catch (e: any) {
+      console.error('fix-all-alias error:', e);
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Debug: Xóa tất cả contacts của user
+  router.post('/debug/delete-my-contacts', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      
+      const result = await Contacts.deleteMany({
+        $or: [
+          { userID },
+          { contactID: userID }
+        ]
+      });
+      
+      res.json({ message: `Deleted ${result.deletedCount} contacts` });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // Debug: Fix alias trong database
   router.post('/debug/fix-alias', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
@@ -668,16 +711,18 @@ export default function chatRoutes(io: Server) {
       if (existing?.status === 'accepted') return res.status(400).json({ message: 'Đã là bạn bè' }) as any;
       if (existing?.status === 'pending') return res.status(400).json({ message: 'Đã gửi lời mời trước đó' }) as any;
 
+      //  FIX: alias phải là tên của contactID (người gửi), không phải target (người nhận)
+      const sender = await Users.findOne({ userID: senderID });
+      
       const newContact = await Contacts.create({
         contactID: senderID,
         userID: target.userID,
-        alias: alias || target.name,
+        alias: alias || sender?.name || 'Bạn', // Tên của contactID (người gửi)
         message: message || 'Mình kết bạn nhé!',
         status: 'pending',
         created_at: new Date(),
       });
 
-      const sender = await Users.findOne({ userID: senderID });
       io.to(target.userID).emit('new_friend_request', {
         contactID: senderID,
         userID: target.userID,
