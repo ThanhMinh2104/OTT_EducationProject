@@ -652,11 +652,10 @@ export default function chatRoutes(io: Server) {
       // Tạo contact ngược từ người gửi về người nhận
       const reverseContact = await Contacts.findOne({ userID: senderID, contactID: userID });
       if (!reverseContact) {
-        const sender = await Users.findOne({ userID: senderID });
         await Contacts.create({
           userID: senderID,
           contactID: userID,
-          alias: sender?.name || 'Bạn',
+          alias: '', // Để trống, sẽ dùng tên thật từ User model
           status: 'accepted',
           created_at: new Date(),
         });
@@ -731,7 +730,8 @@ export default function chatRoutes(io: Server) {
           anhBia: friendUser?.anhBia,
           ngaysinh: friendUser?.ngaysinh,
           gioTinh: friendUser?.gioTinh,
-          alias: f.alias || friendUser?.name
+          // Nếu có alias (biệt danh do người dùng đặt), dùng alias; nếu không, dùng tên thật
+          alias: f.alias?.trim() ? f.alias : undefined
         };
       }));
 
