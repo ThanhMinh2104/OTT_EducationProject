@@ -1,6 +1,21 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-type MessageType = 'text' | 'image' | 'video' | 'emoji' | 'doc' | 'audio' | 'unsend' | 'file' | 'notification';
+type MessageType =
+  | 'text'
+  | 'image'
+  | 'video'
+  | 'emoji'
+  | 'doc'
+  | 'audio'
+  | 'unsend'
+  | 'file'
+  | 'notification'
+  | 'sticker'
+  | 'gif'
+  | 'call-missed'
+  | 'call-rejected'
+  | 'call-ended'
+  | 'call-cancelled';
 
 export interface IMessage extends Document {
   messageID: string;
@@ -40,7 +55,23 @@ const MessageSchema = new Schema<IMessage>(
     content: { type: String },
     type: {
       type: String,
-      enum: ['text', 'image', 'video', 'emoji', 'doc', 'audio', 'unsend', 'file', 'notification'],
+      enum: [
+        'text',
+        'image',
+        'video',
+        'emoji',
+        'doc',
+        'audio',
+        'unsend',
+        'file',
+        'notification',
+        'sticker',
+        'gif',
+        'call-missed',
+        'call-rejected',
+        'call-ended',
+        'call-cancelled',
+      ],
       default: 'text',
     },
     timestamp: { type: Date, default: Date.now },
@@ -54,7 +85,22 @@ const MessageSchema = new Schema<IMessage>(
       content: { type: String },
       type: {
         type: String,
-        enum: ['text', 'image', 'video', 'emoji', 'doc', 'audio', 'unsend', 'file'],
+        enum: [
+          'text',
+          'image',
+          'video',
+          'emoji',
+          'doc',
+          'audio',
+          'unsend',
+          'file',
+          'sticker',
+          'gif',
+          'call-missed',
+          'call-rejected',
+          'call-ended',
+          'call-cancelled',
+        ],
         default: 'text',
       },
       media_url: { type: [String], default: [] },

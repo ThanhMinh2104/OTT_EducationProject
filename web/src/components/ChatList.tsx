@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { FaSearch, FaUserPlus, FaUsers, FaAngleDown, FaEllipsisH, FaTrash } from 'react-icons/fa';
-import { io, Socket } from 'socket.io-client';
+import socket from '../utils/socket';
 import AddFriendModal from './AddFriendModal';
+import ContactsPanel from './ContactsPanel';
 import { getToken } from '../utils/auth';
 
-const socket: Socket = io('http://localhost:5000');
+// Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 
-interface Member { userID: string; role: string }
+interface Member {
+  userID: string;
+  role: string;
+}
 interface Message {
   messageID?: string;
   tempID?: string;
@@ -38,6 +42,7 @@ interface Props {
   user: User | null;
   onSelectChat: (chat: Chat) => void;
   selectedChatId: string | null;
+  activeTab?: 'chats' | 'contacts';
 }
 
 const getLastMsgPreview = (chat: Chat, userID: string): string => {
@@ -49,14 +54,30 @@ const getLastMsgPreview = (chat: Chat, userID: string): string => {
   const isMine = last.senderID === userID;
   const prefix = isMine ? 'Bạn: ' : '';
   switch (last.type) {
-    case 'image': return prefix + '[Hình ảnh]';
-    case 'video': return prefix + '[Video]';
-    case 'audio': return prefix + '[Tin nhắn thoại]';
-    case 'file': return prefix + '[File]';
-    case 'emoji': return prefix + (last.content || '');
-    case 'unsend': return isMine ? 'Bạn đã thu hồi tin nhắn' : 'Tin nhắn đã bị thu hồi';
-    case 'notification': return last.content || '';
-    default: return prefix + (last.content || '');
+    case 'image':
+      return prefix + '[Hình ảnh]';
+    case 'video':
+      return prefix + '[Video]';
+    case 'audio':
+      return prefix + '[Tin nhắn thoại]';
+    case 'file':
+      return prefix + '[File]';
+    case 'emoji':
+      return prefix + (last.content || '');
+    case 'unsend':
+      return isMine ? 'Bạn đã thu hồi tin nhắn' : 'Tin nhắn đã bị thu hồi';
+    case 'notification':
+      return last.content || '';
+    case 'call-missed':
+      return '📞 Cuộc gọi nhỡ';
+    case 'call-rejected':
+      return '📞 Cuộc gọi bị từ chối';
+    case 'call-cancelled':
+      return '📞 Cuộc gọi nhỡ';
+    case 'call-ended':
+      return `📞 Cuộc gọi • ${last.content || ''}`;
+    default:
+      return prefix + (last.content || '');
   }
 };
 
@@ -69,25 +90,30 @@ const getTime = (chat: Chat): string => {
   const d = new Date(last.timestamp);
   const now = new Date();
   const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (diffDays === 0) return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (diffDays === 0)
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
   if (diffDays === 1) return 'Hôm qua';
   if (diffDays < 7) return d.toLocaleDateString('vi-VN', { weekday: 'short' });
   return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 };
 
-const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
+const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: Props) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [searchText, setSearchText] = useState('');
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
-  const [typingMap, setTypingMap] = useState<Record<string, { userID: string; userName: string }[]>>({});
+  const [typingMap, setTypingMap] = useState<
+    Record<string, { userID: string; userName: string }[]>
+  >({});
   const [menuChatId, setMenuChatId] = useState<string | null>(null);
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const notifAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Khởi tạo audio notification
   useEffect(() => {
-    notifAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+    notifAudioRef.current = new Audio(
+      'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'
+    );
     notifAudioRef.current.volume = 0.5;
   }, []);
 
@@ -102,7 +128,9 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
       });
       const data = await res.json();
       setMemberCache((prev) => ({ ...prev, [memberID]: data }));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
@@ -139,7 +167,9 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
           const msgs = c.lastMessage || [];
           const exists = msgs.find((m) => m.messageID === msg.messageID || m.tempID === msg.tempID);
           const newMsgs = exists
-            ? msgs.map((m) => (m.messageID === msg.messageID || m.tempID === msg.tempID ? { ...m, ...msg } : m))
+            ? msgs.map((m) =>
+                m.messageID === msg.messageID || m.tempID === msg.tempID ? { ...m, ...msg } : m
+              )
             : [...msgs, msg];
           const unread = msg.senderID !== user.userID ? (c.unreadCount || 0) + 1 : c.unreadCount;
           // Phát âm thanh khi có tin nhắn mới từ người khác và không phải chat đang chọn
@@ -156,11 +186,14 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
       });
     });
 
-    socket.on('status_update_all', ({ chatID, userID: uid, status }: { chatID: string; userID: string; status: string }) => {
-      if (status === 'read' && uid === user.userID) {
-        setChats((prev) => prev.map((c) => (c.chatID === chatID ? { ...c, unreadCount: 0 } : c)));
+    socket.on(
+      'status_update_all',
+      ({ chatID, userID: uid, status }: { chatID: string; userID: string; status: string }) => {
+        if (status === 'read' && uid === user.userID) {
+          setChats((prev) => prev.map((c) => (c.chatID === chatID ? { ...c, unreadCount: 0 } : c)));
+        }
       }
-    });
+    );
 
     socket.on('newChat1-1', (newChat: Chat) => {
       setChats((prev) => {
@@ -175,7 +208,12 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
       setChats((prev) =>
         prev.map((c) => {
           if (c.chatID !== msg.chatID) return c;
-          return { ...c, lastMessage: c.lastMessage.map((m) => (m.messageID === msg.messageID ? { ...m, ...msg } : m)) };
+          return {
+            ...c,
+            lastMessage: c.lastMessage.map((m) =>
+              m.messageID === msg.messageID ? { ...m, ...msg } : m
+            ),
+          };
         })
       );
     });
@@ -185,7 +223,15 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
     });
 
     // Typing events cho chat list
-    const onTypingStart = ({ chatID, userID: uid, userName }: { chatID: string; userID: string; userName: string }) => {
+    const onTypingStart = ({
+      chatID,
+      userID: uid,
+      userName,
+    }: {
+      chatID: string;
+      userID: string;
+      userName: string;
+    }) => {
       if (uid === user.userID) return;
       setTypingMap((prev) => {
         const existing = prev[chatID] || [];
@@ -231,17 +277,22 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
       });
       // Xóa khỏi danh sách local
       setChats((prev) => prev.filter((c) => c.chatID !== chatID));
-    } catch { /* ignore */ }
-    finally {
+    } catch {
+      /* ignore */
+    } finally {
       setDeletingChatId(null);
       setMenuChatId(null);
     }
   };
 
   const getChatAvatar = (chat: Chat): string => {
-    if (chat.type === 'group') return chat.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + chat.chatID;
+    if (chat.type === 'group')
+      return chat.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + chat.chatID;
     const otherId = chat.members.find((m) => m.userID !== user?.userID)?.userID;
-    return memberCache[otherId || '']?.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + otherId;
+    return (
+      memberCache[otherId || '']?.anhDaiDien ||
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=' + otherId
+    );
   };
 
   const getChatName = (chat: Chat): string => {
@@ -254,8 +305,15 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
     getChatName(c).toLowerCase().includes(searchText.toLowerCase())
   );
 
+  if (activeTab === 'contacts') {
+    return <ContactsPanel user={user} onStartChat={onSelectChat} />;
+  }
+
   return (
-    <div className="w-[310px] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-screen shrink-0" onClick={() => setMenuChatId(null)}>
+    <div
+      className="w-[310px] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-screen shrink-0"
+      onClick={() => setMenuChatId(null)}
+    >
       {/* Search bar */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700">
         <div className="flex items-center bg-gray-100 dark:bg-gray-800 px-3 py-1.5 flex-1 rounded-full focus-within:bg-blue-50 dark:focus-within:bg-blue-900/30 focus-within:outline-1 focus-within:outline-[#0e9de8] transition-colors">
@@ -287,10 +345,18 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
 
       {/* Tab menu */}
       <div className="flex items-center px-3 border-b border-gray-100 dark:border-gray-700 gap-0.5 h-10">
-        <span className="cursor-pointer px-2.5 py-2 text-[13px] font-semibold text-[#0e9de8] dark:text-blue-400 border-b-2 border-[#0e9de8] dark:border-blue-400 whitespace-nowrap">Tất cả</span>
-        <span className="cursor-pointer px-2.5 py-2 text-[13px] font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-[#0e9de8] dark:hover:text-blue-400 whitespace-nowrap transition-colors">Chưa đọc</span>
-        <button className="ml-auto text-gray-500 dark:text-gray-400 text-[13px] px-1.5 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><FaAngleDown /></button>
-        <button className="text-gray-500 dark:text-gray-400 text-[13px] px-1.5 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><FaEllipsisH /></button>
+        <span className="cursor-pointer px-2.5 py-2 text-[13px] font-semibold text-[#0e9de8] dark:text-blue-400 border-b-2 border-[#0e9de8] dark:border-blue-400 whitespace-nowrap">
+          Tất cả
+        </span>
+        <span className="cursor-pointer px-2.5 py-2 text-[13px] font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-[#0e9de8] dark:hover:text-blue-400 whitespace-nowrap transition-colors">
+          Chưa đọc
+        </span>
+        <button className="ml-auto text-gray-500 dark:text-gray-400 text-[13px] px-1.5 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+          <FaAngleDown />
+        </button>
+        <button className="text-gray-500 dark:text-gray-400 text-[13px] px-1.5 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+          <FaEllipsisH />
+        </button>
       </div>
 
       {/* Chat items */}
@@ -305,7 +371,10 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
           <div
             key={chat.chatID}
             className={`flex items-center px-3.5 py-2.5 cursor-pointer border-b border-gray-50 dark:border-gray-800 relative transition-colors group ${selectedChatId === chat.chatID ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}
-            onClick={() => { handleSelectChat(chat); setMenuChatId(null); }}
+            onClick={() => {
+              handleSelectChat(chat);
+              setMenuChatId(null);
+            }}
           >
             <div className="relative mr-3 shrink-0">
               <img
@@ -315,7 +384,9 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
               />
             </div>
             <div className="flex-1 flex flex-col overflow-hidden gap-0.5 min-w-0">
-              <p className="text-[14.5px] font-semibold text-gray-900 dark:text-gray-100 m-0 truncate">{getChatName(chat)}</p>
+              <p className="text-[14.5px] font-semibold text-gray-900 dark:text-gray-100 m-0 truncate">
+                {getChatName(chat)}
+              </p>
               {typingMap[chat.chatID]?.length > 0 ? (
                 <p className="text-[13px] text-[#0e9de8] m-0 truncate italic flex items-center gap-1">
                   <span className="inline-flex gap-0.5 items-end">
@@ -326,14 +397,18 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
                   {typingMap[chat.chatID].map((u) => u.userName).join(', ')} đang nhập...
                 </p>
               ) : (
-                <p className="text-[13px] text-gray-400 dark:text-gray-500 m-0 truncate">{getLastMsgPreview(chat, user?.userID || '')}</p>
+                <p className="text-[13px] text-gray-400 dark:text-gray-500 m-0 truncate">
+                  {getLastMsgPreview(chat, user?.userID || '')}
+                </p>
               )}
             </div>
 
             {/* Meta: time + badge + 3 chấm */}
             <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2 relative">
               {/* Time — ẩn khi menu mở */}
-              <span className={`text-[11px] text-gray-300 dark:text-gray-600 transition-opacity ${menuChatId === chat.chatID ? 'opacity-0' : 'group-hover:opacity-0'}`}>
+              <span
+                className={`text-[11px] text-gray-300 dark:text-gray-600 transition-opacity ${menuChatId === chat.chatID ? 'opacity-0' : 'group-hover:opacity-0'}`}
+              >
                 {getTime(chat)}
               </span>
 
@@ -349,7 +424,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId }: Props) => {
                 className={`absolute top-0 right-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all ${menuChatId === chat.chatID ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setMenuChatId((prev) => prev === chat.chatID ? null : chat.chatID);
+                  setMenuChatId((prev) => (prev === chat.chatID ? null : chat.chatID));
                 }}
                 title="Tùy chọn"
               >

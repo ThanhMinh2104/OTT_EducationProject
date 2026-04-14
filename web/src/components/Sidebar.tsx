@@ -14,10 +14,10 @@ import {
 import UserProfileModal from './UserProfileModal';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
-import { io, Socket } from 'socket.io-client';
+import socket from '../utils/socket';
 import { useEffect } from 'react';
 
-const socket: Socket = io('http://localhost:5000');
+// Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 
 interface User {
   userID: string;
@@ -92,19 +92,19 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
 
     // Lắng nghe sự kiện để cập nhật badge
     socket.on('new_friend_request', () => {
-      setRequestCount(prev => prev + 1);
+      setRequestCount((prev) => prev + 1);
     });
 
     socket.on('friend_request_accepted', () => {
-      setRequestCount(prev => Math.max(0, prev - 1));
+      setRequestCount((prev) => Math.max(0, prev - 1));
     });
 
     socket.on('friend_request_rejected', () => {
-      setRequestCount(prev => Math.max(0, prev - 1));
+      setRequestCount((prev) => Math.max(0, prev - 1));
     });
 
     socket.on('friend_request_cancelled', () => {
-      setRequestCount(prev => Math.max(0, prev - 1));
+      setRequestCount((prev) => Math.max(0, prev - 1));
     });
 
     return () => {
@@ -221,20 +221,20 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
               className="w-full h-full object-cover"
             />
           </div>
-          <div 
+          <div
             onClick={() => setActiveTab('chats')}
             className={`w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all ${activeTab === 'chats' ? 'bg-white/30 text-white' : 'text-white/85'}`}
             title="Tin nhắn"
           >
             <FaComments />
           </div>
-          <div 
+          <div
             onClick={() => setActiveTab('contacts')}
             className={`w-11 h-11 rounded-[10px] flex items-center justify-center cursor-pointer text-xl hover:bg-white/20 hover:text-white hover:scale-105 transition-all relative ${activeTab === 'contacts' ? 'bg-white/30 text-white' : 'text-white/85'}`}
             title="Danh bạ"
           >
             <FaAddressBook />
-            
+
             {/* Badge thông báo số lượng lời mời kết bạn */}
             {requestCount > 0 && (
               <div className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-[#0e9de8] shadow-sm animate-pulse">

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { io } from 'socket.io-client';
+import socket from '../utils/socket';
 import toast, { Toaster } from 'react-hot-toast';
 
-const socket = io('http://localhost:5000');
+// Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 
 const isValidPhoneNumber = (p: string): boolean => /^(0[35789])[0-9]{8}$/.test(p);
 const isValidPassword = (p: string): boolean => /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(p);
