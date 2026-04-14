@@ -27,8 +27,8 @@ const getTimeDisplay = (timestamp: string): string => {
 const StrangerFolderItem = ({ unreadCount, lastMessageTime, onClick, isSelected }: StrangerFolderProps) => {
   return (
     <div
-      className={`flex items-center px-3.5 py-2.5 cursor-pointer border-b border-gray-50 dark:border-gray-800 relative transition-colors group ${
-        isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+      className={`flex items-center px-3.5 py-2.5 cursor-pointer border-b border-gray-50 relative transition-colors group ${
+        isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
       onClick={onClick}
     >
@@ -41,17 +41,17 @@ const StrangerFolderItem = ({ unreadCount, lastMessageTime, onClick, isSelected 
 
       {/* Nội dung */}
       <div className="flex-1 flex flex-col overflow-hidden gap-0.5 min-w-0">
-        <p className="text-[14.5px] font-semibold text-gray-900 dark:text-gray-100 m-0 truncate">
+        <p className="text-[14.5px] font-semibold text-gray-900 m-0 truncate">
           Tin nhắn từ người lạ
         </p>
-        <p className="text-[13px] text-gray-400 dark:text-gray-500 m-0 truncate">
+        <p className="text-[13px] text-gray-400 m-0 truncate">
           Chưa có trong danh bạ
         </p>
       </div>
 
       {/* Meta: time + badge */}
       <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2">
-        <span className="text-[11px] text-gray-300 dark:text-gray-600">
+        <span className="text-[11px] text-gray-400">
           {lastMessageTime ? getTimeDisplay(lastMessageTime) : ''}
         </span>
         {unreadCount > 0 && (

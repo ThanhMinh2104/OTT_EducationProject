@@ -491,7 +491,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                         Hủy
                       </button>
                       <button
-                        className="bg-gradient-to-br from-green-500 to-green-700 text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity"
+                        className="bg-gradient-to-br from-green-500 to-green-700 text-gray-900 border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity"
                         onClick={handleSave}
                       >
                         Lưu
@@ -539,7 +539,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                     </div>
                     <div className="flex gap-2.5 mt-5 w-full justify-end">
                       <button
-                        className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 hover:-translate-y-px transition-all"
+                        className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-gray-900 border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 hover:-translate-y-px transition-all"
                         onClick={() => setIsEditing(true)}
                       >
                         <FaPen /> Cập nhật
@@ -573,7 +573,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                     <button
                       disabled={pwLoading}
                       onClick={handleChangePassword}
-                      className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-6 py-3 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                      className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-gray-900 border-none px-6 py-3 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
                     >
                       {pwLoading ? 'Đang gửi...' : 'Gửi mã OTP'}
                     </button>
@@ -620,7 +620,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                       <button
                         disabled={pwLoading}
                         onClick={handleChangePassword}
-                        className="flex-1 bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                        className="flex-1 bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-gray-900 border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
                       >
                         {pwLoading ? 'Đang xác thực...' : 'Xác nhận'}
                       </button>
@@ -658,7 +658,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                       <button
                         disabled={pwLoading}
                         onClick={handleChangePassword}
-                        className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-white border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity disabled:opacity-60"
+                        className="bg-gradient-to-br from-[#0e9de8] to-[#0077c2] text-gray-900 border-none px-5 py-2 rounded-lg cursor-pointer text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity disabled:opacity-60"
                       >
                         <FaLock className="text-xs" />
                         {pwLoading ? 'Đang lưu...' : 'Cập nhật mật khẩu'}

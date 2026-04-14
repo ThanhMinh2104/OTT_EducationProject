@@ -32,12 +32,12 @@ const FilePreviewModal = ({ files, onConfirm, onCancel }: Props) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Xem trước trước khi gửi</h3>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-800">Xem trước trước khi gửi</h3>
           <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 transition-colors">
             <FaTimes />
           </button>
@@ -74,10 +74,10 @@ const FilePreviewModal = ({ files, onConfirm, onCancel }: Props) => {
 
           {/* Document info */}
           {isDoc && (
-            <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
               {getDocIcon(files[0].type)}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{files[0].name}</p>
+                <p className="text-sm font-medium text-gray-800 truncate">{files[0].name}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{formatSize(files[0].size)}</p>
               </div>
             </div>
@@ -93,7 +93,7 @@ const FilePreviewModal = ({ files, onConfirm, onCancel }: Props) => {
         <div className="flex gap-3 px-5 pb-5">
           <button
             onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
           >
             Hủy
           </button>

@@ -285,15 +285,15 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
   const sentCount = sentRequests.length;
 
   return (
-    <div className="w-[310px] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-screen shrink-0 animate-fade-in">
+    <div className="w-[310px] bg-white border-r border-gray-200 flex flex-col h-screen shrink-0 animate-fade-in">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-50 dark:border-gray-800">
-        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-3">Danh bạ</h2>
-        <div className="flex items-center bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-xl focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all border border-transparent focus-within:border-blue-300">
+      <div className="px-5 py-4 border-b border-gray-50">
+        <h2 className="text-lg font-bold text-gray-800 mb-3">Danh bạ</h2>
+        <div className="flex items-center bg-gray-100 px-3 py-2 rounded-xl focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all border border-transparent focus-within:border-blue-300">
           <FaSearch className="text-gray-400 text-[13px] mr-2 shrink-0" />
           <input
             type="text"
-            className="bg-transparent outline-none w-full text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
+            className="bg-transparent outline-none w-full text-sm text-gray-700 placeholder:text-gray-400"
             placeholder="Tìm bạn bè..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -302,7 +302,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-50 dark:border-gray-800 shrink-0">
+      <div className="flex border-b border-gray-50 shrink-0">
         <button
           onClick={() => setTab('friends')}
           className={`flex-1 py-3 text-sm font-bold transition-all relative ${tab === 'friends' ? 'text-[#0e9de8]' : 'text-gray-400 hover:text-gray-600'
@@ -342,13 +342,13 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
             ) : (
               groupedFriends.map((group) => (
                 <div key={group.label}>
-                  <div className="px-5 py-2 bg-gray-50/50 dark:bg-gray-800/30 sticky top-0 z-10 backdrop-blur-sm">
+                  <div className="px-5 py-2 bg-gray-50/50 sticky top-0 z-10 backdrop-blur-sm">
                     <span className="text-xs font-bold text-[#0e9de8]">{group.label}</span>
                   </div>
                   {group.items.map((friend) => (
                     <div
                       key={friend.userID}
-                      className="flex items-center px-5 py-3.5 hover:bg-blue-50/30 dark:hover:bg-gray-800 transition-all cursor-pointer border-b border-gray-50 dark:border-gray-800 group"
+                      className="flex items-center px-5 py-3.5 hover:bg-blue-50/30 transition-all cursor-pointer border-b border-gray-50 group"
                       onClick={() => handleStartChat(friend)}
                     >
                       <div className="relative mr-4 shrink-0">
@@ -364,7 +364,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                       </div>
                       <div className="flex-1 overflow-hidden">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-[14.5px] font-bold text-gray-800 dark:text-gray-100 truncate">
+                          <p className="text-[14.5px] font-bold text-gray-800 truncate">
                             {friend.alias || friend.name}
                           </p>
                           {friend.alias && (
@@ -374,7 +374,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                         <p className="text-xs text-gray-400 truncate mt-0.5">{friend.sdt}</p>
                       </div>
                       <button
-                        className="opacity-0 group-hover:opacity-100 w-9 h-9 flex items-center justify-center rounded-xl bg-white text-[#0e9de8] shadow-sm border border-blue-100 hover:bg-[#0e9de8] hover:text-white transition-all scale-90 group-hover:scale-100"
+                        className="opacity-0 group-hover:opacity-100 w-9 h-9 flex items-center justify-center rounded-xl bg-white text-[#0e9de8] shadow-sm border border-blue-100 hover:bg-[#0e9de8] hover:text-gray-900 transition-all scale-90 group-hover:scale-100"
                       >
                         <FaCommentDots className="text-lg" />
                       </button>
@@ -388,7 +388,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
           <div className="flex flex-col pb-10">
             {/* Lời mời nhận được */}
             <div
-              className="px-5 py-2.5 bg-gray-50/50 dark:bg-gray-800/30 sticky top-0 z-10 backdrop-blur-sm flex justify-between items-center cursor-pointer hover:bg-gray-100/50 transition-colors"
+              className="px-5 py-2.5 bg-gray-50/50 sticky top-0 z-10 backdrop-blur-sm flex justify-between items-center cursor-pointer hover:bg-gray-100/50 transition-colors"
               onClick={() => setIsReceivedExpanded(!isReceivedExpanded)}
             >
               <div className="flex items-center gap-2">
@@ -404,7 +404,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                 </div>
               ) : (
                 requests.map((req) => (
-                  <div key={req.contactID} className="p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-orange-50/10 transition-colors">
+                  <div key={req.contactID} className="p-4 border-b border-gray-50 hover:bg-orange-50/10 transition-colors">
                     <div className="flex items-start gap-4">
                       <img
                         src={req.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + req.contactID}
@@ -414,15 +414,15 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                       />
                       <div className="flex-1 min-w-0">
                         <p
-                          className="font-bold text-gray-800 dark:text-gray-100 truncate text-sm hover:text-[#0e9de8] cursor-pointer inline-block"
+                          className="font-bold text-gray-800 truncate text-sm hover:text-[#0e9de8] cursor-pointer inline-block"
                           onClick={() => handleViewProfile(req, 'pending_received')}
                         >
                           {req.name}
                         </p>
                         <p className="text-xs text-gray-400 mb-2">{req.sdt}</p>
-                        <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700 relative mb-3">
-                          <div className="absolute -top-1.5 left-3 w-3 h-3 bg-gray-50 dark:bg-gray-800 border-l border-t border-gray-100 rotate-45" />
-                          <p className="text-xs text-gray-600 dark:text-gray-300 italic line-clamp-2">
+                        <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 relative mb-3">
+                          <div className="absolute -top-1.5 left-3 w-3 h-3 bg-gray-50 border-l border-t border-gray-100 rotate-45" />
+                          <p className="text-xs text-gray-600 italic line-clamp-2">
                             "{req.message || 'Mình kết bạn nhé!'}"
                           </p>
                         </div>
@@ -449,7 +449,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
 
             {/* Lời mời đã gửi */}
             <div
-              className="px-5 py-2.5 bg-gray-50/50 dark:bg-gray-800/30 sticky top-0 z-10 backdrop-blur-sm mt-4 border-t border-gray-100 flex justify-between items-center cursor-pointer hover:bg-gray-100/50 transition-colors"
+              className="px-5 py-2.5 bg-gray-50/50 sticky top-0 z-10 backdrop-blur-sm mt-4 border-t border-gray-100 flex justify-between items-center cursor-pointer hover:bg-gray-100/50 transition-colors"
               onClick={() => setIsSentExpanded(!isSentExpanded)}
             >
               <div className="flex items-center gap-2">
@@ -465,7 +465,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                 </div>
               ) : (
                 sentRequests.map((req) => (
-                  <div key={req.recipientID} className="p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-blue-50/10 transition-colors">
+                  <div key={req.recipientID} className="p-4 border-b border-gray-50 hover:bg-blue-50/10 transition-colors">
                     <div className="flex items-start gap-4">
                       <img
                         src={req.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + req.recipientID}
@@ -476,7 +476,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <p
-                            className="font-bold text-gray-800 dark:text-gray-100 truncate text-sm hover:text-[#0e9de8] cursor-pointer"
+                            className="font-bold text-gray-800 truncate text-sm hover:text-[#0e9de8] cursor-pointer"
                             onClick={() => handleViewProfile(req, 'pending_sent')}
                           >
                             {req.name}
@@ -530,26 +530,26 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       {/* Confirmation Modal for Recall */}
       {requestToRecall && (
         <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4">
-          <div className="bg-white dark:bg-gray-800 w-[320px] rounded-2xl shadow-2xl overflow-hidden animate-modal-pop">
+          <div className="bg-white w-[320px] rounded-2xl shadow-2xl overflow-hidden animate-modal-pop">
             <div className="p-6 text-center">
               <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FaExclamationCircle className="text-red-500 text-2xl" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">Xác nhận thu hồi</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                Bạn có chắc chắn muốn thu hồi lời mời kết bạn gửi đến <span className="font-bold text-gray-800 dark:text-gray-200">{requestToRecall.name}</span>?
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Xác nhận thu hồi</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                Bạn có chắc chắn muốn thu hồi lời mời kết bạn gửi đến <span className="font-bold text-gray-800">{requestToRecall.name}</span>?
               </p>
             </div>
-            <div className="flex border-t border-gray-100 dark:border-gray-700">
+            <div className="flex border-t border-gray-100">
               <button
                 onClick={() => setRequestToRecall(null)}
-                className="flex-1 py-4 text-sm font-semibold text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-r border-gray-100 dark:border-gray-700"
+                className="flex-1 py-4 text-sm font-semibold text-gray-500 hover:bg-gray-50 transition-colors border-r border-gray-100"
               >
                 Hủy
               </button>
               <button
                 onClick={handleCancelSent}
-                className="flex-1 py-4 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                className="flex-1 py-4 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors"
               >
                 Xác nhận
               </button>

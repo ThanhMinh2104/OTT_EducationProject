@@ -418,16 +418,16 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
 
   return (
     <div
-      className="w-[310px] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-screen shrink-0"
+      className="w-[310px] bg-white border-r border-gray-200 flex flex-col h-screen shrink-0"
       onClick={() => setMenuChatId(null)}
     >
       {/* Search bar */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700">
-        <div className="flex items-center bg-gray-100 dark:bg-gray-800 px-3 py-1.5 flex-1 rounded-full focus-within:bg-blue-50 dark:focus-within:bg-blue-900/30 focus-within:outline-1 focus-within:outline-[#0e9de8] transition-colors">
-          <FaSearch className="text-gray-400 dark:text-gray-500 mr-1.5 text-[13px]" />
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100">
+        <div className="flex items-center bg-gray-100 px-3 py-1.5 flex-1 rounded-full focus-within:bg-blue-50 focus-within:outline-1 focus-within:outline-[#0e9de8] transition-colors">
+          <FaSearch className="text-gray-400 mr-1.5 text-[13px]" />
           <input
             type="text"
-            className="border-none bg-transparent outline-none w-full text-[13.5px] text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
+            className="border-none bg-transparent outline-none w-full text-[13.5px] text-gray-700 placeholder:text-gray-400"
             placeholder="Tìm kiếm"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -437,13 +437,13 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           <button
             title="Thêm bạn"
             onClick={() => setShowAddFriendModal(true)}
-            className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-[17px] text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-[#0e9de8] transition-colors"
+            className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-[17px] text-gray-600 hover:bg-gray-100 hover:text-[#0e9de8] transition-colors"
           >
             <FaUserPlus />
           </button>
           <button
             title="Tạo nhóm"
-            className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-[17px] text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-[#0e9de8] transition-colors"
+            className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-[17px] text-gray-600 hover:bg-gray-100 hover:text-[#0e9de8] transition-colors"
           >
             <FaUsers />
           </button>
@@ -451,23 +451,23 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       </div>
 
       {/* Tab menu */}
-      <div className="flex items-center px-3 border-b border-gray-100 dark:border-gray-700 gap-0.5 h-10">
-        <span className="cursor-pointer px-2.5 py-2 text-[13px] font-semibold text-[#0e9de8] dark:text-blue-400 border-b-2 border-[#0e9de8] dark:border-blue-400 whitespace-nowrap">
+      <div className="flex items-center px-3 border-b border-gray-100 gap-0.5 h-10">
+        <span className="cursor-pointer px-2.5 py-2 text-[13px] font-semibold text-[#0e9de8] border-b-2 border-[#0e9de8] whitespace-nowrap">
           Tất cả
         </span>
-        <span className="cursor-pointer px-2.5 py-2 text-[13px] font-medium text-gray-500 dark:text-gray-400 border-b-2 border-transparent hover:text-[#0e9de8] dark:hover:text-blue-400 whitespace-nowrap transition-colors">
+        <span className="cursor-pointer px-2.5 py-2 text-[13px] font-medium text-gray-500 border-b-2 border-transparent hover:text-[#0e9de8] whitespace-nowrap transition-colors">
           Chưa đọc
         </span>
-        <button className="ml-auto text-gray-500 dark:text-gray-400 text-[13px] px-1.5 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <button className="ml-auto text-gray-500 text-[13px] px-1.5 py-1 rounded hover:bg-gray-100 transition-colors">
           <FaAngleDown />
         </button>
-        <button className="text-gray-500 dark:text-gray-400 text-[13px] px-1.5 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <button className="text-gray-500 text-[13px] px-1.5 py-1 rounded hover:bg-gray-100 transition-colors">
           <FaEllipsisH />
         </button>
       </div>
 
       {/* Chat items */}
-      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
+      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded">
         {/* Tin nhắn từ người lạ folder */}
         {strangerSummary.count > 0 && (
           <StrangerFolderItem
@@ -487,7 +487,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         {filtered.map((chat) => (
           <div
             key={chat.chatID}
-            className={`flex items-center px-3.5 py-2.5 cursor-pointer border-b border-gray-50 dark:border-gray-800 relative transition-colors group ${selectedChatId === chat.chatID ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+            className={`flex items-center px-3.5 py-2.5 cursor-pointer border-b border-gray-50 relative transition-colors group ${selectedChatId === chat.chatID ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
             onClick={() => {
               handleSelectChat(chat);
               setMenuChatId(null);
@@ -497,11 +497,11 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
               <img
                 src={getChatAvatar(chat)}
                 alt="avatar"
-                className="w-[46px] h-[46px] rounded-full object-cover bg-gray-200 dark:bg-gray-700 shadow-sm"
+                className="w-[46px] h-[46px] rounded-full object-cover bg-gray-200 shadow-sm"
               />
             </div>
             <div className="flex-1 flex flex-col overflow-hidden gap-0.5 min-w-0">
-              <p className="text-[14.5px] font-semibold text-gray-900 dark:text-gray-100 m-0 truncate">
+              <p className="text-[14.5px] font-semibold text-gray-900 m-0 truncate">
                 {getChatName(chat)}
               </p>
               {typingMap[chat.chatID]?.length > 0 ? (
@@ -514,7 +514,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
                   {typingMap[chat.chatID].map((u) => u.userName).join(', ')} đang nhập...
                 </p>
               ) : (
-                <p className="text-[13px] text-gray-400 dark:text-gray-500 m-0 truncate">
+                <p className="text-[13px] text-gray-400 m-0 truncate">
                   {getLastMsgPreview(chat, user?.userID || '')}
                 </p>
               )}
@@ -524,7 +524,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
             <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2 relative">
               {/* Time — ẩn khi menu mở */}
               <span
-                className={`text-[11px] text-gray-300 dark:text-gray-600 transition-opacity ${menuChatId === chat.chatID ? 'opacity-0' : 'group-hover:opacity-0'}`}
+                className={`text-[11px] text-gray-400 transition-opacity ${menuChatId === chat.chatID ? 'opacity-0' : 'group-hover:opacity-0'}`}
               >
                 {getTime(chat)}
               </span>
@@ -538,7 +538,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
 
               {/* Nút 3 chấm — hiện khi hover hoặc menu đang mở */}
               <button
-                className={`absolute top-0 right-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all ${menuChatId === chat.chatID ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                className={`absolute top-0 right-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-all ${menuChatId === chat.chatID ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   setMenuChatId((prev) => (prev === chat.chatID ? null : chat.chatID));
@@ -551,11 +551,11 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
               {/* Dropdown menu */}
               {menuChatId === chat.chatID && (
                 <div
-                  className="absolute right-0 top-7 z-30 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1 min-w-[170px]"
+                  className="absolute right-0 top-7 z-30 bg-white rounded-xl shadow-xl border border-gray-100 py-1 min-w-[170px]"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-lg mx-0.5"
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors rounded-lg mx-0.5"
                     onClick={() => {
                       setDeleteConfirmChatId(chat.chatID);
                       setMenuChatId(null);
@@ -586,22 +586,22 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           onClick={() => setDeleteConfirmChatId(null)}
         >
           <div 
-            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-[340px] mx-4 p-6 flex flex-col gap-4" 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-[340px] mx-4 p-6 flex flex-col gap-4" 
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col items-center gap-2 text-center">
-              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                 <FaTrash className="text-red-500 text-lg" />
               </div>
-              <h3 className="text-[15px] font-bold text-gray-900 dark:text-gray-100">Xóa trò chuyện</h3>
-              <p className="text-[13px] text-gray-500 dark:text-gray-400">
+              <h3 className="text-[15px] font-bold text-gray-900">Xóa trò chuyện</h3>
+              <p className="text-[13px] text-gray-500">
                 Cuộc trò chuyện sẽ bị xóa khỏi danh sách của bạn. Bạn có thể nhắn tin lại để khôi phục.
               </p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setDeleteConfirmChatId(null)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
               >
                 Hủy
               </button>

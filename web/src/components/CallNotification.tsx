@@ -30,12 +30,12 @@ const CallNotification = ({ type, callerName, onClose }: Props) => {
         isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full'
       }`}
     >
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-4 pr-12 flex items-center gap-3 border border-gray-200 dark:border-gray-700 min-w-[300px]">
+      <div className="bg-white rounded-xl shadow-2xl p-4 pr-12 flex items-center gap-3 border border-gray-200 min-w-[300px]">
         <div
           className={`w-12 h-12 rounded-full flex items-center justify-center ${
             type === 'rejected'
-              ? 'bg-red-100 dark:bg-red-900/30'
-              : 'bg-orange-100 dark:bg-orange-900/30'
+              ? 'bg-red-100'
+              : 'bg-orange-100'
           }`}
         >
           <FaPhoneSlash
@@ -43,10 +43,10 @@ const CallNotification = ({ type, callerName, onClose }: Props) => {
           />
         </div>
         <div className="flex-1">
-          <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+          <p className="font-semibold text-gray-900 text-sm">
             {type === 'rejected' ? 'Cuộc gọi bị từ chối' : 'Cuộc gọi nhỡ'}
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          <p className="text-xs text-gray-500 mt-0.5">
             {type === 'rejected'
               ? `${callerName} đã từ chối cuộc gọi`
               : `${callerName} không trả lời`}
@@ -54,7 +54,7 @@ const CallNotification = ({ type, callerName, onClose }: Props) => {
         </div>
         <button
           onClick={handleClose}
-          className="absolute top-2 right-2 w-6 h-6 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          className="absolute top-2 right-2 w-6 h-6 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
         >
           <FaTimes className="text-xs" />
         </button>

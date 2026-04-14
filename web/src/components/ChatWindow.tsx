@@ -110,7 +110,7 @@ const getFileIcon = (fileName: string) => {
   // Word documents
   if (['doc', 'docx'].includes(ext || '')) {
     return (
-      <div className="w-12 h-12 bg-[#2b579a] rounded-lg flex items-center justify-center text-white font-bold text-xl">
+      <div className="w-12 h-12 bg-[#2b579a] rounded-lg flex items-center justify-center text-gray-900 font-bold text-xl">
         W
       </div>
     );
@@ -118,7 +118,7 @@ const getFileIcon = (fileName: string) => {
   // Excel
   if (['xls', 'xlsx'].includes(ext || '')) {
     return (
-      <div className="w-12 h-12 bg-[#217346] rounded-lg flex items-center justify-center text-white font-bold text-xl">
+      <div className="w-12 h-12 bg-[#217346] rounded-lg flex items-center justify-center text-gray-900 font-bold text-xl">
         X
       </div>
     );
@@ -126,7 +126,7 @@ const getFileIcon = (fileName: string) => {
   // PowerPoint
   if (['ppt', 'pptx'].includes(ext || '')) {
     return (
-      <div className="w-12 h-12 bg-[#d24726] rounded-lg flex items-center justify-center text-white font-bold text-xl">
+      <div className="w-12 h-12 bg-[#d24726] rounded-lg flex items-center justify-center text-gray-900 font-bold text-xl">
         P
       </div>
     );
@@ -134,7 +134,7 @@ const getFileIcon = (fileName: string) => {
   // PDF
   if (ext === 'pdf') {
     return (
-      <div className="w-12 h-12 bg-[#f40f02] rounded-lg flex items-center justify-center text-white font-bold text-xl">
+      <div className="w-12 h-12 bg-[#f40f02] rounded-lg flex items-center justify-center text-gray-900 font-bold text-xl">
         PDF
       </div>
     );
@@ -142,7 +142,7 @@ const getFileIcon = (fileName: string) => {
   // ZIP/RAR
   if (['zip', 'rar', '7z'].includes(ext || '')) {
     return (
-      <div className="w-12 h-12 bg-[#ffa500] rounded-lg flex items-center justify-center text-white">
+      <div className="w-12 h-12 bg-[#ffa500] rounded-lg flex items-center justify-center text-gray-900">
         <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
           <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" />
         </svg>
@@ -151,7 +151,7 @@ const getFileIcon = (fileName: string) => {
   }
   // Default file icon
   return (
-    <div className="w-12 h-12 bg-gray-500 rounded-lg flex items-center justify-center text-white">
+    <div className="w-12 h-12 bg-gray-500 rounded-lg flex items-center justify-center text-gray-900">
       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
         <path
           fillRule="evenodd"
@@ -216,7 +216,7 @@ const FileDisplay = ({
   return (
     <div
       className={`flex items-center gap-3 px-4 py-3 rounded-xl min-w-[300px] max-w-[420px] ${
-        isMine ? 'bg-[#2c3e50]' : 'bg-[#2c3e50] dark:bg-gray-700'
+        isMine ? 'bg-white' : 'bg-white'
       }`}
       onClick={(e) => e.stopPropagation()}
     >
@@ -225,7 +225,7 @@ const FileDisplay = ({
 
       {/* File Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-white font-semibold text-[15px] truncate mb-1.5">{fileName}</p>
+        <p className="text-gray-900 font-semibold text-[15px] truncate mb-1.5">{fileName}</p>
         <div className="flex items-center gap-2 text-gray-400 text-[13px]">
           <span>{fileSize ? formatFileSize(fileSize) : 'Đang tải...'}</span>
         </div>
@@ -234,7 +234,7 @@ const FileDisplay = ({
       {/* Download Icon */}
       <button
         onClick={handleDownload}
-        className="w-11 h-11 flex items-center justify-center rounded-lg bg-[#34495e] hover:bg-[#3d5a73] transition-colors text-white shrink-0"
+        className="w-11 h-11 flex items-center justify-center rounded-lg bg-gray-50 hover:bg-[#3d5a73] transition-colors text-gray-900 shrink-0"
         title="Tải xuống"
       >
         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -277,7 +277,7 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
 
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-2xl min-w-[240px] max-w-[280px] ${isMine ? 'bg-[#0e9de8]' : 'bg-[#2c3e50] dark:bg-gray-700'}`}
+      className={`flex items-center gap-3 px-4 py-3 rounded-2xl min-w-[240px] max-w-[280px] ${isMine ? 'bg-[#0e9de8]' : 'bg-white'}`}
       onClick={(e) => e.stopPropagation()}
     >
       <audio
@@ -305,7 +305,7 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
       {/* Play/Pause Button */}
       <button
         onClick={toggle}
-        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-[#0e9de8] text-white hover:bg-[#0077c2] transition-colors shadow-md"
+        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-[#0e9de8] text-gray-900 hover:bg-[#0077c2] transition-colors shadow-md"
       >
         {playing ? <FaPause className="text-sm" /> : <FaPlay className="text-sm ml-0.5" />}
       </button>
@@ -327,7 +327,7 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
       </div>
 
       {/* Duration */}
-      <span className={`text-xs font-medium shrink-0 ${isMine ? 'text-white' : 'text-gray-200'}`}>
+      <span className={`text-xs font-medium shrink-0 ${isMine ? 'text-gray-900' : 'text-gray-700'}`}>
         {fmt(duration)}
       </span>
 
@@ -335,7 +335,7 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
       <a
         href={src}
         download
-        className={`shrink-0 ${isMine ? 'text-white/80 hover:text-white' : 'text-gray-300 hover:text-white'} transition-colors`}
+        className={`shrink-0 ${isMine ? 'text-gray-900/80 hover:text-gray-900' : 'text-gray-300 hover:text-gray-900'} transition-colors`}
         onClick={(e) => e.stopPropagation()}
         title="Tải xuống"
       >
@@ -1304,15 +1304,15 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   if (!selectedChat) {
     return (
-      <div className="flex-1 flex flex-col h-screen bg-gray-100 dark:bg-gray-800">
-        <div className="flex-1 flex flex-col justify-center items-center gap-4 bg-linear-to-br from-blue-50 to-gray-50 dark:from-gray-800 dark:to-gray-900">
+      <div className="flex-1 flex flex-col h-screen bg-gray-100">
+        <div className="flex-1 flex flex-col justify-center items-center gap-4 bg-linear-to-br from-blue-50 to-gray-50">
           <div className="w-20 h-20 bg-linear-to-br from-[#0e9de8] to-[#0077c2] rounded-full flex items-center justify-center text-white text-4xl shadow-[0_4px_16px_rgba(14,157,232,0.35)]">
             <FaComments />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 m-0">
+          <h2 className="text-xl font-bold text-gray-900 m-0">
             Chào mừng, {user?.name}!
           </h2>
-          <p className="text-sm text-gray-400 dark:text-gray-500 m-0">
+          <p className="text-sm text-gray-400 m-0">
             Chọn một cuộc trò chuyện để bắt đầu nhắn tin
           </p>
         </div>
@@ -1351,20 +1351,20 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   return (
     <>
       <div
-        className="flex-1 flex flex-col h-screen bg-gray-100 dark:bg-gray-800"
+        className="flex-1 flex flex-col h-screen bg-gray-100"
         onClick={() => {
           setActionMsgId(null);
           setShowEmoji(false);
         }}
       >
         <div className="flex-1 flex w-full h-full overflow-hidden">
-          <div className="flex-1 h-full bg-white dark:bg-gray-900 flex flex-col overflow-hidden">
+          <div className="flex-1 h-full bg-white flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_1px_4px_rgba(0,0,0,0.05)] flex-shrink-0">
+            <div className="flex items-center px-4 py-3 border-b border-gray-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.05)] flex-shrink-0">
               <img
                 src={chatAvatar}
                 alt="avatar"
-                className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 dark:border-blue-800 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                 onClick={async () => {
                   if (selectedChat.type === 'private' && memberInfo) {
                     // Fetch full user info with friendStatus
@@ -1388,7 +1388,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 }}
               />
               <div className="flex-1">
-                <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900 dark:text-gray-100">
+                <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900">
                   {chatName}
                 </h2>
                 <p className="text-xs text-gray-400 m-0">
@@ -1404,7 +1404,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               <div className="flex items-center gap-2">
                 {/* 📞 VOICE CALL */}
                 <button
-                  className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8] dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-[#0e9de8]"
+                  className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]"
                   title="Gọi thoại"
                   onClick={() => onStartVideoCall?.('voice')}
                 >
@@ -1414,7 +1414,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 {/* 🎥 VIDEO CALL */}
                 <button
                   onClick={() => onStartVideoCall?.('video')}
-                  className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8] dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-[#0e9de8]"
+                  className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-gray-100 hover:text-[#0e9de8]"
                   title="Gọi video"
                 >
                   <FaVideo />
@@ -1454,10 +1454,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
             {/* Pinned messages bar */}
             {pinnedMessages.length > 0 && (
-              <div className="relative bg-[#2c3e50] dark:bg-gray-800 border-b border-gray-700 flex-shrink-0">
+              <div className="relative bg-white border-b border-gray-200 flex-shrink-0">
                 {/* Main pinned message display */}
                 <div 
-                  className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#34495e] dark:hover:bg-gray-750 transition-colors"
+                  className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
                   onClick={() => {
                     const lastPinned = pinnedMessages[pinnedMessages.length - 1];
                     if (lastPinned?.messageID) {
@@ -1471,7 +1471,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 >
                   <BsPinAngleFill className="text-blue-400 text-[15px] flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-gray-200 mb-0.5">Tin nhắn</div>
+                    <div className="text-[13px] font-semibold text-gray-700 mb-0.5">Tin nhắn</div>
                     <div className="text-[13px] text-gray-300 truncate">
                       {pinnedMessages[pinnedMessages.length - 1]?.senderInfo?.name}: {pinnedMessages[pinnedMessages.length - 1]?.content || '[Media]'}
                     </div>
@@ -1482,7 +1482,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         e.stopPropagation();
                         setShowPinnedList(!showPinnedList);
                       }}
-                      className="px-3 py-1 bg-[#34495e] hover:bg-[#3d566e] rounded-lg text-[12px] text-gray-200 font-medium transition-colors flex items-center gap-1"
+                      className="px-3 py-1 bg-gray-50 hover:bg-[#3d566e] rounded-lg text-[12px] text-gray-700 font-medium transition-colors flex items-center gap-1"
                     >
                       +{pinnedMessages.length - 1} ghim
                       <svg 
@@ -1494,7 +1494,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       </svg>
                     </button>
                   )}
-                  <button className="text-gray-400 hover:text-gray-200 transition-colors">
+                  <button className="text-gray-400 hover:text-gray-700 transition-colors">
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                     </svg>
@@ -1503,14 +1503,14 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
                 {/* Dropdown list of all pinned messages */}
                 {showPinnedList && pinnedMessages.length > 1 && (
-                  <div className="absolute top-full left-0 right-0 bg-[#2c3e50] dark:bg-gray-800 border-b border-gray-700 shadow-lg z-10 max-h-[300px] overflow-y-auto">
-                    <div className="px-4 py-2 border-b border-gray-700 flex items-center justify-between">
-                      <span className="text-[13px] font-semibold text-gray-200">
+                  <div className="absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-10 max-h-[300px] overflow-y-auto">
+                    <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                      <span className="text-[13px] font-semibold text-gray-700">
                         Danh sách ghim ({pinnedMessages.length})
                       </span>
                       <button 
                         onClick={() => setShowPinnedList(false)}
-                        className="text-gray-400 hover:text-gray-200"
+                        className="text-gray-400 hover:text-gray-700"
                       >
                         Thu gọn
                       </button>
@@ -1518,7 +1518,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     {pinnedMessages.slice().reverse().map((msg, idx) => (
                       <div
                         key={msg.messageID}
-                        className="relative flex items-start gap-3 px-4 py-3 hover:bg-[#34495e] dark:hover:bg-gray-750 border-b border-gray-700/50"
+                        className="relative flex items-start gap-3 px-4 py-3 hover:bg-gray-50 border-b border-gray-200/50"
                       >
                         <BsPinAngleFill className="text-blue-400 text-[13px] flex-shrink-0 mt-0.5" />
                         <div 
@@ -1534,7 +1534,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             }
                           }}
                         >
-                          <div className="text-[13px] font-semibold text-gray-200 mb-1">Tin nhắn</div>
+                          <div className="text-[13px] font-semibold text-gray-700 mb-1">Tin nhắn</div>
                           <div className="text-[12px] text-gray-300">
                             <span className="font-medium">{msg.senderInfo?.name}:</span>{' '}
                             {msg.type === 'text' || msg.type === 'emoji' ? (
@@ -1562,7 +1562,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               e.stopPropagation();
                               setPinnedMenuId(pinnedMenuId === msg.messageID ? null : msg.messageID || null);
                             }}
-                            className="text-gray-400 hover:text-gray-200 transition-colors p-1"
+                            className="text-gray-400 hover:text-gray-700 transition-colors p-1"
                           >
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                               <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -1577,7 +1577,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             >
                               <button
                                 onClick={() => handleMoveToTop(msg)}
-                                className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-gray-200 hover:bg-[#2c3e50] transition-colors"
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-gray-700 hover:bg-white transition-colors"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
@@ -1587,7 +1587,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               {(msg.type === 'text' || msg.type === 'emoji') && (
                                 <button
                                   onClick={() => handleCopyPinned(msg)}
-                                  className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-gray-200 hover:bg-[#2c3e50] transition-colors"
+                                  className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-gray-700 hover:bg-white transition-colors"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -1597,7 +1597,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               )}
                               <button
                                 onClick={() => handleUnpinFromMenu(msg)}
-                                className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-red-400 hover:bg-[#2c3e50] transition-colors"
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-red-400 hover:bg-white transition-colors"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1615,22 +1615,22 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             )}
 
             {/* Messages */}
-            <div className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-[#e8edf2] dark:bg-gray-800 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
+            <div className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-gray-50 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
               {timeline.map((item) => {
                 // ── Reminder event ──────────────────────────────────────────
                 if (item.kind === 'reminder') {
                   const evt = item.data;
                   return (
                     <div key={item.key} className="flex flex-col items-center gap-2 my-2">
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 dark:bg-gray-700/80 rounded-full text-[12px] text-gray-500 dark:text-gray-400 shadow-sm">
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 rounded-full text-[12px] text-gray-500 shadow-sm">
                         <span className="text-red-400">🔔</span>
                         {evt.type === 'created' ? (
                           <span>
-                            <strong className="text-gray-700 dark:text-gray-200">
+                            <strong className="text-gray-700">
                               {evt.userID === user?.userID ? 'Bạn' : evt.userName}
                             </strong>{' '}
                             tạo nhắc hẹn mới{' '}
-                            <strong className="text-gray-700 dark:text-gray-200">
+                            <strong className="text-gray-700">
                               {evt.reminderData.title}
                             </strong>
                             {' - '}
@@ -1649,11 +1649,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           </span>
                         ) : (
                           <span>
-                            <strong className="text-gray-700 dark:text-gray-200">
+                            <strong className="text-gray-700">
                               {evt.userID === user?.userID ? 'Bạn' : evt.userName}
                             </strong>{' '}
                             xóa nhắc hẹn{' '}
-                            <strong className="text-gray-700 dark:text-gray-200">
+                            <strong className="text-gray-700">
                               {evt.reminderData.title}
                             </strong>
                             {' . '}
@@ -1667,12 +1667,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         )}
                       </div>
                       {evt.type === 'created' && (
-                        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 w-[280px] flex flex-col items-center gap-2 shadow-sm">
+                        <div className="bg-white border border-gray-200 rounded-2xl p-5 w-[280px] flex flex-col items-center gap-2 shadow-sm">
                           <span className="text-2xl">🔔</span>
-                          <p className="text-[15px] font-bold text-gray-900 dark:text-gray-100 text-center m-0">
+                          <p className="text-[15px] font-bold text-gray-900 text-center m-0">
                             {evt.reminderData.title}
                           </p>
-                          <p className="text-[12px] text-gray-500 dark:text-gray-400 flex items-center gap-1 m-0">
+                          <p className="text-[12px] text-gray-500 flex items-center gap-1 m-0">
                             🕐{' '}
                             {(() => {
                               const d = new Date(evt.reminderData.datetime);
@@ -1682,7 +1682,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           </p>
                           <button
                             onClick={() => setShowReminder(true)}
-                            className="w-full mt-1 py-2 border-2 border-[#0e9de8] text-[#0e9de8] rounded-xl text-[13px] font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                            className="w-full mt-1 py-2 border-2 border-[#0e9de8] text-[#0e9de8] rounded-xl text-[13px] font-bold hover:bg-blue-50 transition-colors"
                           >
                             Xem chi tiết
                           </button>
@@ -1701,7 +1701,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 if (isNotif) {
                   return (
                     <div key={msgKey} className="flex justify-center my-1">
-                      <span className="text-xs text-gray-500 bg-white/70 dark:bg-gray-700/70 px-3 py-1 rounded-full">
+                      <span className="text-xs text-gray-500 bg-white/70 px-3 py-1 rounded-full">
                         {msg.content}
                       </span>
                     </div>
@@ -1714,7 +1714,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     ref={(el) => {
                       if (el && msg.messageID) msgRefsMap.current.set(msg.messageID, el);
                     }}
-                    className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-yellow-100/60 dark:bg-yellow-900/30 rounded-xl px-1 -mx-1' : ''}`}
+                    className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-yellow-100/60 rounded-xl px-1 -mx-1' : ''}`}
                   >
                     {/* Avatar */}
                     {!isMine && (
@@ -1759,7 +1759,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       {/* Reply preview */}
                       {msg.replyTo && (
                         <div
-                          className={`px-3 py-2 rounded-lg bg-[#2c3e50] dark:bg-gray-700 mb-1 cursor-pointer hover:bg-[#34495e] transition-colors ${isMine ? 'self-end' : 'self-start'} max-w-[280px]`}
+                          className={`px-3 py-2 rounded-lg bg-white mb-1 cursor-pointer hover:bg-gray-50 transition-colors ${isMine ? 'self-end' : 'self-start'} max-w-[280px]`}
                           onClick={() => {
                             if (msg.replyTo?.messageID) {
                               setHighlightedMsgId(msg.replyTo.messageID);
@@ -1772,7 +1772,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         >
                           <div className="flex items-start gap-2 border-l-2 border-blue-400 pl-2">
                             <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-semibold text-gray-200 mb-0.5">
+                              <div className="text-[13px] font-semibold text-gray-700 mb-0.5">
                                 {msg.replyTo.senderID === user?.userID ? 'Bạn' : (messages.find(m => m.messageID === msg.replyTo?.messageID)?.senderInfo?.name || 'Người dùng')}
                               </div>
                               <div className="text-[12px] text-gray-300 truncate">
@@ -1810,8 +1810,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               ? '' // Không có background cho ảnh/video/sticker/gif
                               : `px-3 py-2 rounded-2xl shadow-sm ${
                                   isMine
-                                    ? 'bg-[#0e9de8] text-white rounded-br-sm'
-                                    : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-bl-sm'
+                                    ? 'bg-[#0e9de8] text-gray-900 rounded-br-sm'
+                                    : 'bg-white text-gray-800 rounded-bl-sm'
                                 }`
                           } ${msg.type === 'unsend' ? 'opacity-60' : ''} cursor-pointer select-text`}
                           onContextMenu={(e) => {
@@ -1845,11 +1845,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         {/* Action menu */}
                         {actionMsgId === msgKey && (
                           <div
-                            className={`absolute z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1 min-w-[160px] ${isMine ? 'right-0' : 'left-0'} ${menuPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+                            className={`absolute z-20 bg-white rounded-xl shadow-xl border border-gray-100 py-1 min-w-[160px] ${isMine ? 'right-0' : 'left-0'} ${menuPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
-                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                               onClick={() => {
                                 setReplyTo(msg);
                                 setActionMsgId(null);
@@ -1859,13 +1859,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               <FaReply className="text-gray-400 text-xs" /> Trả lời
                             </button>
                             <button
-                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                               onClick={() => handleForwardMessage(msg)}
                             >
                               <FaThumbsUp className="text-gray-400 text-xs" /> Chuyển tiếp
                             </button>
                             <button
-                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                               onClick={() => handlePin(msg)}
                             >
                               <BsPin className="text-gray-400 text-xs" />
@@ -1875,7 +1875,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             {/* Xóa phía tôi - có thể xóa tin nhắn của bất kỳ ai */}
                             {msg.type !== 'unsend' && (
                               <button
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 transition-colors"
                                 onClick={() => handleDeleteLocal(msg)}
                               >
                                 <FaTrash className="text-xs" /> Xóa phía tôi
@@ -1885,7 +1885,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             {/* Thu hồi - chỉ có thể thu hồi tin nhắn của mình */}
                             {isMine && msg.type !== 'unsend' && (
                               <button
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
                                 onClick={() => handleUnsend(msg)}
                               >
                                 <FaTrash className="text-xs" /> Thu hồi
@@ -1939,7 +1939,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     <span className="text-[11px] text-gray-400 mb-0.5 ml-1">
                       {typingUsers.map((u) => u.userName).join(', ')} đang nhập...
                     </span>
-                    <div className="px-4 py-3 bg-white dark:bg-gray-700 rounded-2xl rounded-bl-sm shadow-sm flex items-center gap-1">
+                    <div className="px-4 py-3 bg-white rounded-2xl rounded-bl-sm shadow-sm flex items-center gap-1">
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
@@ -1953,9 +1953,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
             {/* Reply bar */}
             {replyTo && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-100 dark:border-blue-800 flex-shrink-0">
+              <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border-t border-blue-100 flex-shrink-0">
                 <FaReply className="text-[#0e9de8] text-sm flex-shrink-0" />
-                <div className="flex-1 text-xs text-gray-600 dark:text-gray-400 truncate">
+                <div className="flex-1 text-xs text-gray-600 truncate">
                   <span className="font-medium text-[#0e9de8]">Trả lời </span>
                   {replyTo.content || '[Media]'}
                 </div>
@@ -1970,11 +1970,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
             {/* File preview */}
             {files.length > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 flex-shrink-0 flex-wrap">
+              <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-t border-gray-100 flex-shrink-0 flex-wrap">
                 {files.map((f, i) => (
                   <div
                     key={i}
-                    className="flex items-center gap-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-xs text-gray-700 dark:text-gray-300"
+                    className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700"
                   >
                     {f.type.startsWith('image/') ? (
                       <img
@@ -2006,7 +2006,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             {/* Input area */}
             <div className="flex-shrink-0">
               {/* Toolbar icons */}
-              <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-t border-gray-100 bg-white">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2104,7 +2104,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
               {/* Recording bar — waveform animation */}
               {isRecording && (
-                <div className="flex items-center gap-3 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-t border-red-100">
+                <div className="flex items-center gap-3 px-4 py-2 bg-red-50 border-t border-red-100">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
                   {/* Waveform bars */}
                   <div className="flex items-center gap-[3px] h-6">
@@ -2141,7 +2141,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
               {/* Audio preview */}
               {audioBlob && !isRecording && (
-                <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-100">
+                <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border-t border-blue-100">
                   <audio src={URL.createObjectURL(audioBlob)} controls className="h-8 flex-1" />
                   <button
                     onClick={cancelRecording}
@@ -2161,7 +2161,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               )}
 
               {/* Text input row */}
-              <div className="flex items-center px-3 pb-2.5 pt-1 bg-white dark:bg-gray-900 gap-2">
+              <div className="flex items-center px-3 pb-2.5 pt-1 bg-white gap-2">
                 <input
                   ref={inputRef}
                   type="text"
@@ -2174,12 +2174,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     }
                   }}
                   placeholder="Nhập tin nhắn..."
-                  className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-[22px] outline-none text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:border-[#0e9de8] focus:bg-white dark:focus:bg-gray-700 transition-colors"
+                  className="flex-1 px-4 py-2 border border-gray-200 rounded-[22px] outline-none text-sm bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:border-[#0e9de8] focus:bg-white transition-colors"
                 />
                 <button
                   onClick={sendText}
                   disabled={!inputText.trim()}
-                  className="w-9 h-9 flex items-center justify-center bg-[#0e9de8] text-white rounded-full hover:bg-[#0077c2] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 text-sm"
+                  className="w-9 h-9 flex items-center justify-center bg-[#0e9de8] text-gray-900 rounded-full hover:bg-[#0077c2] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 text-sm"
                 >
                   <FaPaperPlane />
                 </button>
@@ -2190,11 +2190,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           {/* Search panel */}
           {showSearch && (
             <div
-              className="w-[280px] border-l border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col shrink-0"
+              className="w-[280px] border-l border-gray-100 bg-white flex flex-col shrink-0"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-                <h3 className="text-[14px] font-semibold text-gray-800 dark:text-gray-100 flex-1">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+                <h3 className="text-[14px] font-semibold text-gray-800 flex-1">
                   Tìm kiếm tin nhắn
                 </h3>
                 <button
@@ -2208,7 +2208,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   <FaTimes />
                 </button>
               </div>
-              <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+              <div className="px-3 py-2 border-b border-gray-100">
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -2216,11 +2216,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     onChange={(e) => setSearchKeyword(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     placeholder="Nhập từ khóa..."
-                    className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:border-[#0e9de8] bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0e9de8] bg-gray-50 text-gray-800"
                   />
                   <button
                     onClick={handleSearch}
-                    className="px-3 py-1.5 bg-[#0e9de8] text-white rounded-lg text-sm hover:bg-[#0077c2] transition-colors"
+                    className="px-3 py-1.5 bg-[#0e9de8] text-gray-900 rounded-lg text-sm hover:bg-[#0077c2] transition-colors"
                   >
                     Tìm
                   </button>
@@ -2235,18 +2235,18 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   searchResults.map((r, i) => (
                     <div
                       key={i}
-                      className={`p-2.5 rounded-xl text-sm cursor-pointer border transition-colors ${r.messageID ? 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-[#0e9de8]/30' : 'bg-gray-50 dark:bg-gray-800 border-transparent'}`}
+                      className={`p-2.5 rounded-xl text-sm cursor-pointer border transition-colors ${r.messageID ? 'bg-gray-50 border-gray-100 hover:bg-blue-50 hover:border-[#0e9de8]/30' : 'bg-gray-50 border-transparent'}`}
                       onClick={() => r.messageID && handleScrollToMessage(r.messageID)}
                     >
                       {r.type === 'message' && (
-                        <p className="text-gray-700 dark:text-gray-200 text-[13px] leading-snug line-clamp-2">
+                        <p className="text-gray-700 text-[13px] leading-snug line-clamp-2">
                           {r.content
                             ?.split(new RegExp(`(${searchKeyword})`, 'gi'))
                             .map((part, j) =>
                               part.toLowerCase() === searchKeyword.toLowerCase() ? (
                                 <mark
                                   key={j}
-                                  className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-gray-100 rounded px-0.5"
+                                  className="bg-yellow-200 text-gray-900 rounded px-0.5"
                                 >
                                   {part}
                                 </mark>
@@ -2356,12 +2356,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           onClick={() => setShowFileSizeError(false)}
         >
           <div
-            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform transition-all"
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 transform transition-all"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Icon */}
             <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
                 <svg
                   className="w-8 h-8 text-red-500"
                   fill="none"
@@ -2379,21 +2379,21 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             </div>
 
             {/* Title */}
-            <h3 className="text-xl font-bold text-center text-gray-900 dark:text-gray-100 mb-3">
+            <h3 className="text-xl font-bold text-center text-gray-900 mb-3">
               File vượt quá giới hạn
             </h3>
 
             {/* Message */}
-            <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-6 leading-relaxed">
+            <p className="text-sm text-gray-600 text-center mb-6 leading-relaxed">
               {fileSizeErrorMessage}
             </p>
 
             {/* Size limits info */}
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-6">
-              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <p className="text-xs font-semibold text-gray-700 mb-2">
                 Giới hạn kích thước file:
               </p>
-              <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+              <ul className="text-xs text-gray-600 space-y-1">
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
                   Hình ảnh & Video: 100MB
@@ -2412,7 +2412,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             {/* Button */}
             <button
               onClick={() => setShowFileSizeError(false)}
-              className="w-full py-3 bg-[#0e9de8] hover:bg-[#0077c2] text-white font-medium rounded-lg transition-colors"
+              className="w-full py-3 bg-[#0e9de8] hover:bg-[#0077c2] text-gray-900 font-medium rounded-lg transition-colors"
             >
               Đã hiểu
             </button>

@@ -206,27 +206,27 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
   );
 
   return (
-    <div className="w-[310px] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-screen shrink-0">
+    <div className="w-[310px] bg-white border-r border-gray-200 flex flex-col h-screen shrink-0">
       {/* Header */}
-      <div className="flex items-center gap-3 px-3 py-3 border-b border-gray-100 dark:border-gray-700">
+      <div className="flex items-center gap-3 px-3 py-3 border-b border-gray-100">
         <button
           onClick={onBack}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors"
         >
           <FaArrowLeft className="text-[16px]" />
         </button>
-        <h2 className="text-[15px] font-bold text-gray-900 dark:text-gray-100">
+        <h2 className="text-[15px] font-bold text-gray-900">
           Tin nhắn từ người lạ
         </h2>
       </div>
 
       {/* Search bar */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700">
-        <div className="flex items-center bg-gray-100 dark:bg-gray-800 px-3 py-1.5 flex-1 rounded-full focus-within:bg-blue-50 dark:focus-within:bg-blue-900/30 focus-within:outline-1 focus-within:outline-[#0e9de8] transition-colors">
-          <FaSearch className="text-gray-400 dark:text-gray-500 mr-1.5 text-[13px]" />
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100">
+        <div className="flex items-center bg-gray-100 px-3 py-1.5 flex-1 rounded-full focus-within:bg-blue-50 focus-within:outline-1 focus-within:outline-[#0e9de8] transition-colors">
+          <FaSearch className="text-gray-400 mr-1.5 text-[13px]" />
           <input
             type="text"
-            className="border-none bg-transparent outline-none w-full text-[13.5px] text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
+            className="border-none bg-transparent outline-none w-full text-[13.5px] text-gray-700 placeholder:text-gray-400"
             placeholder="Tìm kiếm"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -235,7 +235,7 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
       </div>
 
       {/* Stranger chat items */}
-      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
+      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded">
         {loading ? (
           <div className="flex items-center justify-center h-40 text-gray-400 text-sm">
             Đang tải...
@@ -249,10 +249,10 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
           filtered.map((chat) => (
             <div
               key={chat.chatID}
-              className={`flex items-center px-3.5 py-2.5 cursor-pointer border-b border-gray-50 dark:border-gray-800 relative transition-colors group ${
+              className={`flex items-center px-3.5 py-2.5 cursor-pointer border-b border-gray-50 relative transition-colors group ${
                 selectedChatId === chat.chatID
-                  ? 'bg-blue-50 dark:bg-blue-900/30'
-                  : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                  ? 'bg-blue-50'
+                  : 'hover:bg-gray-50'
               }`}
               onClick={() => handleSelectChat(chat)}
             >
@@ -260,19 +260,19 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
                 <img
                   src={getChatAvatar(chat)}
                   alt="avatar"
-                  className="w-[46px] h-[46px] rounded-full object-cover bg-gray-200 dark:bg-gray-700 shadow-sm"
+                  className="w-[46px] h-[46px] rounded-full object-cover bg-gray-200 shadow-sm"
                 />
               </div>
               <div className="flex-1 flex flex-col overflow-hidden gap-0.5 min-w-0">
-                <p className="text-[14.5px] font-semibold text-gray-900 dark:text-gray-100 m-0 truncate">
+                <p className="text-[14.5px] font-semibold text-gray-900 m-0 truncate">
                   {getChatName(chat)}
                 </p>
-                <p className="text-[13px] text-gray-400 dark:text-gray-500 m-0 truncate">
+                <p className="text-[13px] text-gray-400 m-0 truncate">
                   {getLastMsgPreview(chat, user?.userID || '')}
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2">
-                <span className="text-[11px] text-gray-300 dark:text-gray-600">
+                <span className="text-[11px] text-gray-400">
                   {getTime(chat)}
                 </span>
                 {(chat.unreadCount ?? 0) > 0 && (

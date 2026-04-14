@@ -336,7 +336,7 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
           <button
             onClick={handleSearch}
             disabled={loading}
-            className="px-8 py-2 rounded-lg text-[14.5px] font-semibold bg-[#0068FF] hover:bg-[#005AE6] transition-colors disabled:opacity-50 text-white"
+            className="px-8 py-2 rounded-lg text-[14.5px] font-semibold bg-[#0068FF] hover:bg-[#005AE6] transition-colors disabled:opacity-50 text-gray-900"
           >
             Tìm kiếm
           </button>
@@ -357,7 +357,7 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
               <FaChevronLeft className="text-white text-[15px]" />
               <span className="text-white text-[15px] font-semibold">Thông tin tài khoản</span>
             </div>
-            <button onClick={onClose} className="text-white/90 hover:text-white">
+            <button onClick={onClose} className="text-gray-900/90 hover:text-gray-900">
               <FaTimes className="text-xl" />
             </button>
           </div>
@@ -415,7 +415,7 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
             <button
               onClick={handleSendRequest}
               disabled={sending}
-              className="px-8 py-2.5 rounded-lg text-[14.5px] font-semibold bg-[#0068FF] hover:bg-[#005AE6] transition-colors disabled:opacity-50 text-white"
+              className="px-8 py-2.5 rounded-lg text-[14.5px] font-semibold bg-[#0068FF] hover:bg-[#005AE6] transition-colors disabled:opacity-50 text-gray-900"
             >
               {sending ? 'Đang gửi...' : 'Kết bạn'}
             </button>
