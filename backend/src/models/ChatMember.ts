@@ -5,6 +5,8 @@ export interface IChatMember extends Document {
   members: {
     userID: string;
     role: string;
+    deletedAt?: Date;
+    historyDeletedAt?: Date;
   }[];
 }
 
@@ -15,6 +17,8 @@ const ChatMemberSchema = new Schema<IChatMember>(
       {
         userID: { type: String, required: true },
         role: { type: String, required: true },
+        deletedAt: { type: Date, required: false },
+        historyDeletedAt: { type: Date, required: false },
       },
     ],
   },

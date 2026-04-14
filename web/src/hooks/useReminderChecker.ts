@@ -1,52 +1,110 @@
 import { useEffect, useRef } from 'react';
+import axiosInstance from '../utils/axios';
 
 export interface Reminder {
-  id: string;
+  reminderID: string;
   chatID: string;
+  userID: string;
   title: string;
   datetime: string;
   repeat: 'none' | 'daily' | 'weekly';
   done: boolean;
 }
 
-const STORAGE_KEY = 'ott_reminders';
-const EVENTS_KEY = 'ott_reminder_events';
-
 export interface ReminderEvent {
-  id: string;
+  eventID: string;
   chatID: string;
   type: 'created' | 'deleted';
-  reminder: Reminder;
+  reminderID: string;
+  reminderData: {
+    title: string;
+    datetime: string;
+    repeat: string;
+  };
   userName: string;
   userID: string;
   createdAt: string;
 }
 
-export const loadReminders = (): Reminder[] => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
-  catch { return []; }
-};
-
-export const saveReminders = (list: Reminder[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-};
-
-export const loadReminderEvents = (chatID: string): ReminderEvent[] => {
+// Load reminders from API
+export const loadReminders = async (chatID: string): Promise<Reminder[]> => {
   try {
-    const all: ReminderEvent[] = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');
-    return all.filter((e) => e.chatID === chatID);
-  } catch { return []; }
+    const response = await axiosInstance.get(`/reminders/chat/${chatID}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error loading reminders:', error);
+    return [];
+  }
 };
 
-export const saveReminderEvent = (evt: ReminderEvent) => {
+// Load reminder events from API
+export const loadReminderEvents = async (chatID: string): Promise<ReminderEvent[]> => {
   try {
-    const all: ReminderEvent[] = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');
-    // Giữ tối đa 50 events mỗi chat
-    const filtered = all.filter((e) => e.chatID === evt.chatID);
-    const others = all.filter((e) => e.chatID !== evt.chatID);
-    const updated = [...others, ...filtered.slice(-49), evt];
-    localStorage.setItem(EVENTS_KEY, JSON.stringify(updated));
-  } catch { /* ignore */ }
+    const response = await axiosInstance.get(`/reminders/events/${chatID}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error loading reminder events:', error);
+    return [];
+  }
+};
+
+// Create reminder via API
+export const createReminder = async (
+  chatID: string,
+  userID: string,
+  userName: string,
+  title: string,
+  datetime: string,
+  repeat: 'none' | 'daily' | 'weekly'
+): Promise<{ reminder: Reminder; event: ReminderEvent } | null> => {
+  try {
+    const reminderID = `rem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const response = await axiosInstance.post('/reminders', {
+      reminderID,
+      chatID,
+      userID,
+      userName,
+      title,
+      datetime,
+      repeat,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating reminder:', error);
+    return null;
+  }
+};
+
+// Delete reminder via API
+export const deleteReminder = async (
+  reminderID: string,
+  userID: string,
+  userName: string,
+  chatID: string
+): Promise<boolean> => {
+  try {
+    await axiosInstance.delete(`/reminders/${reminderID}`, {
+      data: { userID, userName, chatID },
+    });
+    return true;
+  } catch (error) {
+    console.error('Error deleting reminder:', error);
+    return false;
+  }
+};
+
+// Update reminder via API
+export const updateReminder = async (
+  reminderID: string,
+  updates: Partial<Reminder>
+): Promise<Reminder | null> => {
+  try {
+    const response = await axiosInstance.put(`/reminders/${reminderID}`, updates);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating reminder:', error);
+    return null;
+  }
 };
 
 // Format: T6 17/04/2026 lúc 00:01
@@ -60,37 +118,47 @@ export const formatReminderDate = (iso: string) => {
   return `${days[d.getDay()]} ${dd}/${mm}/${d.getFullYear()} lúc ${hh}:${min}`;
 };
 
-export const useReminderChecker = (onFire: (reminder: Reminder) => void) => {
+// Hook to check reminders periodically
+export const useReminderChecker = (
+  chatID: string | null,
+  onFire: (reminder: Reminder) => void
+) => {
   const firedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const check = () => {
-      const all = loadReminders();
+    if (!chatID) return;
+
+    const check = async () => {
+      const reminders = await loadReminders(chatID);
       const now = new Date();
-      all.forEach((r) => {
+      
+      reminders.forEach((r) => {
         if (r.done) return;
         const dt = new Date(r.datetime);
         const diff = now.getTime() - dt.getTime();
-        if (diff >= 0 && diff < 60000 && !firedRef.current.has(r.id)) {
-          firedRef.current.add(r.id);
+        
+        // Fire if within 1 minute window and not already fired
+        if (diff >= 0 && diff < 60000 && !firedRef.current.has(r.reminderID)) {
+          firedRef.current.add(r.reminderID);
           onFire(r);
 
+          // Handle repeat
           if (r.repeat !== 'none') {
             const next = new Date(r.datetime);
             if (r.repeat === 'daily') next.setDate(next.getDate() + 1);
             if (r.repeat === 'weekly') next.setDate(next.getDate() + 7);
-            const updated = all.map((x) =>
-              x.id === r.id ? { ...x, datetime: next.toISOString() } : x
-            );
-            saveReminders(updated);
-            setTimeout(() => firedRef.current.delete(r.id), 70000);
+            
+            updateReminder(r.reminderID, { datetime: next.toISOString() });
+            
+            // Allow firing again after 70 seconds
+            setTimeout(() => firedRef.current.delete(r.reminderID), 70000);
           }
         }
       });
     };
 
     check();
-    const interval = setInterval(check, 15000);
+    const interval = setInterval(check, 15000); // Check every 15 seconds
     return () => clearInterval(interval);
-  }, [onFire]);
+  }, [chatID, onFire]);
 };

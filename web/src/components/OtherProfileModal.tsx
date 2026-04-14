@@ -30,6 +30,11 @@ const OtherProfileModal = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const requestMenuRef = useRef<HTMLDivElement>(null);
 
+  // Ensure friendStatus has a default value
+  if (!user.friendStatus) {
+    user.friendStatus = 'none';
+  }
+
   // --- LOGIC XỬ LÝ (API) ---
   const handleStartChat = async () => {
     try {
@@ -191,7 +196,7 @@ const OtherProfileModal = ({
             {user.friendStatus !== 'self' && (
               <button
                 onClick={handleStartChat}
-                className={`flex-1 h-[42px] rounded-xl text-[14.5px] font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${user.friendStatus.startsWith('pending') ? 'bg-blue-50 text-[#0068FF] border border-blue-100 hover:bg-blue-100' : 'bg-[#0068FF] text-white hover:bg-[#005AE6]'}`}
+                className={`flex-1 h-[42px] rounded-xl text-[14.5px] font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${user.friendStatus?.startsWith('pending') ? 'bg-blue-50 text-[#0068FF] border border-blue-100 hover:bg-blue-100' : 'bg-[#0068FF] text-white hover:bg-[#005AE6]'}`}
               >
                 <FaCommentDots className="text-[16px]" /> Nhắn tin
               </button>

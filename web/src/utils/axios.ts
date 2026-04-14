@@ -1,9 +1,12 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+// Lấy URL từ biến môi trường, fallback về localhost nếu không có
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 // Tạo axios instance
 const axiosInstance = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: `${API_URL}/api`,
 });
 
 // Response interceptor để xử lý 401 (Unauthorized) và 403 (Forbidden)

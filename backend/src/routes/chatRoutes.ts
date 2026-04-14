@@ -39,13 +39,16 @@ const generateChatID = async (): Promise<string> => {
 };
 
 // Helper: lấy danh sách chat đầy đủ cho user
-export const getChatsForUser = async (userID: string) => {
+export const getChatsForUser = async (userID: string, includeStrangers: boolean = false) => {
   const memberDocs = await ChatMember.find({ 'members.userID': userID }).lean();
   const chatIDs = memberDocs.map((m) => m.chatID);
   if (!chatIDs.length) return [];
 
   const chats = await Chat.find({ chatID: { $in: chatIDs } }).lean();
-  const allMessages = await Message.find({ chatID: { $in: chatIDs } }).sort({ timestamp: 1 }).lean();
+  const allMessages = await Message.find({ 
+    chatID: { $in: chatIDs },
+    deletedFor: { $ne: userID } // ⭐ Filter out messages deleted by this user
+  }).sort({ timestamp: 1 }).lean();
 
   const senderIDs = [...new Set(allMessages.map((m) => m.senderID))];
   const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
@@ -66,11 +69,69 @@ export const getChatsForUser = async (userID: string) => {
     membersByChat[doc.chatID] = doc.members.map((m) => ({ userID: m.userID, role: m.role }));
   });
 
-  return chats.map((c) => ({
-    ...c,
-    lastMessage: msgByChat[c.chatID] || [],
-    members: membersByChat[c.chatID] || [],
-  }));
+  // Check if users are friends
+  const checkIsFriend = async (userID: string, otherUserID: string): Promise<boolean> => {
+    const contact = await Contacts.findOne({
+      $or: [
+        { userID, contactID: otherUserID, status: 'accepted' },
+        { userID: otherUserID, contactID: userID, status: 'accepted' },
+      ],
+    });
+    return !!contact;
+  };
+
+  // Filter out chats where current user has deletedAt set
+  const filteredChats = await Promise.all(
+    chats
+      .filter((c) => {
+        const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
+        const currentMember = memberDoc?.members.find((m) => m.userID === userID);
+        return !currentMember?.deletedAt; // Only include if deletedAt is not set
+      })
+      .map(async (c) => {
+        const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
+        const currentMember = memberDoc?.members.find((m) => m.userID === userID);
+        const historyDeletedAt = currentMember?.historyDeletedAt;
+        
+        // Filter messages by historyDeletedAt
+        let messages = msgByChat[c.chatID] || [];
+        if (historyDeletedAt) {
+          messages = messages.filter((msg) => new Date(msg.timestamp) > historyDeletedAt);
+        }
+        
+        // Calculate unread count: messages from others that are not 'read'
+        const unreadCount = messages.filter(
+          (msg) => msg.senderID !== userID && msg.status !== 'read'
+        ).length;
+        
+        // Check if this is a stranger chat (private chat with non-friend)
+        let isStranger = false;
+        if (c.type === 'private') {
+          const otherMember = membersByChat[c.chatID]?.find((m) => m.userID !== userID);
+          if (otherMember) {
+            const isFriend = await checkIsFriend(userID, otherMember.userID);
+            isStranger = !isFriend;
+          }
+        }
+        
+        return {
+          ...c,
+          lastMessage: messages,
+          members: membersByChat[c.chatID] || [],
+          unreadCount,
+          isStranger, // ⭐ Mark if this is a stranger chat
+        };
+      })
+  );
+
+  // Filter based on includeStrangers flag
+  if (includeStrangers) {
+    // Return only stranger chats
+    return filteredChats.filter((c) => c.isStranger);
+  } else {
+    // Return only non-stranger chats (friends + groups)
+    return filteredChats.filter((c) => !c.isStranger);
+  }
 };
 
 export default function chatRoutes(io: Server) {
@@ -115,8 +176,59 @@ export default function chatRoutes(io: Server) {
   // Lấy danh sách chat của user
   router.post('/chats/userID', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-      const chats = await getChatsForUser(req.userID!);
+      const chats = await getChatsForUser(req.userID!, false); // false = exclude strangers
       res.json(chats);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Lấy danh sách tin nhắn từ người lạ (message requests)
+  router.post('/chats/strangers', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const strangerChats = await getChatsForUser(req.userID!, true); // true = only strangers
+      res.json(strangerChats);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Lấy thông tin tổng hợp tin nhắn từ người lạ (cho folder item)
+  router.post('/chats/strangers/summary', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const strangerChats = await getChatsForUser(req.userID!, true); // true = only strangers
+      
+      if (strangerChats.length === 0) {
+        return res.json({
+          count: 0,
+          unreadCount: 0,
+          lastMessageTime: null,
+        }) as any;
+      }
+
+      // Tính tổng số tin nhắn chưa đọc
+      const totalUnread = strangerChats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
+
+      // Tìm tin nhắn mới nhất
+      let latestTimestamp: string | null = null;
+      strangerChats.forEach((chat) => {
+        const msgs = chat.lastMessage || [];
+        if (msgs.length > 0) {
+          const lastMsg = msgs[msgs.length - 1];
+          const msgTime = typeof lastMsg.timestamp === 'string' 
+            ? lastMsg.timestamp 
+            : new Date(lastMsg.timestamp).toISOString();
+          if (!latestTimestamp || new Date(msgTime) > new Date(latestTimestamp)) {
+            latestTimestamp = msgTime;
+          }
+        }
+      });
+
+      res.json({
+        count: strangerChats.length,
+        unreadCount: totalUnread,
+        lastMessageTime: latestTimestamp,
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -135,7 +247,10 @@ export default function chatRoutes(io: Server) {
       if (!privateChat) return res.status(404).json({ message: 'Không tìm thấy chat 1-1' }) as any;
 
       const memberDoc = await ChatMember.findOne({ chatID: privateChat.chatID }).lean();
-      const msgs = await Message.find({ chatID: privateChat.chatID }).sort({ timestamp: 1 }).lean();
+      const msgs = await Message.find({ 
+        chatID: privateChat.chatID,
+        deletedFor: { $ne: userID1 } // ⭐ Filter deleted messages
+      }).sort({ timestamp: 1 }).lean();
       const senderIDs = [...new Set(msgs.map((m) => m.senderID))];
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = msgs.map((msg) => {
@@ -192,7 +307,20 @@ export default function chatRoutes(io: Server) {
   router.post('/messages/id', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
       const { chatID } = req.body;
-      const msgs = await Message.find({ chatID }).sort({ timestamp: 1 }).lean();
+      const userID = req.userID!;
+      
+      // Lấy thông tin member để check historyDeletedAt
+      const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID }).lean();
+      const currentMember = memberDoc?.members.find((m) => m.userID === userID);
+      const historyDeletedAt = currentMember?.historyDeletedAt;
+      
+      // Lấy messages, filter theo historyDeletedAt nếu có
+      const query: any = { chatID };
+      if (historyDeletedAt) {
+        query.timestamp = { $gt: historyDeletedAt.toISOString() };
+      }
+      
+      const msgs = await Message.find(query).sort({ timestamp: 1 }).lean();
       const senderIDs = [...new Set(msgs.map((m) => m.senderID))];
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = msgs.map((msg) => {
@@ -245,7 +373,10 @@ export default function chatRoutes(io: Server) {
       const memberDoc = await ChatMember.findOne({ chatID }).lean();
       const members = memberDoc?.members || [];
       if (!members.find((m) => m.userID === userID)) return res.status(403).json({ message: 'Forbidden' });
-      const messages = await Message.find({ chatID }).sort({ timestamp: 1 }).lean();
+      const messages = await Message.find({ 
+        chatID,
+        deletedFor: { $ne: userID } // ⭐ Filter deleted messages
+      }).sort({ timestamp: 1 }).lean();
       const senderIDs = [...new Set(messages.map((m) => m.senderID))];
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = messages.map((msg) => {
@@ -270,6 +401,7 @@ export default function chatRoutes(io: Server) {
         chatID,
         type: { $in: ['text', 'emoji'] },
         content: { $regex: keyword.trim(), $options: 'i' },
+        deletedFor: { $ne: userID } // ⭐ Filter deleted messages
       }).sort({ timestamp: -1 }).limit(50).lean();
       const senderIDs = [...new Set(msgs.map((m) => m.senderID))];
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
@@ -293,27 +425,64 @@ export default function chatRoutes(io: Server) {
       if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
       const typeFilter = type === 'image' ? ['image'] : type === 'video' ? ['video'] : type === 'file' ? ['file'] : ['image', 'video', 'file'];
       const skip = (parseInt(page) - 1) * parseInt(limit);
-      const msgs = await Message.find({ chatID, type: { $in: typeFilter } }).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean();
-      const total = await Message.countDocuments({ chatID, type: { $in: typeFilter } });
+      const msgs = await Message.find({ 
+        chatID, 
+        type: { $in: typeFilter },
+        deletedFor: { $ne: userID } // ⭐ Filter deleted messages
+      }).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean();
+      const total = await Message.countDocuments({ 
+        chatID, 
+        type: { $in: typeFilter },
+        deletedFor: { $ne: userID } // ⭐ Filter deleted messages
+      });
       res.json({ items: msgs, total, page: parseInt(page), hasMore: skip + msgs.length < total });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
   });
 
-  // Xóa lịch sử trò chuyện (phía mình)
+  // Xóa lịch sử trò chuyện (chỉ ẩn messages cho user hiện tại)
   router.delete('/chats/:chatID/history', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
       const { chatID } = req.params;
       const userID = req.userID!;
       const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
       if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
+      
+      // Set historyDeletedAt cho member này để ẩn messages cũ
       await ChatMember.updateOne(
+        { chatID, 'members.userID': userID },
+        { $set: { 'members.$.historyDeletedAt': new Date() } }
+      );
+      
+      console.log(`User ${userID} deleted history for chat ${chatID}`);
+      
+      res.json({ success: true, message: 'Đã xóa lịch sử trò chuyện' });
+    } catch (e: any) {
+      console.error('Delete history error:', e);
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Xóa trò chuyện (ẩn khỏi danh sách của user)
+  router.delete('/chats/:chatID', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { chatID } = req.params;
+      const userID = req.userID!;
+      const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
+      if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
+      
+      // Set deletedAt cho member này để ẩn chat khỏi danh sách
+      const result = await ChatMember.updateOne(
         { chatID, 'members.userID': userID },
         { $set: { 'members.$.deletedAt': new Date() } }
       );
+      
+      console.log(`Hide chat ${chatID} for user ${userID}:`, result);
+      
       res.json({ success: true, deletedAt: new Date().toISOString() });
     } catch (e: any) {
+      console.error('Delete chat error:', e);
       res.status(500).json({ message: e.message });
     }
   });
@@ -569,9 +738,12 @@ export default function chatRoutes(io: Server) {
 
   // Hủy kết bạn
   router.post('/contacts/unfriend', authMiddleware, async (req: AuthRequest, res: Response) => {
+    console.log('🔴 Unfriend request received:', { userID: req.userID, body: req.body });
     try {
       const userID = req.userID!;
       const { friendID } = req.body;
+      
+      console.log('🔍 Looking for contact:', { userID, friendID });
       
       const contact = await Contacts.findOneAndDelete({
         $or: [
@@ -580,13 +752,20 @@ export default function chatRoutes(io: Server) {
         ],
       });
 
-      if (!contact) return res.status(404).json({ message: 'Không tìm thấy quan hệ bạn bè' }) as any;
+      console.log('📋 Contact found:', contact);
+
+      if (!contact) {
+        console.log('❌ Contact not found');
+        return res.status(404).json({ message: 'Không tìm thấy quan hệ bạn bè' }) as any;
+      }
 
       io.to(friendID).emit('friend_unfriended', { userID, friendID });
       io.to(userID).emit('friend_unfriended', { userID, friendID });
 
+      console.log('✅ Unfriend successful');
       res.json({ message: 'Đã hủy kết bạn' });
     } catch (e: any) {
+      console.error('❌ Unfriend error:', e);
       res.status(500).json({ message: e.message });
     }
   });

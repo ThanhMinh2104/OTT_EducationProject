@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
 import {
   FaComments,
   FaPaperPlane,
@@ -28,10 +29,14 @@ import ReminderModal from './ReminderModal';
 import ChatInfoPanel from './ChatInfoPanel';
 import StickerEmojiPicker from './StickerEmojiPicker';
 import ForwardMessageModal from './ForwardMessageModal';
+import ImageViewerModal from './ImageViewerModal';
+import OtherProfileModal from './OtherProfileModal';
 import {
   loadReminderEvents,
-  saveReminderEvent,
+  createReminder,
+  deleteReminder,
   type ReminderEvent,
+  type Reminder,
 } from '../hooks/useReminderChecker';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
@@ -214,7 +219,6 @@ const FileDisplay = ({
         isMine ? 'bg-[#2c3e50]' : 'bg-[#2c3e50] dark:bg-gray-700'
       }`}
       onClick={(e) => e.stopPropagation()}
-      onContextMenu={(e) => e.stopPropagation()}
     >
       {/* File Icon */}
       {getFileIcon(fileName)}
@@ -275,7 +279,6 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
     <div
       className={`flex items-center gap-3 px-4 py-3 rounded-2xl min-w-[240px] max-w-[280px] ${isMine ? 'bg-[#0e9de8]' : 'bg-[#2c3e50] dark:bg-gray-700'}`}
       onClick={(e) => e.stopPropagation()}
-      onContextMenu={(e) => e.stopPropagation()}
     >
       <audio
         ref={audioRef}
@@ -374,6 +377,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [showReminder, setShowReminder] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
+  // Image viewer state
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [imageViewerIndex, setImageViewerIndex] = useState(0);
+  const [chatImages, setChatImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
+
   const [reminderEvents, setReminderEvents] = useState<ReminderEvent[]>([]);
 
   const [typingUsers, setTypingUsers] = useState<{ userID: string; userName: string }[]>([]);
@@ -383,12 +391,22 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     Record<string, { userID: string; userName: string; avatar?: string | null; readAt: string }[]>
   >({});
 
+  const [showOtherProfile, setShowOtherProfile] = useState(false);
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<any | null>(null);
+
+  const [showPinnedList, setShowPinnedList] = useState(false);
+  const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<'top' | 'bottom'>('top');
+
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  const [showFileSizeError, setShowFileSizeError] = useState(false);
+  const [fileSizeErrorMessage, setFileSizeErrorMessage] = useState('');
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -401,6 +419,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     const chatID = selectedChat.chatID;
     const userID = user.userID;
 
+    console.log('🔌 Socket status:', {
+      connected: socket.connected,
+      id: socket.id,
+      chatID,
+      userID
+    });
+
     setMessages(selectedChat.lastMessage || []);
     setPinnedMessages(
       (selectedChat.lastMessage || []).filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
@@ -410,10 +435,26 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setInputText('');
     setTypingUsers([]);
     setSeenMap({});
-    setReminderEvents(loadReminderEvents(selectedChat.chatID));
+    
+    // Load reminder events from API
+    loadReminderEvents(selectedChat.chatID).then((events) => {
+      setReminderEvents(events);
+    });
+    
     msgRefsMap.current.clear();
     setHighlightedMsgId(null);
 
+    // Load all images from chat
+    const images = (selectedChat.lastMessage || [])
+      .filter((m) => m.type === 'image' && m.media_url?.length)
+      .map((m) => ({
+        url: typeof m.media_url![0] === 'string' ? m.media_url![0] : '',
+        timestamp: m.timestamp,
+        messageID: m.messageID,
+      }));
+    setChatImages(images);
+
+    console.log('📤 Emitting join events:', { userID, chatID });
     socket.emit('join_user', userID);
     socket.emit('join_chat', chatID);
     socket.emit('read_messages', { chatID, userID });
@@ -432,6 +473,17 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       }
     }
 
+    // Emit bulk_seen
+    if (user) {
+      socket.emit('bulk_seen', {
+        chatID,
+        userID,
+        userName: user.name,
+        avatar: user.anhDaiDien || null,
+      });
+    }
+
+    // Setup socket listeners
     const onNewMessage = (msg: Message) => {
       setMessages((prev) => {
         if (
@@ -447,9 +499,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     };
 
     const onUnsend = (updated: Message) => {
+      console.log('📩 Received unsend_notification:', updated);
       setMessages((prev) =>
         prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m))
       );
+      // Xóa khỏi pinned messages nếu có
+      setPinnedMessages((prev) => prev.filter((m) => m.messageID !== updated.messageID));
     };
 
     const onGhim = (updated: Message) => {
@@ -471,6 +526,14 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       setPinnedMessages((prev) => prev.filter((m) => m.messageID !== updated.messageID));
     };
 
+    const onMessageDeletedLocal = (data: { messageID: string; chatID: string; userID: string }) => {
+      // Chỉ xóa message khỏi UI của user hiện tại
+      if (data.userID === userID && data.chatID === chatID) {
+        setMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
+        setPinnedMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
+      }
+    };
+
     const onStatusUpdate = ({ messageID, status }: { messageID?: string; status: string }) => {
       if (messageID) {
         setMessages((prev) => prev.map((m) => (m.messageID === messageID ? { ...m, status } : m)));
@@ -484,6 +547,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     socket.on('new_message', onNewMessage);
     socket.on(chatID, onNewMessage);
     socket.on('unsend_notification', onUnsend);
+    socket.on('message_deleted_local', onMessageDeletedLocal);
     socket.on('ghim_notification', onGhim);
     socket.on('unghim_notification', onUnghim);
     socket.on(`status_update_${chatID}`, onStatusUpdate);
@@ -576,9 +640,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
     const onReminderEvent = (data: ReminderEvent) => {
       if (data.chatID !== chatID) return;
-      saveReminderEvent(data);
+      // Just update state, data is already saved in database via API
       setReminderEvents((prev) => {
-        if (prev.find((e) => e.id === data.id)) return prev;
+        if (prev.find((e) => e.eventID === data.eventID)) return prev;
         return [...prev, data];
       });
     };
@@ -591,25 +655,17 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       duration?: number;
       messageID?: string;
     }) => {
-      // Không cần xử lý gì vì đã có new_message event
-      // Event này chỉ để backward compatibility
       console.log('call-system-message received (ignored, using new_message instead):', data);
     };
     socket.on('call-system-message', onCallSystemMessage);
 
-    if (user) {
-      socket.emit('bulk_seen', {
-        chatID,
-        userID,
-        userName: user.name,
-        avatar: user.anhDaiDien || null,
-      });
-    }
-
+    // Cleanup function
     return () => {
+      console.log('🧹 Cleaning up socket listeners for chat:', chatID);
       socket.off('new_message', onNewMessage);
       socket.off(chatID, onNewMessage);
       socket.off('unsend_notification', onUnsend);
+      socket.off('message_deleted_local', onMessageDeletedLocal);
       socket.off('ghim_notification', onGhim);
       socket.off('unghim_notification', onUnghim);
       socket.off(`status_update_${chatID}`, onStatusUpdate);
@@ -622,16 +678,31 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('call-system-message', onCallSystemMessage);
       setTypingUsers([]);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.chatID, user?.userID]); // Only re-run when chat or user changes
+
+  // Debug: Track useEffect runs
+  useEffect(() => {
+    console.log('⚠️ ChatWindow useEffect ran - this should only happen when chat changes');
   }, [selectedChat?.chatID, user?.userID]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Close pinned menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pinnedMenuId) {
+        setPinnedMenuId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [pinnedMenuId]);
+
   const buildMsg = (extra: Partial<Message>): Message =>
     ({
-      tempID: Date.now().toString(),
+      tempID: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       chatID: selectedChat!.chatID,
       senderID: user!.userID,
       timestamp: new Date().toISOString(),
@@ -683,12 +754,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   };
 
   const sendEmoji = (emojiData: EmojiClickData) => {
-    if (!selectedChat || !user) return;
-    const msg = buildMsg({ content: emojiData.emoji, type: 'emoji', media_url: [] });
-    socket.emit('send_message', msg);
-    setMessages((prev) => [...prev, msg]);
+    // Thêm emoji vào input thay vì gửi ngay
+    setInputText((prev) => prev + emojiData.emoji);
     setShowEmoji(false);
-    setReplyTo(null);
+    // Focus vào input sau khi thêm emoji
+    inputRef.current?.focus();
   };
 
   const sendSticker = async (stickerUrl: string) => {
@@ -754,8 +824,56 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     }
   };
 
+  const validateFileSize = (files: File[]): { valid: boolean; message: string } => {
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+    const MAX_AUDIO_SIZE = 10 * 1024 * 1024; // 10MB
+    const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024; // 20MB
+
+    for (const file of files) {
+      const isAudio = file.type.startsWith('audio/');
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      const isDocument = !isAudio && !isImage && !isVideo;
+
+      let maxSize = MAX_FILE_SIZE;
+      let fileTypeName = 'File';
+
+      if (isAudio) {
+        maxSize = MAX_AUDIO_SIZE;
+        fileTypeName = 'File ghi âm';
+      } else if (isDocument) {
+        maxSize = MAX_DOCUMENT_SIZE;
+        fileTypeName = 'File tài liệu';
+      } else if (isImage) {
+        fileTypeName = 'Hình ảnh';
+      } else if (isVideo) {
+        fileTypeName = 'Video';
+      }
+
+      if (file.size > maxSize) {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        const maxSizeMB = (maxSize / (1024 * 1024)).toFixed(0);
+        return {
+          valid: false,
+          message: `${fileTypeName} "${file.name}" có kích thước ${fileSizeMB}MB vượt quá giới hạn ${maxSizeMB}MB cho phép.`,
+        };
+      }
+    }
+
+    return { valid: true, message: '' };
+  };
+
   const sendFilesDirectly = async (fileList: File[]) => {
     if (!fileList.length || !selectedChat || !user) return;
+
+    // Validate file sizes
+    const validation = validateFileSize(fileList);
+    if (!validation.valid) {
+      setFileSizeErrorMessage(validation.message);
+      setShowFileSizeError(true);
+      return;
+    }
+
     setIsUploading(true);
 
     const groups: Record<string, File[]> = { image: [], video: [], file: [] };
@@ -799,20 +917,53 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         const data = await res.json();
         console.log('Upload success:', data);
 
-        // Gửi từng ảnh/video/file riêng biệt
+        // Gửi từng ảnh/video/file riêng biệt với delay nhỏ để tránh race condition
         if (type === 'image' || type === 'video') {
           // Mỗi ảnh/video là một tin nhắn riêng
-          data.urls.forEach((url: string) => {
+          for (let i = 0; i < data.urls.length; i++) {
+            const url = data.urls[i];
             const msg = buildMsg({ content: '', type, media_url: [url] });
+            
+            // Thêm vào state trước
+            setMessages((prev) => {
+              // Kiểm tra xem đã có message với tempID này chưa
+              if (prev.find(m => m.tempID === msg.tempID)) {
+                return prev;
+              }
+              return [...prev, msg];
+            });
+            
+            // Sau đó emit socket
             socket.emit('send_message', msg);
-            setMessages((prev) => [...prev, msg]);
-          });
+            
+            // Delay nhỏ giữa các lần gửi để tránh race condition
+            if (i < data.urls.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          }
         } else {
-          files.forEach((f, i) => {
+          // File thông thường
+          for (let i = 0; i < files.length; i++) {
+            const f = files[i];
             const msg = buildMsg({ content: f.name, type: 'file', media_url: [data.urls[i]] });
+            
+            // Thêm vào state trước
+            setMessages((prev) => {
+              // Kiểm tra xem đã có message với tempID này chưa
+              if (prev.find(m => m.tempID === msg.tempID)) {
+                return prev;
+              }
+              return [...prev, msg];
+            });
+            
+            // Sau đó emit socket
             socket.emit('send_message', msg);
-            setMessages((prev) => [...prev, msg]);
-          });
+            
+            // Delay nhỏ giữa các lần gửi
+            if (i < files.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          }
         }
       }
       setFiles([]);
@@ -826,20 +977,54 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   };
 
   const handleUnsend = (msg: Message) => {
-    if (!msg.messageID || msg.senderID !== user?.userID) return;
+    console.log('🎯 handleUnsend called:', { 
+      messageID: msg.messageID, 
+      senderID: msg.senderID, 
+      userID: user?.userID,
+      match: msg.senderID === user?.userID 
+    });
+    
+    if (!msg.messageID || msg.senderID !== user?.userID) {
+      console.log('❌ Cannot unsend: validation failed');
+      return;
+    }
+    
+    console.log('🔄 Unsending message:', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+    
+    // Cập nhật UI ngay lập tức (optimistic update)
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.messageID === msg.messageID
+          ? { ...m, type: 'unsend', content: '', media_url: [] }
+          : m
+      )
+    );
+    
+    // Gửi socket event
     socket.emit('unsend_message', {
       messageID: msg.messageID,
       chatID: selectedChat!.chatID,
       senderID: user!.userID,
     });
+    
+    console.log('📤 Emitted unsend_message event');
+    
     setActionMsgId(null);
   };
 
   const handlePin = (msg: Message) => {
     if (!msg.messageID) return;
     if (msg.pinnedInfo) {
+      // Unpin message
       socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
     } else {
+      // Check if already have 3 pinned messages
+      if (pinnedMessages.length >= 3) {
+        toast.error('Chỉ có thể ghim tối đa 3 tin nhắn');
+        setActionMsgId(null);
+        return;
+      }
+      // Pin message
       socket.emit('ghim_message', {
         messageID: msg.messageID,
         chatID: selectedChat!.chatID,
@@ -847,6 +1032,36 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       });
     }
     setActionMsgId(null);
+  };
+
+  const handleMoveToTop = (msg: Message) => {
+    if (!msg.messageID) return;
+    // Unpin and re-pin to move to top
+    socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+    setTimeout(() => {
+      socket.emit('ghim_message', {
+        messageID: msg.messageID,
+        chatID: selectedChat!.chatID,
+        senderID: user!.userID,
+      });
+    }, 100);
+    setPinnedMenuId(null);
+    toast.success('Đã đưa lên đầu');
+  };
+
+  const handleCopyPinned = (msg: Message) => {
+    if (msg.content) {
+      navigator.clipboard.writeText(msg.content);
+      toast.success('Đã sao chép');
+    }
+    setPinnedMenuId(null);
+  };
+
+  const handleUnpinFromMenu = (msg: Message) => {
+    if (!msg.messageID) return;
+    socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+    setPinnedMenuId(null);
+    toast.success('Đã bỏ ghim');
   };
 
   const handleForward = (msg: Message) => {
@@ -857,11 +1072,18 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   const handleDeleteLocal = (msg: Message) => {
     if (!msg.messageID || !user?.userID) return;
+    
+    // Xóa tin nhắn khỏi UI ngay lập tức (optimistic update)
+    setMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
+    setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
+    
+    // Gửi socket event để lưu vào database
     socket.emit('delete_message_local', {
       messageID: msg.messageID,
       userID: user.userID,
       chatID: selectedChat!.chatID,
     });
+    
     setActionMsgId(null);
   };
 
@@ -981,7 +1203,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setShowSearch(false);
   };
 
-  const renderMessageContent = (msg: Message) => {
+  const renderMessageContent = (msg: Message, msgKey: string, isMine: boolean) => {
     if (msg.type === 'unsend') {
       return <span className="italic text-gray-400 text-sm">Tin nhắn đã bị thu hồi</span>;
     }
@@ -1014,12 +1236,19 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     }
     if (msg.type === 'image' && msg.media_url?.length) {
       const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
+      const imageIndex = chatImages.findIndex((img) => img.url === url);
+      
       return (
         <img
           src={url}
           alt="img"
-          className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg"
-          onClick={() => window.open(url, '_blank')}
+          className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg hover:opacity-90 transition-opacity"
+          onClick={() => {
+            if (imageIndex !== -1) {
+              setImageViewerIndex(imageIndex);
+              setShowImageViewer(true);
+            }
+          }}
         />
       );
     }
@@ -1108,13 +1337,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     ...messages.map((m) => ({
       kind: 'message' as const,
       data: m,
-      key: m.messageID || m.tempID || m._id || Math.random().toString(),
+      key: `msg_${m.messageID || m.tempID || m._id || Math.random().toString()}`,
       ts: new Date(m.timestamp).getTime(),
     })),
     ...reminderEvents.map((e) => ({
       kind: 'reminder' as const,
       data: e,
-      key: e.id,
+      key: `reminder_${e.eventID}`,
       ts: new Date(e.createdAt).getTime(),
     })),
   ].sort((a, b) => a.ts - b.ts);
@@ -1135,7 +1364,28 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               <img
                 src={chatAvatar}
                 alt="avatar"
-                className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 dark:border-blue-800"
+                className="w-[42px] h-[42px] rounded-full object-cover mr-3 border-2 border-blue-100 dark:border-blue-800 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                onClick={async () => {
+                  if (selectedChat.type === 'private' && memberInfo) {
+                    // Fetch full user info with friendStatus
+                    try {
+                      const res = await fetch(`${API}/usersID`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userID: memberInfo.userID }),
+                      });
+                      const userData = await res.json();
+                      // Add friendStatus if not present (default to 'accepted' since they're in chat)
+                      if (!userData.friendStatus) {
+                        userData.friendStatus = 'accepted';
+                      }
+                      setSelectedUserForProfile(userData);
+                      setShowOtherProfile(true);
+                    } catch (err) {
+                      console.error('Failed to fetch user:', err);
+                    }
+                  }
+                }}
               />
               <div className="flex-1">
                 <h2 className="text-[15px] font-bold m-0 mb-0.5 text-gray-900 dark:text-gray-100">
@@ -1204,14 +1454,163 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
             {/* Pinned messages bar */}
             {pinnedMessages.length > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-100 dark:border-yellow-800 flex-shrink-0">
-                <BsPinAngleFill className="text-yellow-500 text-sm flex-shrink-0" />
-                <span className="text-xs text-yellow-700 dark:text-yellow-400 truncate flex-1">
-                  {pinnedMessages[pinnedMessages.length - 1]?.content || '[Media]'}
-                </span>
-                <span className="text-xs text-yellow-500">
-                  {pinnedMessages.length} tin nhắn đã ghim
-                </span>
+              <div className="relative bg-[#2c3e50] dark:bg-gray-800 border-b border-gray-700 flex-shrink-0">
+                {/* Main pinned message display */}
+                <div 
+                  className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#34495e] dark:hover:bg-gray-750 transition-colors"
+                  onClick={() => {
+                    const lastPinned = pinnedMessages[pinnedMessages.length - 1];
+                    if (lastPinned?.messageID) {
+                      setHighlightedMsgId(lastPinned.messageID);
+                      msgRefsMap.current.get(lastPinned.messageID)?.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'center' 
+                      });
+                    }
+                  }}
+                >
+                  <BsPinAngleFill className="text-blue-400 text-[15px] flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-gray-200 mb-0.5">Tin nhắn</div>
+                    <div className="text-[13px] text-gray-300 truncate">
+                      {pinnedMessages[pinnedMessages.length - 1]?.senderInfo?.name}: {pinnedMessages[pinnedMessages.length - 1]?.content || '[Media]'}
+                    </div>
+                  </div>
+                  {pinnedMessages.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowPinnedList(!showPinnedList);
+                      }}
+                      className="px-3 py-1 bg-[#34495e] hover:bg-[#3d566e] rounded-lg text-[12px] text-gray-200 font-medium transition-colors flex items-center gap-1"
+                    >
+                      +{pinnedMessages.length - 1} ghim
+                      <svg 
+                        className={`w-3 h-3 transition-transform ${showPinnedList ? 'rotate-180' : ''}`} 
+                        fill="currentColor" 
+                        viewBox="0 0 20 20"
+                      >
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
+                  <button className="text-gray-400 hover:text-gray-200 transition-colors">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Dropdown list of all pinned messages */}
+                {showPinnedList && pinnedMessages.length > 1 && (
+                  <div className="absolute top-full left-0 right-0 bg-[#2c3e50] dark:bg-gray-800 border-b border-gray-700 shadow-lg z-10 max-h-[300px] overflow-y-auto">
+                    <div className="px-4 py-2 border-b border-gray-700 flex items-center justify-between">
+                      <span className="text-[13px] font-semibold text-gray-200">
+                        Danh sách ghim ({pinnedMessages.length})
+                      </span>
+                      <button 
+                        onClick={() => setShowPinnedList(false)}
+                        className="text-gray-400 hover:text-gray-200"
+                      >
+                        Thu gọn
+                      </button>
+                    </div>
+                    {pinnedMessages.slice().reverse().map((msg, idx) => (
+                      <div
+                        key={msg.messageID}
+                        className="relative flex items-start gap-3 px-4 py-3 hover:bg-[#34495e] dark:hover:bg-gray-750 border-b border-gray-700/50"
+                      >
+                        <BsPinAngleFill className="text-blue-400 text-[13px] flex-shrink-0 mt-0.5" />
+                        <div 
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => {
+                            if (msg.messageID) {
+                              setHighlightedMsgId(msg.messageID);
+                              msgRefsMap.current.get(msg.messageID)?.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'center' 
+                              });
+                              setShowPinnedList(false);
+                            }
+                          }}
+                        >
+                          <div className="text-[13px] font-semibold text-gray-200 mb-1">Tin nhắn</div>
+                          <div className="text-[12px] text-gray-300">
+                            <span className="font-medium">{msg.senderInfo?.name}:</span>{' '}
+                            {msg.type === 'text' || msg.type === 'emoji' ? (
+                              <span className="line-clamp-2">{msg.content}</span>
+                            ) : msg.type === 'image' ? (
+                              <span className="flex items-center gap-1">
+                                <FaImage className="text-[10px]" /> Hình ảnh
+                              </span>
+                            ) : msg.type === 'video' ? (
+                              <span className="flex items-center gap-1">
+                                <FaVideo className="text-[10px]" /> Video
+                              </span>
+                            ) : msg.type === 'file' ? (
+                              <span className="flex items-center gap-1">
+                                <FaPaperclip className="text-[10px]" /> {msg.content || 'File'}
+                              </span>
+                            ) : (
+                              '[Media]'
+                            )}
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPinnedMenuId(pinnedMenuId === msg.messageID ? null : msg.messageID || null);
+                            }}
+                            className="text-gray-400 hover:text-gray-200 transition-colors p-1"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                            </svg>
+                          </button>
+                          
+                          {/* Menu dropdown - show above if last item */}
+                          {pinnedMenuId === msg.messageID && (
+                            <div 
+                              className={`absolute right-0 ${idx >= pinnedMessages.length - 1 ? 'bottom-full mb-1' : 'top-full mt-1'} bg-[#1e2a38] rounded-lg shadow-xl border border-gray-600 py-1 min-w-[180px] z-20`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => handleMoveToTop(msg)}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-gray-200 hover:bg-[#2c3e50] transition-colors"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                </svg>
+                                Đưa lên đầu
+                              </button>
+                              {(msg.type === 'text' || msg.type === 'emoji') && (
+                                <button
+                                  onClick={() => handleCopyPinned(msg)}
+                                  className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-gray-200 hover:bg-[#2c3e50] transition-colors"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                  Copy
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleUnpinFromMenu(msg)}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-red-400 hover:bg-[#2c3e50] transition-colors"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                Bỏ ghim
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1232,11 +1631,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             </strong>{' '}
                             tạo nhắc hẹn mới{' '}
                             <strong className="text-gray-700 dark:text-gray-200">
-                              {evt.reminder.title}
+                              {evt.reminderData.title}
                             </strong>
                             {' - '}
                             {(() => {
-                              const d = new Date(evt.reminder.datetime);
+                              const d = new Date(evt.reminderData.datetime);
                               const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
                               return `${days[d.getDay()]}, ${d.getDate()} Tháng ${d.getMonth() + 1} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
                             })()}
@@ -1255,7 +1654,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             </strong>{' '}
                             xóa nhắc hẹn{' '}
                             <strong className="text-gray-700 dark:text-gray-200">
-                              {evt.reminder.title}
+                              {evt.reminderData.title}
                             </strong>
                             {' . '}
                             <button
@@ -1271,12 +1670,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 w-[280px] flex flex-col items-center gap-2 shadow-sm">
                           <span className="text-2xl">🔔</span>
                           <p className="text-[15px] font-bold text-gray-900 dark:text-gray-100 text-center m-0">
-                            {evt.reminder.title}
+                            {evt.reminderData.title}
                           </p>
                           <p className="text-[12px] text-gray-500 dark:text-gray-400 flex items-center gap-1 m-0">
                             🕐{' '}
                             {(() => {
-                              const d = new Date(evt.reminder.datetime);
+                              const d = new Date(evt.reminderData.datetime);
                               const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
                               return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
                             })()}
@@ -1325,7 +1724,25 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           'https://api.dicebear.com/7.x/avataaars/svg?seed=' + msg.senderID
                         }
                         alt="av"
-                        className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1"
+                        className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`${API}/usersID`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ userID: msg.senderID }),
+                            });
+                            const userData = await res.json();
+                            // Add friendStatus if not present (default to 'accepted' since they're in chat)
+                            if (!userData.friendStatus) {
+                              userData.friendStatus = 'accepted';
+                            }
+                            setSelectedUserForProfile(userData);
+                            setShowOtherProfile(true);
+                          } catch (err) {
+                            console.error('Failed to fetch user:', err);
+                          }
+                        }}
                       />
                     )}
 
@@ -1340,12 +1757,45 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       )}
 
                       {/* Reply preview */}
-                      {msg.replyTo?.content && (
+                      {msg.replyTo && (
                         <div
-                          className={`text-xs px-2 py-1 rounded-t-lg border-l-2 border-[#0e9de8] bg-gray-100 dark:bg-gray-700 text-gray-500 max-w-full truncate mb-0.5 ${isMine ? 'self-end' : 'self-start'}`}
+                          className={`px-3 py-2 rounded-lg bg-[#2c3e50] dark:bg-gray-700 mb-1 cursor-pointer hover:bg-[#34495e] transition-colors ${isMine ? 'self-end' : 'self-start'} max-w-[280px]`}
+                          onClick={() => {
+                            if (msg.replyTo?.messageID) {
+                              setHighlightedMsgId(msg.replyTo.messageID);
+                              msgRefsMap.current.get(msg.replyTo.messageID)?.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'center' 
+                              });
+                            }
+                          }}
                         >
-                          <FaReply className="inline mr-1 text-[10px]" />
-                          {msg.replyTo.content}
+                          <div className="flex items-start gap-2 border-l-2 border-blue-400 pl-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[13px] font-semibold text-gray-200 mb-0.5">
+                                {msg.replyTo.senderID === user?.userID ? 'Bạn' : (messages.find(m => m.messageID === msg.replyTo?.messageID)?.senderInfo?.name || 'Người dùng')}
+                              </div>
+                              <div className="text-[12px] text-gray-300 truncate">
+                                {msg.replyTo.type === 'text' || msg.replyTo.type === 'emoji' ? (
+                                  msg.replyTo.content
+                                ) : msg.replyTo.type === 'image' ? (
+                                  <span className="flex items-center gap-1">
+                                    <FaImage className="text-[10px]" /> Hình ảnh
+                                  </span>
+                                ) : msg.replyTo.type === 'video' ? (
+                                  <span className="flex items-center gap-1">
+                                    <FaVideo className="text-[10px]" /> Video
+                                  </span>
+                                ) : msg.replyTo.type === 'file' ? (
+                                  <span className="flex items-center gap-1">
+                                    <FaPaperclip className="text-[10px]" /> File
+                                  </span>
+                                ) : (
+                                  '[Media]'
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -1366,10 +1816,23 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           } ${msg.type === 'unsend' ? 'opacity-60' : ''} cursor-pointer select-text`}
                           onContextMenu={(e) => {
                             e.preventDefault();
+                            // Calculate if menu should show above or below
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const windowHeight = window.innerHeight;
+                            const spaceBelow = windowHeight - rect.bottom;
+                            const spaceAbove = rect.top;
+                            
+                            // If more space below or near bottom, show below; otherwise show above
+                            if (spaceBelow > 200 || spaceBelow > spaceAbove) {
+                              setMenuPosition('bottom');
+                            } else {
+                              setMenuPosition('top');
+                            }
+                            
                             setActionMsgId(msgKey);
                           }}
                         >
-                          {renderMessageContent(msg)}
+                          {renderMessageContent(msg, msgKey, isMine)}
                         </div>
 
                         {/* Pinned indicator */}
@@ -1382,7 +1845,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         {/* Action menu */}
                         {actionMsgId === msgKey && (
                           <div
-                            className={`absolute z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1 min-w-[160px] ${isMine ? 'right-0' : 'left-0'} bottom-full mb-1`}
+                            className={`absolute z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1 min-w-[160px] ${isMine ? 'right-0' : 'left-0'} ${menuPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
@@ -1408,21 +1871,25 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               <BsPin className="text-gray-400 text-xs" />
                               {msg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
                             </button>
+                            
+                            {/* Xóa phía tôi - có thể xóa tin nhắn của bất kỳ ai */}
+                            {msg.type !== 'unsend' && (
+                              <button
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                                onClick={() => handleDeleteLocal(msg)}
+                              >
+                                <FaTrash className="text-xs" /> Xóa phía tôi
+                              </button>
+                            )}
+                            
+                            {/* Thu hồi - chỉ có thể thu hồi tin nhắn của mình */}
                             {isMine && msg.type !== 'unsend' && (
-                              <>
-                                <button
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
-                                  onClick={() => handleDeleteLocal(msg)}
-                                >
-                                  <FaTrash className="text-xs" /> Xóa phía tôi
-                                </button>
-                                <button
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                  onClick={() => handleUnsend(msg)}
-                                >
-                                  <FaTrash className="text-xs" /> Thu hồi
-                                </button>
-                              </>
+                              <button
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                onClick={() => handleUnsend(msg)}
+                              >
+                                <FaTrash className="text-xs" /> Thu hồi
+                              </button>
                             )}
                           </div>
                         )}
@@ -1830,38 +2297,24 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       </div>
 
       {/* Reminder Modal */}
-      {showReminder && selectedChat && (
+      {showReminder && selectedChat && user && (
         <ReminderModal
           chatID={selectedChat.chatID}
+          userID={user.userID}
+          userName={user.name}
           onClose={() => setShowReminder(false)}
           onCreated={(r) => {
-            const evt: ReminderEvent = {
-              id: `created_${r.id}`,
-              chatID: r.chatID,
-              type: 'created',
-              reminder: r,
-              userName: user?.name || 'Bạn',
-              userID: user?.userID || '',
-              createdAt: new Date().toISOString(),
-            };
-            saveReminderEvent(evt);
-            setReminderEvents((prev) => [...prev, evt]);
-            socket.emit('reminder_event', evt);
+            // Reload reminder events from API
+            loadReminderEvents(selectedChat.chatID).then((events) => {
+              setReminderEvents(events);
+            });
             setShowReminder(false);
           }}
           onDeleted={(r) => {
-            const evt: ReminderEvent = {
-              id: `deleted_${r.id}_${Date.now()}`,
-              chatID: r.chatID,
-              type: 'deleted',
-              reminder: r,
-              userName: user?.name || 'Bạn',
-              userID: user?.userID || '',
-              createdAt: new Date().toISOString(),
-            };
-            saveReminderEvent(evt);
-            setReminderEvents((prev) => [...prev, evt]);
-            socket.emit('reminder_event', evt);
+            // Reload reminder events from API
+            loadReminderEvents(selectedChat.chatID).then((events) => {
+              setReminderEvents(events);
+            });
           }}
         />
       )}
@@ -1873,6 +2326,98 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           onClose={() => setForwardingMessage(null)}
           user={user}
         />
+      )}
+
+      {/* Image Viewer Modal */}
+      {showImageViewer && chatImages.length > 0 && (
+        <ImageViewerModal
+          images={chatImages}
+          initialIndex={imageViewerIndex}
+          onClose={() => setShowImageViewer(false)}
+        />
+      )}
+
+      {/* Other Profile Modal */}
+      {showOtherProfile && selectedUserForProfile && (
+        <OtherProfileModal
+          user={selectedUserForProfile}
+          currentUser={user}
+          onClose={() => {
+            setShowOtherProfile(false);
+            setSelectedUserForProfile(null);
+          }}
+        />
+      )}
+
+      {/* File Size Error Modal */}
+      {showFileSizeError && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowFileSizeError(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 transform transition-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Icon */}
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+                <svg
+                  className="w-8 h-8 text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              </div>
+            </div>
+
+            {/* Title */}
+            <h3 className="text-xl font-bold text-center text-gray-900 dark:text-gray-100 mb-3">
+              File vượt quá giới hạn
+            </h3>
+
+            {/* Message */}
+            <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-6 leading-relaxed">
+              {fileSizeErrorMessage}
+            </p>
+
+            {/* Size limits info */}
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-6">
+              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Giới hạn kích thước file:
+              </p>
+              <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                  Hình ảnh & Video: 100MB
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                  File tài liệu: 20MB
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-purple-500 rounded-full"></span>
+                  File ghi âm: 10MB
+                </li>
+              </ul>
+            </div>
+
+            {/* Button */}
+            <button
+              onClick={() => setShowFileSizeError(false)}
+              className="w-full py-3 bg-[#0e9de8] hover:bg-[#0077c2] text-white font-medium rounded-lg transition-colors"
+            >
+              Đã hiểu
+            </button>
+          </div>
+        </div>
       )}
     </>
   );

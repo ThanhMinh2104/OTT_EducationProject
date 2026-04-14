@@ -3,6 +3,8 @@ import { FaSearch, FaUserPlus, FaUsers, FaAngleDown, FaEllipsisH, FaTrash } from
 import socket from '../utils/socket';
 import AddFriendModal from './AddFriendModal';
 import ContactsPanel from './ContactsPanel';
+import StrangerFolderItem from './StrangerFolderItem';
+import StrangerChatList from './StrangerChatList';
 import { getToken } from '../utils/auth';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
@@ -87,13 +89,39 @@ const getTime = (chat: Chat): string => {
   );
   const last = msgs[msgs.length - 1];
   if (!last?.timestamp) return '';
+  
   const d = new Date(last.timestamp);
   const now = new Date();
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (diffDays === 0)
-    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const diffMs = now.getTime() - d.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  // Vài giây trước
+  if (diffSecs < 60) return 'Vài giây';
+  
+  // Vài phút trước
+  if (diffMins < 60) {
+    if (diffMins === 1) return '1 phút';
+    return `${diffMins} phút`;
+  }
+  
+  // Vài giờ trước
+  if (diffHours < 24) {
+    if (diffHours === 1) return '1 giờ';
+    return `${diffHours} giờ`;
+  }
+  
+  // Hôm qua
   if (diffDays === 1) return 'Hôm qua';
-  if (diffDays < 7) return d.toLocaleDateString('vi-VN', { weekday: 'short' });
+  
+  // Trong tuần (hiển thị thứ)
+  if (diffDays < 7) {
+    return d.toLocaleDateString('vi-VN', { weekday: 'short' });
+  }
+  
+  // Lâu hơn (hiển thị ngày/tháng)
   return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 };
 
@@ -107,6 +135,14 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
   >({});
   const [menuChatId, setMenuChatId] = useState<string | null>(null);
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
+  const [deleteConfirmChatId, setDeleteConfirmChatId] = useState<string | null>(null);
+  const [deletedChatIds, setDeletedChatIds] = useState<Set<string>>(new Set());
+  const [showStrangerList, setShowStrangerList] = useState(false);
+  const [strangerSummary, setStrangerSummary] = useState<{
+    count: number;
+    unreadCount: number;
+    lastMessageTime: string | null;
+  }>({ count: 0, unreadCount: 0, lastMessageTime: null });
   const notifAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Khởi tạo audio notification
@@ -116,6 +152,32 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     );
     notifAudioRef.current.volume = 0.5;
   }, []);
+
+  // Lấy thông tin tổng hợp tin nhắn từ người lạ
+  const fetchStrangerSummary = async () => {
+    if (!user?.userID) return;
+    try {
+      const token = getToken();
+      const res = await fetch('http://localhost:5000/api/chats/strangers/summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const data = await res.json();
+      setStrangerSummary(data);
+    } catch (err) {
+      console.error('Failed to fetch stranger summary:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchStrangerSummary();
+    // Refresh summary every 30 seconds
+    const interval = setInterval(fetchStrangerSummary, 30000);
+    return () => clearInterval(interval);
+  }, [user?.userID]);
 
   // Lấy thông tin member cho chat private
   const fetchMember = async (memberID: string) => {
@@ -150,9 +212,13 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
         return new Date(bT).getTime() - new Date(aT).getTime();
       });
-      setChats(sorted);
+      
+      // Filter out chats that were just deleted by user
+      const filtered = sorted.filter((c) => !deletedChatIds.has(c.chatID));
+      
+      setChats(filtered);
       // Prefetch member info cho private chats
-      sorted.forEach((c) => {
+      filtered.forEach((c) => {
         if (c.type === 'private') {
           const otherId = c.members.find((m) => m.userID !== user.userID)?.userID;
           if (otherId) fetchMember(otherId);
@@ -269,19 +335,49 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
 
   const handleDeleteChat = async (chatID: string) => {
     setDeletingChatId(chatID);
+    
+    // Đánh dấu chat này đã bị xóa để ignore socket updates
+    setDeletedChatIds((prev) => new Set(prev).add(chatID));
+    
+    // Xóa khỏi danh sách local ngay lập tức
+    setChats((prev) => prev.filter((c) => c.chatID !== chatID));
+    
+    // Nếu đang xem chat này thì đóng nó
+    if (selectedChatId === chatID) {
+      onSelectChat(null as any);
+    }
+    
     try {
       const token = getToken();
-      await fetch(`http://localhost:5000/api/chats/${chatID}/history`, {
+      // Gọi endpoint xóa trò chuyện (ẩn khỏi danh sách)
+      const res = await fetch(`http://localhost:5000/api/chats/${chatID}`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      // Xóa khỏi danh sách local
-      setChats((prev) => prev.filter((c) => c.chatID !== chatID));
-    } catch {
-      /* ignore */
+      
+      if (!res.ok) {
+        console.error('Delete chat failed');
+        // Nếu lỗi thì remove khỏi deletedChatIds và reload
+        setDeletedChatIds((prev) => {
+          const next = new Set(prev);
+          next.delete(chatID);
+          return next;
+        });
+        socket.emit('getChat', user?.userID);
+      }
+    } catch (err) {
+      console.error('Delete chat error:', err);
+      // Nếu lỗi thì remove khỏi deletedChatIds và reload
+      setDeletedChatIds((prev) => {
+        const next = new Set(prev);
+        next.delete(chatID);
+        return next;
+      });
+      socket.emit('getChat', user?.userID);
     } finally {
       setDeletingChatId(null);
       setMenuChatId(null);
+      setDeleteConfirmChatId(null);
     }
   };
 
@@ -307,6 +403,17 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
 
   if (activeTab === 'contacts') {
     return <ContactsPanel user={user} onStartChat={onSelectChat} />;
+  }
+
+  if (showStrangerList) {
+    return (
+      <StrangerChatList
+        user={user}
+        onBack={() => setShowStrangerList(false)}
+        onSelectChat={onSelectChat}
+        selectedChatId={selectedChatId}
+      />
+    );
   }
 
   return (
@@ -361,7 +468,17 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
 
       {/* Chat items */}
       <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
-        {filtered.length === 0 && (
+        {/* Tin nhắn từ người lạ folder */}
+        {strangerSummary.count > 0 && (
+          <StrangerFolderItem
+            unreadCount={strangerSummary.unreadCount}
+            lastMessageTime={strangerSummary.lastMessageTime || ''}
+            onClick={() => setShowStrangerList(true)}
+            isSelected={false}
+          />
+        )}
+
+        {filtered.length === 0 && strangerSummary.count === 0 && (
           <div className="flex flex-col items-center justify-center h-40 text-gray-400 text-sm gap-2">
             <span className="text-3xl">💬</span>
             <span>Chưa có cuộc trò chuyện nào</span>
@@ -439,11 +556,13 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
                 >
                   <button
                     className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-lg mx-0.5"
-                    onClick={() => handleDeleteChat(chat.chatID)}
-                    disabled={deletingChatId === chat.chatID}
+                    onClick={() => {
+                      setDeleteConfirmChatId(chat.chatID);
+                      setMenuChatId(null);
+                    }}
                   >
                     <FaTrash className="text-xs shrink-0" />
-                    {deletingChatId === chat.chatID ? 'Đang xóa...' : 'Xóa trò chuyện'}
+                    Xóa trò chuyện
                   </button>
                 </div>
               )}
@@ -456,8 +575,52 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         <AddFriendModal
           onClose={() => setShowAddFriendModal(false)}
           currentUser={user}
-          onStartChat={(chat) => onSelectChat(chat)}
+          onStartChat={(chat: Chat) => onSelectChat(chat)}
         />
+      )}
+
+      {/* Delete Confirm Modal */}
+      {deleteConfirmChatId && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" 
+          onClick={() => setDeleteConfirmChatId(null)}
+        >
+          <div 
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-[340px] mx-4 p-6 flex flex-col gap-4" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center gap-2 text-center">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+                <FaTrash className="text-red-500 text-lg" />
+              </div>
+              <h3 className="text-[15px] font-bold text-gray-900 dark:text-gray-100">Xóa trò chuyện</h3>
+              <p className="text-[13px] text-gray-500 dark:text-gray-400">
+                Cuộc trò chuyện sẽ bị xóa khỏi danh sách của bạn. Bạn có thể nhắn tin lại để khôi phục.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirmChatId(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={() => {
+                  const chatId = deleteConfirmChatId;
+                  setDeleteConfirmChatId(null); // Đóng modal TRƯỚC
+                  if (chatId) {
+                    handleDeleteChat(chatId); // Sau đó mới xóa
+                  }
+                }}
+                disabled={deletingChatId === deleteConfirmChatId}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-50"
+              >
+                {deletingChatId === deleteConfirmChatId ? 'Đang xóa...' : 'Xóa'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
