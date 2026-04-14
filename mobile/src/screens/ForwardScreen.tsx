@@ -6,11 +6,9 @@ import {
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { io } from 'socket.io-client';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { API_URL } from '../utils/config';
-
-const socket = io(API_URL);
+import socket from '../utils/socket';
 
 type Props = {
   navigation: StackNavigationProp<RootStackParamList, 'Forward'>;

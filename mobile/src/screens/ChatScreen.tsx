@@ -13,16 +13,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { io } from "socket.io-client";
 import { StackNavigationProp } from "@react-navigation/stack";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { API_URL } from "../utils/config";
+import socket from "../utils/socket";
 import StickerEmojiPicker from "../components/StickerEmojiPicker";
 import AudioPlayer from "../components/AudioPlayer";
-
-const socket = io(API_URL);
 
 type Props = { navigation: StackNavigationProp<RootStackParamList, "Chat"> };
 
