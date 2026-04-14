@@ -748,37 +748,37 @@ export default function chatRoutes(io: Server) {
       const userID = req.userID!;
       const { senderID } = req.body;
       
+      // Lấy thông tin sender và receiver trước
+      const sender = await Users.findOne({ userID: senderID });
+      const receiver = await Users.findOne({ userID });
+      
       // Update contact từ người nhận (userID) về người gửi (senderID)
       const contact = await Contacts.findOneAndUpdate(
         { userID, contactID: senderID, status: 'pending' },
-        { status: 'accepted' },
+        { status: 'accepted', alias: sender?.name || 'Bạn' }, // ⭐ Đảm bảo alias là tên sender
         { new: true }
       );
       if (!contact) return res.status(404).json({ message: 'Không tìm thấy lời mời' }) as any;
 
       // Tạo contact ngược từ người gửi về người nhận
       // userID: senderID, contactID: userID
-      // alias phải là tên của contactID (tức là tên của userID - người nhận)
+      // ⭐ alias phải là tên của contactID (tức là tên của userID - người nhận)
       const reverseContact = await Contacts.findOne({ userID: senderID, contactID: userID });
       if (!reverseContact) {
-        const receiver = await Users.findOne({ userID });
         await Contacts.create({
           userID: senderID,
           contactID: userID,
-          alias: receiver?.name || 'Bạn', // Tên của contactID (người nhận)
+          alias: receiver?.name || 'Bạn', // ✅ Tên của contactID (người nhận)
           status: 'accepted',
           created_at: new Date(),
         });
       } else if (reverseContact.status !== 'accepted') {
         await Contacts.findOneAndUpdate(
           { userID: senderID, contactID: userID },
-          { status: 'accepted' },
+          { status: 'accepted', alias: receiver?.name || 'Bạn' },
           { new: true }
         );
       }
-
-      const sender = await Users.findOne({ userID: senderID });
-      const receiver = await Users.findOne({ userID });
       
       io.to(senderID).emit('friend_request_accepted', { 
         userID, 
