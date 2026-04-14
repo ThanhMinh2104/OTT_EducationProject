@@ -203,8 +203,13 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.emit('getChat', user.userID);
     };
 
-    if (socket.connected) handleConnect();
-    else socket.on('connect', handleConnect);
+    // Nếu socket đã connected, emit ngay
+    if (socket.connected) {
+      handleConnect();
+    } else {
+      // Nếu chưa connected, đợi connect event
+      socket.on('connect', handleConnect);
+    }
 
     socket.on('ChatByUserID', (data: Chat[]) => {
       const sorted = [...data].sort((a, b) => {
