@@ -401,6 +401,10 @@ export default function chatRoutes(io: Server) {
         userID: target.userID,
         name: sender?.name,
         avatar: sender?.anhDaiDien,
+        sdt: sender?.sdt,
+        anhBia: sender?.anhBia,
+        ngaysinh: sender?.ngaysinh,
+        gioTinh: sender?.gioTinh,
         alias: newContact.alias,
         message: newContact.message,
       });
@@ -475,13 +479,16 @@ export default function chatRoutes(io: Server) {
 
       const result = await Promise.all(friends.map(async (f) => {
         const friendID = f.userID === userID ? f.contactID : f.userID;
-        const friendUser = await Users.findOne({ userID: friendID }).select('name anhDaiDien sdt trangThai').lean();
+        const friendUser = await Users.findOne({ userID: friendID }).select('name anhDaiDien sdt trangThai anhBia ngaysinh gioTinh').lean();
         return { 
           userID: friendID, 
           name: friendUser?.name, 
           anhDaiDien: friendUser?.anhDaiDien, 
           sdt: friendUser?.sdt, 
           trangThai: friendUser?.trangThai,
+          anhBia: friendUser?.anhBia,
+          ngaysinh: friendUser?.ngaysinh,
+          gioTinh: friendUser?.gioTinh,
           alias: f.contactID === friendID ? f.alias : undefined 
         };
       }));
@@ -579,6 +586,34 @@ export default function chatRoutes(io: Server) {
       io.to(userID).emit('friend_unfriended', { userID, friendID });
 
       res.json({ message: 'Đã hủy kết bạn' });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Cập nhật tên gợi nhớ (Alias) - Chỉ cho phép người thiết lập thấy
+  router.post('/contacts/update-alias', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const { contactID, alias } = req.body;
+      
+      // Tìm quan hệ bạn bè. Alias trong DB hiện tại đang gán cho người nhận lời mời.
+      // Để đơn giản theo schema hiện tại, ta cập nhật alias của bản ghi contact chung.
+      const contact = await Contacts.findOneAndUpdate(
+        {
+          $or: [
+            { userID: contactID, contactID: userID },
+            { userID, contactID: contactID },
+          ],
+          status: 'accepted'
+        },
+        { alias: alias || '' },
+        { new: true }
+      );
+
+      if (!contact) return res.status(404).json({ message: 'Không tìm thấy quan hệ bạn bè' }) as any;
+
+      res.json({ message: 'Đã cập nhật tên gợi nhớ', alias: contact.alias });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

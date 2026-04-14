@@ -11,14 +11,14 @@ import {
   FaUndo,
   FaChevronDown,
   FaChevronRight,
-  FaExclamationCircle,
+  FaExclamationCircle
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
-import socket from '../utils/socket';
+import { io, Socket } from 'socket.io-client';
 import OtherProfileModal from './OtherProfileModal';
 
-// Không cần tạo socket mới nữa, đã import từ utils/socket.ts
+const socket: Socket = io('http://localhost:5000');
 
 interface Friend {
   userID: string;
@@ -27,6 +27,9 @@ interface Friend {
   anhDaiDien?: string;
   trangThai?: string;
   alias?: string;
+  anhBia?: string;
+  ngaysinh?: string;
+  gioTinh?: string;
 }
 
 interface FriendRequest {
@@ -92,6 +95,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       setRequests(res.data);
     } catch {
       // ignore
+      toast.error('Không thể tải danh sách lời mời kết bạn');
     }
   };
 
@@ -101,6 +105,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       setSentRequests(res.data);
     } catch {
       // ignore
+      toast.error('Không thể tải danh sách lời mời kết bạn đã gửi');
     }
   };
 
@@ -120,6 +125,8 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
         return [data, ...prev];
       });
       toast(`${data.name} đã gửi lời mời kết bạn`, { icon: '👋' });
+      // Đồng bộ localStorage cho AddFriendModal
+      updateLocalStorageStatus(data.contactID, 'pending_received');
     });
 
     // Kết bạn thành công
@@ -130,14 +137,14 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
 
       // Chỉ hiện toast nếu mình là NGƯỜI NHẬN thông báo (không phải người trực tiếp nhấn nút Chấp nhận)
       if (data.actorID !== user.userID) {
-        toast.success(`${data.name} đã chấp nhận lời mời`);
+        toast.success(`${data.name} đã chấp nhận lời mời kết bạn của bạn`, { icon: <FaCheck /> });
       }
       // Đồng bộ localStorage cho AddFriendModal
       updateLocalStorageStatus(data.userID, 'accepted');
     });
 
     // Lời mời bị thu hồi
-    socket.on('friend_request_cancelled', (data: { senderID: string; recipientID: string }) => {
+    socket.on('friend_request_cancelled', (data: { senderID: string, recipientID: string }) => {
       if (data.recipientID === user.userID) {
         // Nếu mình là người nhận, xóa khỏi danh sách lời mời nhận được
         setRequests((prev) => prev.filter((r) => r.contactID !== data.senderID));
@@ -147,27 +154,21 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
         setSentRequests((prev) => prev.filter((r) => r.recipientID !== data.recipientID));
       }
       // Đồng bộ localStorage cho AddFriendModal
-      updateLocalStorageStatus(
-        data.senderID === user.userID ? data.recipientID : data.senderID,
-        'none'
-      );
+      updateLocalStorageStatus(data.senderID === user.userID ? data.recipientID : data.senderID, 'none');
     });
 
     // Lời mời bị từ chối
-    socket.on('friend_request_rejected', (data: { senderID: string; recipientID: string }) => {
+    socket.on('friend_request_rejected', (data: { senderID: string, recipientID: string }) => {
       if (data.senderID === user.userID) {
         // Nếu mình là người gửi và bị từ chối
         setSentRequests((prev) => prev.filter((r) => r.recipientID !== data.recipientID));
       }
       // Đồng bộ localStorage
-      updateLocalStorageStatus(
-        data.senderID === user.userID ? data.recipientID : data.senderID,
-        'none'
-      );
+      updateLocalStorageStatus(data.senderID === user.userID ? data.recipientID : data.senderID, 'none');
     });
 
     // Bị hủy kết bạn
-    socket.on('friend_unfriended', (data: { userID: string; friendID: string }) => {
+    socket.on('friend_unfriended', (data: { userID: string, friendID: string }) => {
       const targetID = data.userID === user.userID ? data.friendID : data.userID;
       setFriends((prev) => prev.filter((f) => f.userID !== targetID));
       updateLocalStorageStatus(targetID, 'none');
@@ -223,9 +224,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
   const handleCancelSent = async () => {
     if (!requestToRecall) return;
     try {
-      await axiosInstance.post('/contacts/cancel-friend-request', {
-        recipientID: requestToRecall.recipientID,
-      });
+      await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: requestToRecall.recipientID });
       setSentRequests((prev) => prev.filter((r) => r.recipientID !== requestToRecall.recipientID));
       toast.success('Đã thu hồi lời mời');
       updateLocalStorageStatus(requestToRecall.recipientID, 'none');
@@ -235,7 +234,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
     }
   };
 
-  const handleViewProfile = (item: any, status: 'pending' | 'accepted' | 'none') => {
+  const handleViewProfile = (item: any, status: 'pending_sent' | 'pending_received' | 'accepted' | 'none') => {
     setSelectedProfile({
       userID: item.contactID || item.recipientID || item.userID,
       name: item.name,
@@ -244,7 +243,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       anhBia: item.anhBia,
       ngaysinh: item.ngaysinh,
       gioTinh: item.gioTinh,
-      friendStatus: status,
+      friendStatus: status
     });
   };
 
@@ -261,7 +260,8 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
   const getGroupedFriends = () => {
     const filtered = friends.filter(
       (f) =>
-        (f.alias || f.name).toLowerCase().includes(search.toLowerCase()) || f.sdt?.includes(search)
+        (f.alias || f.name).toLowerCase().includes(search.toLowerCase()) ||
+        f.sdt?.includes(search)
     );
 
     const groups: { [key: string]: Friend[] } = {};
@@ -305,20 +305,16 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       <div className="flex border-b border-gray-50 dark:border-gray-800 shrink-0">
         <button
           onClick={() => setTab('friends')}
-          className={`flex-1 py-3 text-sm font-bold transition-all relative ${
-            tab === 'friends' ? 'text-[#0e9de8]' : 'text-gray-400 hover:text-gray-600'
-          }`}
+          className={`flex-1 py-3 text-sm font-bold transition-all relative ${tab === 'friends' ? 'text-[#0e9de8]' : 'text-gray-400 hover:text-gray-600'
+            }`}
         >
           Bạn bè
-          {tab === 'friends' && (
-            <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-[#0e9de8] rounded-full" />
-          )}
+          {tab === 'friends' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-[#0e9de8] rounded-full" />}
         </button>
         <button
           onClick={() => setTab('requests')}
-          className={`flex-1 py-3 text-sm font-bold transition-all relative ${
-            tab === 'requests' ? 'text-[#0e9de8]' : 'text-gray-400 hover:text-gray-600'
-          }`}
+          className={`flex-1 py-3 text-sm font-bold transition-all relative ${tab === 'requests' ? 'text-[#0e9de8]' : 'text-gray-400 hover:text-gray-600'
+            }`}
         >
           Lời mời
           {pendingCount > 0 && (
@@ -326,9 +322,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
               {pendingCount}
             </span>
           )}
-          {tab === 'requests' && (
-            <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-[#0e9de8] rounded-full" />
-          )}
+          {tab === 'requests' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-[#0e9de8] rounded-full" />}
         </button>
       </div>
 
@@ -359,17 +353,13 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                     >
                       <div className="relative mr-4 shrink-0">
                         <img
-                          src={
-                            friend.anhDaiDien ||
-                            'https://api.dicebear.com/7.x/avataaars/svg?seed=' + friend.userID
-                          }
+                          src={friend.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + friend.userID}
                           alt="avatar"
                           className="w-12 h-12 rounded-full object-cover bg-gray-100 shadow-sm border border-gray-100"
                         />
                         <span
-                          className={`absolute bottom-0.5 right-0.5 w-3 h-3 rounded-full border-2 border-white shadow-sm ${
-                            friend.trangThai === 'online' ? 'bg-green-500' : 'bg-gray-300'
-                          }`}
+                          className={`absolute bottom-0.5 right-0.5 w-3 h-3 rounded-full border-2 border-white shadow-sm ${friend.trangThai === 'online' ? 'bg-green-500' : 'bg-gray-300'
+                            }`}
                         />
                       </div>
                       <div className="flex-1 overflow-hidden">
@@ -383,7 +373,9 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                         </div>
                         <p className="text-xs text-gray-400 truncate mt-0.5">{friend.sdt}</p>
                       </div>
-                      <button className="opacity-0 group-hover:opacity-100 w-9 h-9 flex items-center justify-center rounded-xl bg-white text-[#0e9de8] shadow-sm border border-blue-100 hover:bg-[#0e9de8] hover:text-white transition-all scale-90 group-hover:scale-100">
+                      <button
+                        className="opacity-0 group-hover:opacity-100 w-9 h-9 flex items-center justify-center rounded-xl bg-white text-[#0e9de8] shadow-sm border border-blue-100 hover:bg-[#0e9de8] hover:text-white transition-all scale-90 group-hover:scale-100"
+                      >
                         <FaCommentDots className="text-lg" />
                       </button>
                     </div>
@@ -400,42 +392,30 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
               onClick={() => setIsReceivedExpanded(!isReceivedExpanded)}
             >
               <div className="flex items-center gap-2">
-                {isReceivedExpanded ? (
-                  <FaChevronDown className="text-[10px] text-gray-400" />
-                ) : (
-                  <FaChevronRight className="text-[10px] text-gray-400" />
-                )}
-                <span className="text-xs font-bold text-[#0e9de8]">
-                  Lời mời kết bạn ({pendingCount})
-                </span>
+                {isReceivedExpanded ? <FaChevronDown className="text-[10px] text-gray-400" /> : <FaChevronRight className="text-[10px] text-gray-400" />}
+                <span className="text-xs font-bold text-[#0e9de8]">Lời mời kết bạn ({pendingCount})</span>
               </div>
             </div>
-            {isReceivedExpanded &&
-              (requests.length === 0 ? (
+            {isReceivedExpanded && (
+              requests.length === 0 ? (
                 <div className="py-8 flex flex-col items-center justify-center gap-2 text-gray-300">
                   <FaEnvelopeOpenText className="text-3xl opacity-20" />
                   <span className="text-xs">Không có lời mời nào</span>
                 </div>
               ) : (
                 requests.map((req) => (
-                  <div
-                    key={req.contactID}
-                    className="p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-orange-50/10 transition-colors"
-                  >
+                  <div key={req.contactID} className="p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-orange-50/10 transition-colors">
                     <div className="flex items-start gap-4">
                       <img
-                        src={
-                          req.avatar ||
-                          'https://api.dicebear.com/7.x/avataaars/svg?seed=' + req.contactID
-                        }
+                        src={req.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + req.contactID}
                         alt="avatar"
                         className="w-12 h-12 rounded-full object-cover bg-gray-100 shadow-sm shrink-0 cursor-pointer"
-                        onClick={() => handleViewProfile(req, 'pending')}
+                        onClick={() => handleViewProfile(req, 'pending_received')}
                       />
                       <div className="flex-1 min-w-0">
                         <p
                           className="font-bold text-gray-800 dark:text-gray-100 truncate text-sm hover:text-[#0e9de8] cursor-pointer inline-block"
-                          onClick={() => handleViewProfile(req, 'pending')}
+                          onClick={() => handleViewProfile(req, 'pending_received')}
                         >
                           {req.name}
                         </p>
@@ -464,7 +444,8 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                     </div>
                   </div>
                 ))
-              ))}
+              )
+            )}
 
             {/* Lời mời đã gửi */}
             <div
@@ -472,43 +453,31 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
               onClick={() => setIsSentExpanded(!isSentExpanded)}
             >
               <div className="flex items-center gap-2">
-                {isSentExpanded ? (
-                  <FaChevronDown className="text-[10px] text-gray-400" />
-                ) : (
-                  <FaChevronRight className="text-[10px] text-gray-400" />
-                )}
-                <span className="text-xs font-bold text-[#0e9de8]">
-                  Lời mời đã gửi ({sentCount})
-                </span>
+                {isSentExpanded ? <FaChevronDown className="text-[10px] text-gray-400" /> : <FaChevronRight className="text-[10px] text-gray-400" />}
+                <span className="text-xs font-bold text-[#0e9de8]">Lời mời đã gửi ({sentCount})</span>
               </div>
             </div>
-            {isSentExpanded &&
-              (sentRequests.length === 0 ? (
+            {isSentExpanded && (
+              sentRequests.length === 0 ? (
                 <div className="py-8 flex flex-col items-center justify-center gap-2 text-gray-300">
                   <FaUndo className="text-3xl opacity-20" />
                   <span className="text-xs">Chưa gửi lời mời nào</span>
                 </div>
               ) : (
                 sentRequests.map((req) => (
-                  <div
-                    key={req.recipientID}
-                    className="p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-blue-50/10 transition-colors"
-                  >
+                  <div key={req.recipientID} className="p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-blue-50/10 transition-colors">
                     <div className="flex items-start gap-4">
                       <img
-                        src={
-                          req.avatar ||
-                          'https://api.dicebear.com/7.x/avataaars/svg?seed=' + req.recipientID
-                        }
+                        src={req.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + req.recipientID}
                         alt="avatar"
                         className="w-12 h-12 rounded-full object-cover bg-gray-100 shadow-sm shrink-0 cursor-pointer"
-                        onClick={() => handleViewProfile(req, 'pending')}
+                        onClick={() => handleViewProfile(req, 'pending_sent')}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <p
                             className="font-bold text-gray-800 dark:text-gray-100 truncate text-sm hover:text-[#0e9de8] cursor-pointer"
-                            onClick={() => handleViewProfile(req, 'pending')}
+                            onClick={() => handleViewProfile(req, 'pending_sent')}
                           >
                             {req.name}
                           </p>
@@ -526,7 +495,8 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                     </div>
                   </div>
                 ))
-              ))}
+              )
+            )}
           </div>
         )}
       </div>
@@ -538,6 +508,22 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
           currentUser={user}
           onClose={() => setSelectedProfile(null)}
           onStartChat={onStartChat}
+          onAccept={() => {
+            handleAccept({ contactID: selectedProfile.userID, name: selectedProfile.name } as any);
+            setSelectedProfile(null);
+          }}
+          onReject={() => {
+            handleReject({ contactID: selectedProfile.userID } as any);
+            setSelectedProfile(null);
+          }}
+          onRecall={() => {
+            // Hiển thị modal xác nhận thu hồi
+            setRequestToRecall({
+              recipientID: selectedProfile.userID,
+              name: selectedProfile.name
+            } as any);
+            setSelectedProfile(null);
+          }}
         />
       )}
 
@@ -549,15 +535,9 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
               <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FaExclamationCircle className="text-red-500 text-2xl" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
-                Xác nhận thu hồi
-              </h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">Xác nhận thu hồi</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                Bạn có chắc chắn muốn thu hồi lời mời kết bạn gửi đến{' '}
-                <span className="font-bold text-gray-800 dark:text-gray-200">
-                  {requestToRecall.name}
-                </span>
-                ?
+                Bạn có chắc chắn muốn thu hồi lời mời kết bạn gửi đến <span className="font-bold text-gray-800 dark:text-gray-200">{requestToRecall.name}</span>?
               </p>
             </div>
             <div className="flex border-t border-gray-100 dark:border-gray-700">
