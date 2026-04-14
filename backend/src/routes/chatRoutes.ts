@@ -297,6 +297,28 @@ export default function chatRoutes(io: Server) {
     }
   });
 
+  // Debug: Fix alias trong database
+  router.post('/debug/fix-alias', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      
+      // Lấy tất cả contacts của user
+      const contacts = await Contacts.find({ userID }).lean();
+      
+      for (const contact of contacts) {
+        // Lấy tên thật của contactID
+        const friend = await Users.findOne({ userID: contact.contactID });
+        if (friend && contact.alias !== friend.name) {
+          await Contacts.findByIdAndUpdate(contact._id, { alias: friend.name });
+        }
+      }
+      
+      res.json({ message: `Fixed ${contacts.length} contacts` });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // Debug: Tạo chat test
   router.post('/debug/create-test-chat', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
@@ -680,6 +702,8 @@ export default function chatRoutes(io: Server) {
     try {
       const userID = req.userID!;
       const { senderID } = req.body;
+      
+      // Update contact từ người nhận (userID) về người gửi (senderID)
       const contact = await Contacts.findOneAndUpdate(
         { userID, contactID: senderID, status: 'pending' },
         { status: 'accepted' },
@@ -688,13 +712,15 @@ export default function chatRoutes(io: Server) {
       if (!contact) return res.status(404).json({ message: 'Không tìm thấy lời mời' }) as any;
 
       // Tạo contact ngược từ người gửi về người nhận
+      // userID: senderID, contactID: userID
+      // alias phải là tên của contactID (tức là tên của userID - người nhận)
       const reverseContact = await Contacts.findOne({ userID: senderID, contactID: userID });
       if (!reverseContact) {
         const receiver = await Users.findOne({ userID });
         await Contacts.create({
           userID: senderID,
           contactID: userID,
-          alias: receiver?.name || 'Bạn', // Set tên của người nhận
+          alias: receiver?.name || 'Bạn', // Tên của contactID (người nhận)
           status: 'accepted',
           created_at: new Date(),
         });
@@ -724,6 +750,7 @@ export default function chatRoutes(io: Server) {
       });
       res.json({ message: 'Đã chấp nhận kết bạn' });
     } catch (e: any) {
+      console.error('accept-friend-request error:', e);
       res.status(500).json({ message: e.message });
     }
   });
