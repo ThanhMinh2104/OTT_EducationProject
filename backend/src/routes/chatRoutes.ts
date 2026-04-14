@@ -633,14 +633,21 @@ export default function chatRoutes(io: Server) {
         ],
       });
 
-      let friendStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'blocked' = 'none';
-      if (contact) {
+      let friendStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'blocked' | 'blocked_by_other' = 'none';
+      
+      // Kiểm tra xem mình có đang chặn người này không
+      if (currentUser?.blockedUsers?.includes(target.userID)) {
+        friendStatus = 'blocked';
+      } 
+      // Kiểm tra xem người này có đang chặn mình không
+      else if (target.blockedUsers?.includes(userID)) {
+        friendStatus = 'blocked_by_other';
+      }
+      else if (contact) {
         if (contact.status === 'pending') {
           friendStatus = contact.contactID === userID ? 'pending_sent' : 'pending_received';
         } else if (contact.status === 'accepted') {
           friendStatus = 'accepted';
-        } else if (contact.status === 'blocked') {
-          friendStatus = 'blocked';
         }
       }
 
@@ -674,14 +681,21 @@ export default function chatRoutes(io: Server) {
         ],
       });
 
-      let friendStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'blocked' = 'none';
-      if (contact) {
+      let friendStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'blocked' | 'blocked_by_other' = 'none';
+
+      // Kiểm tra chặn
+      const currentUser = await Users.findOne({ userID });
+      const targetUser = await Users.findOne({ userID: targetUserID });
+      
+      if (currentUser?.blockedUsers?.includes(targetUserID as string)) {
+        friendStatus = 'blocked';
+      } else if (targetUser?.blockedUsers?.includes(userID)) {
+        friendStatus = 'blocked_by_other';
+      } else if (contact) {
         if (contact.status === 'pending') {
           friendStatus = contact.contactID === userID ? 'pending_sent' : 'pending_received';
         } else if (contact.status === 'accepted') {
           friendStatus = 'accepted';
-        } else if (contact.status === 'blocked') {
-          friendStatus = 'blocked';
         }
       }
 
@@ -974,11 +988,68 @@ export default function chatRoutes(io: Server) {
         { new: true }
       );
 
-      if (!contact) return res.status(404).json({ message: 'Không tìm thấy quan hệ bạn bè' }) as any;
-
-      res.json({ message: 'Đã cập nhật tên gợi nhớ', alias: contact.alias });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Chặn người dùng
+  router.post('/contacts/block', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = String(req.userID!);
+      const { targetUserID } = req.body;
+      
+      console.log(`[API] Blocking request: ${userID} -> ${targetUserID}`);
+
+      if (!targetUserID || typeof targetUserID !== 'string') {
+        return res.status(400).json({ message: 'targetUserID không hợp lệ' }) as any;
+      }
+
+      if (userID === targetUserID) return res.status(400).json({ message: 'Không thể tự chặn chính mình' }) as any;
+
+      const updateResult = await Users.findOneAndUpdate(
+        { userID: userID },
+        { $addToSet: { blockedUsers: targetUserID } },
+        { new: true }
+      );
+
+      if (!updateResult) {
+        return res.status(404).json({ message: 'Không tìm thấy người dùng hiện tại' }) as any;
+      }
+
+      res.json({ message: 'Đã chặn người dùng này', friendStatus: 'blocked' });
+    } catch (e: any) {
+      console.error('🔥 CRITICAL API ERROR (block):', e);
+      res.status(500).json({ message: 'Lỗi hệ thống khi thực hiện chặn' });
+    }
+  });
+
+  // Bỏ chặn người dùng
+  router.post('/contacts/unblock', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = String(req.userID!);
+      const { targetUserID } = req.body;
+
+      console.log(`[API] Unblocking request: ${userID} -> ${targetUserID}`);
+
+      if (!targetUserID || typeof targetUserID !== 'string') {
+        return res.status(400).json({ message: 'targetUserID không hợp lệ' }) as any;
+      }
+
+      const result = await Users.findOneAndUpdate(
+        { userID: userID },
+        { $pull: { blockedUsers: targetUserID } },
+        { new: true }
+      );
+
+      if (!result) {
+        return res.status(404).json({ message: 'Không tìm thấy người dùng' }) as any;
+      }
+
+      res.json({ message: 'Đã bỏ chặn người dùng này', status: 'success' });
+    } catch (e: any) {
+      console.error('🔥 CRITICAL API ERROR (unblock):', e);
+      res.status(500).json({ message: 'Lỗi hệ thống khi gỡ chặn' });
     }
   });
 

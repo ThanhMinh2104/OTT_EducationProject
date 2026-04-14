@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   FaTimes, FaDownload, FaFileAlt, FaLink,
-  FaChevronLeft, FaChevronRight, FaTrash, FaExpand,
+  FaChevronLeft, FaChevronRight, FaTrash, FaExpand, FaBan,
 } from 'react-icons/fa';
 import { getToken } from '../utils/auth';
+import axiosInstance from '../utils/axios';
+import socket from '../utils/socket';
+import ConfirmModal from './ConfirmModal';
+import toast from 'react-hot-toast';
 
 const API = 'http://localhost:5000/api';
 
@@ -13,6 +17,7 @@ interface User {
   anhDaiDien?: string;
   trangThai?: string;
   sdt?: string;
+  friendStatus?: string;
 }
 interface Member { userID: string; role: string }
 interface Message {
@@ -40,6 +45,7 @@ interface Props {
   messages: Message[];
   onClose: () => void;
   onHistoryDeleted: () => void;
+  onStatusChange?: (status: string) => void;
 }
 
 type Tab = 'media' | 'files' | 'links';
@@ -73,26 +79,26 @@ const ImageViewer = ({ urls, initialIndex, onClose }: {
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center" onClick={onClose}>
-      <button className="absolute top-4 right-4 text-gray-900/70 hover:text-white text-2xl z-10" onClick={onClose}>
+      <button className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl z-10" onClick={onClose}>
         <FaTimes />
       </button>
       {urls.length > 1 && (
         <>
           <button
-            className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-gray-900 transition-colors z-10"
+            className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors z-10"
             onClick={(e) => { e.stopPropagation(); setIdx((i) => Math.max(0, i - 1)); }}
             disabled={idx === 0}
           >
             <FaChevronLeft />
           </button>
           <button
-            className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-gray-900 transition-colors z-10"
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors z-10"
             onClick={(e) => { e.stopPropagation(); setIdx((i) => Math.min(urls.length - 1, i + 1)); }}
             disabled={idx === urls.length - 1}
           >
             <FaChevronRight />
           </button>
-          <span className="absolute bottom-4 left-1/2 -translate-x-1/2 text-gray-900/60 text-sm">
+          <span className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/60 text-sm">
             {idx + 1} / {urls.length}
           </span>
         </>
@@ -108,7 +114,7 @@ const ImageViewer = ({ urls, initialIndex, onClose }: {
         download
         target="_blank"
         rel="noreferrer"
-        className="absolute bottom-4 right-4 flex items-center gap-2 bg-white/10 hover:bg-white/20 text-gray-900 px-3 py-2 rounded-lg text-sm transition-colors"
+        className="absolute bottom-4 right-4 flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-sm transition-colors"
         onClick={(e) => e.stopPropagation()}
       >
         <FaDownload className="text-xs" /> Tải xuống
@@ -118,11 +124,13 @@ const ImageViewer = ({ urls, initialIndex, onClose }: {
 };
 
 // ── Main component ─────────────────────────────────────────────────────────
-const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }: Props) => {
+const ChatInfoPanel = ({ chat, user, memberInfo, messages, onClose, onHistoryDeleted, onStatusChange }: Props) => {
   const [tab, setTab] = useState<Tab>('media');
   const [viewerUrls, setViewerUrls] = useState<string[] | null>(null);
   const [viewerIdx, setViewerIdx] = useState(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Media từ messages (lazy — chỉ tính khi cần)
@@ -149,23 +157,51 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
   const handleDeleteHistory = async () => {
     setIsDeleting(true);
     try {
-      const res = await fetch(`${API}/chats/${chat.chatID}/history`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
-      if (res.ok) {
+      const res = await axiosInstance.delete(`/chats/${chat.chatID}/history`);
+      if (res.status === 200) {
         console.log('Delete history success');
         setShowDeleteConfirm(false);
-        // Clear messages immediately and notify parent
         onHistoryDeleted();
-      } else {
-        console.error('Delete history failed:', await res.text());
       }
     } catch (err) {
       console.error('Delete history error:', err);
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleBlock = async () => {
+    if (!memberInfo) return;
+    setShowBlockConfirm(false);
+    try {
+      await axiosInstance.post('/contacts/block', { targetUserID: memberInfo.userID });
+      toast.success('Đã chặn người dùng');
+      if (socket && user?.userID) {
+        socket.emit('friend_status_update', { 
+          userID: String(memberInfo.userID), 
+          friendStatus: 'blocked',
+          ownerID: String(user.userID) 
+        });
+      }
+      onStatusChange?.('blocked');
+    } catch { toast.error('Lỗi khi thực hiện thao tác'); }
+  };
+
+  const handleUnblock = async () => {
+    if (!memberInfo) return;
+    setShowUnblockConfirm(false);
+    try {
+      await axiosInstance.post('/contacts/unblock', { targetUserID: memberInfo.userID });
+      toast.success('Đã bỏ chặn người dùng');
+      if (socket && user?.userID) {
+        socket.emit('friend_status_update', { 
+          userID: String(memberInfo.userID), 
+          friendStatus: 'none', 
+          ownerID: String(user.userID) 
+        });
+      }
+      onStatusChange?.('none');
+    } catch { toast.error('Lỗi khi thực hiện thao tác'); }
   };
 
   const chatName = chat.type === 'private' ? (memberInfo?.name || chat.name) : chat.name;
@@ -212,7 +248,7 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex-1 py-2 text-[12px] font-medium transition-colors border-b-2 ${tab === t ? 'text-[#0e9de8] border-[#0e9de8]' : 'text-gray-500 border-transparent hover:text-[#0e9de8]'}`}
+              className={`flex-1 py-2 text-[12px] font-medium transition-colors border-b-2 ${tab === t ? 'text-[#0068ff] border-[#0068ff]' : 'text-gray-500 border-transparent hover:text-[#0068ff]'}`}
             >
               {t === 'media' ? 'Ảnh/Video' : t === 'files' ? 'File' : 'Link'}
             </button>
@@ -220,7 +256,7 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-y-auto p-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-200&::-webkit-scrollbar-thumb]:bg-gray-100">
+        <div className="flex-1 overflow-y-auto p-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-200">
           {/* Ảnh/Video */}
           {tab === 'media' && (
             <>
@@ -232,7 +268,7 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
                     <div key={img.id} className="relative group aspect-square cursor-pointer" onClick={() => { setViewerUrls(allImageUrls); setViewerIdx(i); }}>
                       <img src={img.url} alt="" className="w-full h-full object-cover rounded-lg" loading="lazy" />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded-lg transition-colors flex items-center justify-center">
-                        <FaExpand className="text-gray-900 opacity-0 group-hover:opacity-100 text-sm transition-opacity" />
+                        <FaExpand className="text-white opacity-0 group-hover:opacity-100 text-sm transition-opacity" />
                       </div>
                     </div>
                   ))}
@@ -259,7 +295,7 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
                   {mediaFiles.map((f) => (
                     <div key={f.id} className="flex items-center gap-2.5 p-2.5 bg-gray-50 rounded-xl hover:bg-blue-50 transition-colors group">
                       <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
-                        <FaFileAlt className="text-[#0e9de8] text-sm" />
+                        <FaFileAlt className="text-[#0068ff] text-sm" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[12.5px] font-medium text-gray-800 truncate">{f.name}</p>
@@ -270,7 +306,7 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
                         download={f.name}
                         target="_blank"
                         rel="noreferrer"
-                        className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#0e9de8] hover:bg-blue-100 transition-colors opacity-0 group-hover:opacity-100"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#0068ff] hover:bg-blue-100 transition-colors opacity-0 group-hover:opacity-100"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <FaDownload className="text-xs" />
@@ -298,7 +334,7 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
                       className="flex items-start gap-2.5 p-2.5 bg-gray-50 rounded-xl hover:bg-blue-50 transition-colors"
                     >
                       <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                        <FaLink className="text-[#0e9de8] text-xs" />
+                        <FaLink className="text-[#0068ff] text-xs" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] text-blue-500 truncate">{l.url}</p>
@@ -312,13 +348,33 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
           )}
         </div>
 
-        {/* Actions */}
-        <div className="px-4 py-3 border-t border-gray-100 shrink-0">
+        {/* Actions - Chặn & Xóa lịch sử */}
+        <div className="px-4 py-3 border-t border-gray-100 shrink-0 space-y-1">
+          {chat.type === 'private' && memberInfo && (
+            memberInfo.friendStatus === 'blocked' ? (
+              <button
+                onClick={() => setShowUnblockConfirm(true)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-blue-500 hover:bg-blue-50 transition-colors text-[13px] font-medium"
+              >
+                <FaBan className="text-xs" />
+                Bỏ chặn người dùng
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowBlockConfirm(true)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors text-[13px] font-medium"
+              >
+                <FaBan className="text-xs" />
+                Chặn người dùng
+              </button>
+            )
+          )}
+          
           <button
             onClick={() => setShowDeleteConfirm(true)}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors text-[13px] font-medium"
           >
-            <FaTrash className="text-xs" />
+            <FaTrash className="text-xs opacity-70" />
             Xóa lịch sử trò chuyện
           </button>
         </div>
@@ -334,36 +390,32 @@ const ChatInfoPanel = ({ chat, memberInfo, messages, onClose, onHistoryDeleted }
       )}
 
       {/* Delete confirm modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[340px] mx-4 p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex flex-col items-center gap-2 text-center">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                <FaTrash className="text-red-500 text-lg" />
-              </div>
-              <h3 className="text-[15px] font-bold text-gray-900">Xóa lịch sử trò chuyện</h3>
-              <p className="text-[13px] text-gray-500">
-                Toàn bộ tin nhắn sẽ bị xóa khỏi thiết bị của bạn. Người khác vẫn thấy lịch sử chat.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleDeleteHistory}
-                disabled={isDeleting}
-                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-50"
-              >
-                {isDeleting ? 'Đang xóa...' : 'Xóa'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        show={showDeleteConfirm}
+        title="Xóa lịch sử trò chuyện"
+        message="Toàn bộ tin nhắn sẽ bị xóa khỏi thiết bị của bạn. Người khác vẫn thấy lịch sử chat."
+        onConfirm={handleDeleteHistory}
+        onCancel={() => setShowDeleteConfirm(false)}
+        isDanger
+        confirmText={isDeleting ? 'Đang xóa...' : 'Xóa'}
+      />
+
+      <ConfirmModal
+        show={showBlockConfirm}
+        title="Xác nhận chặn"
+        message={`Người này sẽ không thể gửi tin nhắn cho bạn. Bạn có muốn tiếp tục?`}
+        onConfirm={handleBlock}
+        onCancel={() => setShowBlockConfirm(false)}
+        isDanger
+      />
+
+      <ConfirmModal
+        show={showUnblockConfirm}
+        title="Xác nhận bỏ chặn"
+        message={`Bạn có muốn bỏ chặn liên lạc với ${memberInfo?.name}?`}
+        onConfirm={handleUnblock}
+        onCancel={() => setShowUnblockConfirm(false)}
+      />
     </>
   );
 };

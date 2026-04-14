@@ -66,7 +66,7 @@ export const registerCallEvents = (io: Server, socket: Socket) => {
   // WebRTC signaling
   socket.on(
     'call-user',
-    (data: {
+    async (data: {
       to: string;
       offer: any;
       from: string;
@@ -74,6 +74,17 @@ export const registerCallEvents = (io: Server, socket: Socket) => {
       callType?: 'voice' | 'video';
     }) => {
       console.log(`📞 Call from ${data.from} to ${data.to}, type: ${data.callType || 'video'}`);
+      
+      // KIỂM TRA CHẶN
+      const recipient = await User.findOne({ userID: data.to });
+      if (recipient?.blockedUsers?.includes(data.from)) {
+        console.log(`🚫 Call blocked: ${data.to} is blocking ${data.from}`);
+        socket.emit('error_notification', { 
+           message: 'Không thể thực hiện cuộc gọi. Bạn đã bị người này chặn.' 
+        });
+        return;
+      }
+
       console.log(`📊 Current active calls map:`, Array.from(activeCallsMap.entries()));
       
       // Đánh dấu cả 2 users đang trong cuộc gọi
@@ -352,4 +363,18 @@ export const registerCallEvents = (io: Server, socket: Socket) => {
       }
     }
   );
+
+  socket.on('friend_status_update', (data: { userID: string; friendStatus?: string; ownerID?: string }) => {
+    if (!data || !data.userID) return;
+    
+    console.log('🔄 Socket: friend_status_update received (socket/index.ts):', data);
+    
+    // Gửi tới người bị tác động
+    io.to(data.userID).emit('friend_status_update', data);
+    
+    // Gửi tới người thực hiện thao tác
+    if (data.ownerID && data.ownerID !== data.userID) {
+      io.to(data.ownerID).emit('friend_status_update', data);
+    }
+  });
 };
