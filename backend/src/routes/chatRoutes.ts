@@ -297,6 +297,32 @@ export default function chatRoutes(io: Server) {
     }
   });
 
+  // Debug: Tạo chat test
+  router.post('/debug/create-test-chat', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const { userID2 } = req.body;
+      
+      if (!userID2) return res.status(400).json({ message: 'userID2 required' });
+      
+      const chatID = `chat_${Date.now()}`;
+      const members = [{ userID, role: 'admin' }, { userID: userID2, role: 'member' }];
+      
+      await Chat.create({
+        chatID,
+        type: 'private',
+        name: `Test Chat`,
+        created_at: new Date(),
+      });
+      
+      await ChatMember.create({ chatID, members });
+      
+      res.json({ message: 'Chat created', chatID });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // Tạo chat 1-1 / Nhắn tin người lạ
   router.post('/createChat1-1', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
