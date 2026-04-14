@@ -11,15 +11,7 @@ const socket: Socket = io(SOCKET_URL, {
   reconnectionAttempts: 5,
 });
 
-// Log kết nối
-socket.on('connect', () => {
-  console.log('✅ Socket connected:', socket.id);
-});
-
-socket.on('disconnect', (reason) => {
-  console.log('❌ Socket disconnected:', reason);
-});
-
+// Log kết nối (chỉ log error)
 socket.on('connect_error', (error) => {
   console.error('🔴 Socket connection error:', error);
 });

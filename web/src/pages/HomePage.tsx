@@ -97,11 +97,8 @@ const HomePage = () => {
 
     // Listen for new messages to show Zalo-style toast notifications
     socket.on('new_message', (msg: Message) => {
-      console.log('📨 new_message received:', msg);
-      
       // Don't show notification for own messages
       if (msg.senderID === user.userID) {
-        console.log('⏭️ Skipping notification for own message');
         return;
       }
 
@@ -120,8 +117,6 @@ const HomePage = () => {
       const messagePreview = getMessagePreview(msg);
       const senderName = msg.senderInfo?.name || 'Người dùng';
       const senderAvatar = msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderName}`;
-
-      console.log('🔔 Showing Zalo toast:', { senderName, messagePreview });
 
       // Show Zalo-style toast notification
       showZaloToast(

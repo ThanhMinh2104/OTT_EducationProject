@@ -58,16 +58,23 @@ app.post('/api/debug/clear-active-calls', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('🟢 Client connected:', socket.id);
+  // Chỉ log error, không log mỗi connection
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🟢 Client connected:', socket.id);
+  }
 
   socket.on('join_user', (userID: string) => {
     socket.join(userID);
-    console.log(`🧍 ${socket.id} joined user room: ${userID}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🧍 ${socket.id} joined user room: ${userID}`);
+    }
   });
 
   socket.on('join_chat', (chatID: string) => {
     socket.join(chatID);
-    console.log(`💬 ${socket.id} joined chat room: ${chatID}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`💬 ${socket.id} joined chat room: ${chatID}`);
+    }
   });
 
   // Lấy danh sách chat của user
@@ -100,7 +107,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('🔴 Client disconnected:', socket.id);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔴 Client disconnected:', socket.id);
+    }
   });
 });
 
