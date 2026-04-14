@@ -5,6 +5,8 @@ import LoginPassword from '../screens/LoginPassword';
 import SignUpScreen from '../screens/SignUpScreen';
 import SignUpInfoScreen from '../screens/SignUpInfoScreen';
 import HomeScreen from '../screens/HomeScreen';
+import ChatScreen from '../screens/ChatScreen';
+import ForwardScreen from '../screens/ForwardScreen';
 import VerifyOtpDK from "../screens/VerifyOtpDK";
 import ForgotPasswordScreen from "../screens/ForgotPassword";
 import VerifyOtpResetScreen from "../screens/VerifyOtpReset";
@@ -19,6 +21,8 @@ export type RootStackParamList = {
   VerifyOtpReset: undefined;
   ConfirmPassword: { sdt: string };
   Home: undefined;
+  Chat: undefined;
+  Forward: { message: any; chatID: string };
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -30,13 +34,12 @@ const AppNavigator = () => (
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="SignUpInfo" component={SignUpInfoScreen} />
       <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="Forward" component={ForwardScreen} />
       <Stack.Screen name="VerifyOtp" component={VerifyOtpDK} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="VerifyOtpReset" component={VerifyOtpResetScreen} />
       <Stack.Screen name="ConfirmPassword" component={ConfirmPasswordScreen} />
-
-
-
     </Stack.Navigator>
   </NavigationContainer>
 );

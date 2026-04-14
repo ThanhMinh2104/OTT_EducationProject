@@ -122,6 +122,7 @@ const HomeScreen = ({ navigation }: Props) => {
             activeOpacity={0.7}
             onPress={() => {
               setActiveTab(tab.key as typeof activeTab);
+              if (tab.key === 'chat') navigation.navigate('Chat');
               if (tab.key === 'profile') setShowProfileModal(true);
             }}
           >

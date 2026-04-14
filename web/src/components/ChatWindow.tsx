@@ -27,6 +27,7 @@ import { getToken } from '../utils/auth';
 import ReminderModal from './ReminderModal';
 import ChatInfoPanel from './ChatInfoPanel';
 import StickerEmojiPicker from './StickerEmojiPicker';
+import ForwardMessageModal from './ForwardMessageModal';
 import {
   loadReminderEvents,
   saveReminderEvent,
@@ -371,6 +372,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const msgRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const [showReminder, setShowReminder] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
   const [reminderEvents, setReminderEvents] = useState<ReminderEvent[]>([]);
 
@@ -864,9 +866,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   };
 
   const handleForwardMessage = (msg: Message) => {
-    if (msg.content) setInputText(msg.content);
+    setForwardingMessage(msg);
     setActionMsgId(null);
-    inputRef.current?.focus();
   };
 
   const startRecording = async () => {
@@ -1396,7 +1397,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                             </button>
                             <button
                               className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                              onClick={() => handleForward(msg)}
+                              onClick={() => handleForwardMessage(msg)}
                             >
                               <FaThumbsUp className="text-gray-400 text-xs" /> Chuyển tiếp
                             </button>
@@ -1862,6 +1863,15 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             setReminderEvents((prev) => [...prev, evt]);
             socket.emit('reminder_event', evt);
           }}
+        />
+      )}
+
+      {/* Forward Message Modal */}
+      {forwardingMessage && (
+        <ForwardMessageModal
+          message={forwardingMessage}
+          onClose={() => setForwardingMessage(null)}
+          user={user}
         />
       )}
     </>
