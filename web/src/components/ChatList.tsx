@@ -325,7 +325,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
     };
-  }, [fetchMember, selectedChatId, user?.userID]);
+  }, [user?.userID, selectedChatId, deletedChatIds]);
 
   const handleSelectChat = (chat: Chat) => {
     onSelectChat(chat);
