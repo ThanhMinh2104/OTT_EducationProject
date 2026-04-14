@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { FaTimes, FaPaperPlane } from 'react-icons/fa';
-import socket from '../utils/socket';
+import { io, Socket } from 'socket.io-client';
+import axiosInstance from '../utils/axios';
 
-// Không cần tạo socket mới nữa, đã import từ utils/socket.ts
-const API = 'http://localhost:5000/api';
+const socket: Socket = io('http://localhost:5000');
 
 interface Message {
   messageID?: string;
@@ -46,15 +46,12 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
     const fetchChats = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch(`${API}/chats`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
-        const data = await response.json();
-        setChats(data || []);
+        const response = await axiosInstance.post('/chats/userID');
+        const data = Array.isArray(response.data) ? response.data : [];
+        setChats(data);
       } catch (error) {
         console.error('Error fetching chats:', error);
+        setChats([]);
       } finally {
         setIsLoading(false);
       }
@@ -89,19 +86,14 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
   const selectedChat = chats.find((c) => c.chatID === selectedChatID);
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div
         className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-            Chuyển tiếp tin nhắn
-          </h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Chuyển tiếp tin nhắn</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -128,9 +120,7 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
         {/* Chat List */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {isLoading ? (
-            <p className="text-center text-gray-400 text-sm">
-              Đang tải danh sách cuộc trò chuyện...
-            </p>
+            <p className="text-center text-gray-400 text-sm">Đang tải danh sách cuộc trò chuyện...</p>
           ) : chats.length === 0 ? (
             <p className="text-center text-gray-400 text-sm">Không có cuộc trò chuyện nào</p>
           ) : (
@@ -146,10 +136,7 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
                   }`}
                 >
                   <img
-                    src={
-                      chat.avatar ||
-                      'https://api.dicebear.com/7.x/avataaars/svg?seed=' + chat.chatID
-                    }
+                    src={chat.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + chat.chatID}
                     alt={chat.name}
                     className="w-10 h-10 rounded-full object-cover"
                   />
