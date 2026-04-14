@@ -63,7 +63,7 @@ const ImageViewerModal = ({ images, initialIndex, onClose }: Props) => {
       {/* Close button */}
       <button
         onClick={onClose}
-        className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10"
+        className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-gray-900 transition-colors z-10"
       >
         <FaTimes className="text-xl" />
       </button>
@@ -77,14 +77,14 @@ const ImageViewerModal = ({ images, initialIndex, onClose }: Props) => {
             <>
               <button
                 onClick={handlePrevious}
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-gray-900 transition-colors"
               >
                 <FaChevronLeft className="text-xl" />
               </button>
 
               <button
                 onClick={handleNext}
-                className="absolute right-[320px] top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                className="absolute right-[320px] top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-gray-900 transition-colors"
               >
                 <FaChevronRight className="text-xl" />
               </button>
@@ -99,7 +99,7 @@ const ImageViewerModal = ({ images, initialIndex, onClose }: Props) => {
           />
 
           {/* Image info */}
-          <div className="mt-4 flex items-center gap-4 text-white/80">
+          <div className="mt-4 flex items-center gap-4 text-gray-900/80">
             <span className="text-sm">
               {currentIndex + 1} / {images.length}
             </span>
@@ -120,8 +120,8 @@ const ImageViewerModal = ({ images, initialIndex, onClose }: Props) => {
         <div className="w-[300px] bg-[#1a1d21] border-l border-white/10 flex flex-col">
           {/* Header */}
           <div className="p-4 border-b border-white/10">
-            <h3 className="text-white font-semibold text-base">Ảnh/Video</h3>
-            <p className="text-white/60 text-sm mt-1">{images.length} ảnh</p>
+            <h3 className="text-gray-900 font-semibold text-base">Ảnh/Video</h3>
+            <p className="text-gray-900/60 text-sm mt-1">{images.length} ảnh</p>
           </div>
 
           {/* Thumbnails */}
@@ -162,14 +162,14 @@ const ImageViewerModal = ({ images, initialIndex, onClose }: Props) => {
             <div className="p-3 border-t border-white/10 flex items-center justify-center gap-2">
               <button
                 onClick={handlePrevious}
-                className="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center justify-center gap-2"
+                className="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-900 transition-colors flex items-center justify-center gap-2"
               >
                 <FaChevronLeft className="text-sm" />
                 <span className="text-sm">Trước</span>
               </button>
               <button
                 onClick={handleNext}
-                className="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center justify-center gap-2"
+                className="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-900 transition-colors flex items-center justify-center gap-2"
               >
                 <span className="text-sm">Sau</span>
                 <FaChevronRight className="text-sm" />

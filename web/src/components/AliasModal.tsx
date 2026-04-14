@@ -13,11 +13,11 @@ const AliasModal = ({ user, currentAlias, onClose, onSave }: Props) => {
 
   return (
     <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 font-['Segoe_UI',sans-serif]">
-      <div className="bg-[#242526] w-full max-w-[400px] rounded-lg shadow-2xl flex flex-col text-white animate-modal-pop">
+      <div className="bg-[#242526] w-full max-w-[400px] rounded-lg shadow-2xl flex flex-col text-gray-900 animate-modal-pop">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
           <h2 className="text-[17px] font-bold">Đặt tên gợi nhớ</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-900 transition-colors">
             <FaTimes className="text-xl" />
           </button>
         </div>
@@ -53,7 +53,7 @@ const AliasModal = ({ user, currentAlias, onClose, onSave }: Props) => {
         <div className="flex justify-end gap-3 px-4 py-4 border-t border-gray-700">
           <button 
             onClick={onClose}
-            className="px-6 py-2 rounded-md font-bold text-[14.5px] bg-gray-700 hover:bg-gray-600 transition-colors"
+            className="px-6 py-2 rounded-md font-bold text-[14.5px] bg-gray-100 hover:bg-gray-600 transition-colors"
           >
             Hủy
           </button>

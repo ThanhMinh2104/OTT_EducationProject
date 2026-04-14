@@ -234,7 +234,7 @@ const HomePage = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif] bg-white dark:bg-gray-900">
+    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif] bg-white">
       {/* React Hot Toast Container */}
       <Toaster
         position="bottom-right"

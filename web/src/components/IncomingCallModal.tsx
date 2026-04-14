@@ -83,7 +83,7 @@ const IncomingCallModal = ({ callerInfo, onAccept, onReject, onTimeout }: Props)
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-[360px] p-8 flex flex-col items-center gap-5 animate-bounce-in border border-gray-200 dark:border-gray-700">
+      <div className="bg-white rounded-3xl shadow-2xl w-[360px] p-8 flex flex-col items-center gap-5 animate-bounce-in border border-gray-200">
         {/* Avatar với ring animation và shake */}
         <div className="relative animate-shake">
           <div className="absolute inset-0 rounded-full bg-green-500/30 animate-ping"></div>
@@ -100,10 +100,10 @@ const IncomingCallModal = ({ callerInfo, onAccept, onReject, onTimeout }: Props)
 
         {/* Caller info */}
         <div className="text-center">
-          <p className="font-bold text-gray-900 dark:text-gray-100 text-xl mb-1">
+          <p className="font-bold text-gray-900 text-xl mb-1">
             {callerInfo.name}
           </p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 animate-pulse">Cuộc gọi đến...</p>
+          <p className="text-sm text-gray-500 animate-pulse">Cuộc gọi đến...</p>
         </div>
 
         {/* Timer */}
@@ -117,7 +117,7 @@ const IncomingCallModal = ({ callerInfo, onAccept, onReject, onTimeout }: Props)
                 stroke="currentColor"
                 strokeWidth="4"
                 fill="none"
-                className="text-gray-200 dark:text-gray-700"
+                className="text-gray-700"
               />
               <circle
                 cx="32"
@@ -131,7 +131,7 @@ const IncomingCallModal = ({ callerInfo, onAccept, onReject, onTimeout }: Props)
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{timeLeft}</span>
+              <span className="text-lg font-bold text-gray-900">{timeLeft}</span>
             </div>
           </div>
         </div>

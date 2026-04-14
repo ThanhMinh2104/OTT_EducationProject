@@ -76,25 +76,6 @@ export const registerCallEvents = (io: Server, socket: Socket) => {
       console.log(`📞 Call from ${data.from} to ${data.to}, type: ${data.callType || 'video'}`);
       console.log(`📊 Current active calls map:`, Array.from(activeCallsMap.entries()));
       
-      // Kiểm tra xem người gọi hoặc người nhận có đang trong cuộc gọi khác không
-      if (activeCallsMap.has(data.from)) {
-        console.log(`⚠️ Caller ${data.from} is already in a call with ${activeCallsMap.get(data.from)?.with}`);
-        socket.emit('user-busy', { 
-          userID: data.from, 
-          message: 'Bạn đang trong cuộc gọi khác' 
-        });
-        return;
-      }
-      
-      if (activeCallsMap.has(data.to)) {
-        console.log(`⚠️ Callee ${data.to} is busy with ${activeCallsMap.get(data.to)?.with}`);
-        socket.emit('user-busy', { 
-          userID: data.to, 
-          message: 'Người dùng đang bận' 
-        });
-        return;
-      }
-      
       // Đánh dấu cả 2 users đang trong cuộc gọi
       // Tạo timeout 30 giây để tự động cleanup nếu không có response
       const timeoutId = setTimeout(() => {

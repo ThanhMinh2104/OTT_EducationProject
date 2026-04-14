@@ -28,7 +28,7 @@ const VideoCallModal = ({
   callType = 'video', // Mặc định là video call
   onClose,
 }: Props) => {
-  const [callState, setCallState] = useState<'calling' | 'connected' | 'busy'>('calling');
+  const [callState, setCallState] = useState<'calling' | 'connected'>('calling');
   const [isMuted, setIsMuted] = useState(false);
   const [isLocalVideoOff, setIsLocalVideoOff] = useState(callType === 'voice');
   const [callDuration, setCallDuration] = useState(0);
@@ -273,24 +273,12 @@ const VideoCallModal = ({
       setTimeout(() => onClose(), 2000);
     };
 
-    const onUserBusy = (data: { userID: string; message: string }) => {
-      console.log('⚠️ User busy:', data);
-      setCallState('busy');
-      // Tự động đóng sau 3 giây
-      setTimeout(() => {
-        if (isActiveRef.current) {
-          onClose();
-        }
-      }, 3000);
-    };
-
     socket.on('answer-made', onAnswerMade);
     socket.on('ice-candidate', onIceCandidate);
     socket.on('call-rejected', onCallRejected);
     socket.on('call-missed', onCallMissed);
     socket.on('call-cancelled', onCallCancelled);
     socket.on('call-ended', onCallEnded);
-    socket.on('user-busy', onUserBusy);
 
     return () => {
       isActiveRef.current = false; // Mark this call as inactive
@@ -300,7 +288,6 @@ const VideoCallModal = ({
       socket.off('call-missed', onCallMissed);
       socket.off('call-cancelled', onCallCancelled);
       socket.off('call-ended', onCallEnded);
-      socket.off('user-busy', onUserBusy);
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       pcRef.current?.close();
     };
@@ -321,8 +308,13 @@ const VideoCallModal = ({
   }, [callState]);
 
   const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -335,19 +327,19 @@ const VideoCallModal = ({
       className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="relative w-full max-w-2xl bg-gray-900 rounded-2xl overflow-hidden shadow-2xl">
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl overflow-hidden shadow-2xl">
         {/* Remote video (full) hoặc avatar nếu video tắt */}
-        <div className="relative w-full h-[420px] bg-gray-800">
+        <div className="relative w-full h-[420px] bg-gray-100">
           <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
 
           {/* Hiển thị avatar khi remote video tắt hoặc chưa có stream */}
           {(callType === 'voice' || !remoteVideoRef.current?.srcObject) &&
             callState === 'connected' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
                 <img
                   src={displayAvatar}
                   alt="avatar"
-                  className="w-32 h-32 rounded-full border-4 border-white/30 object-cover"
+                  className="w-32 h-32 rounded-full border-4 border-blue-200 object-cover shadow-lg"
                 />
               </div>
             )}
@@ -355,50 +347,59 @@ const VideoCallModal = ({
 
         {/* Overlay khi chưa kết nối */}
         {callState !== 'connected' && !endMessage && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
             <img
               src={displayAvatar}
               alt="avatar"
-              className="w-24 h-24 rounded-full border-4 border-white/30 mb-4 object-cover"
+              className="w-24 h-24 rounded-full border-4 border-blue-200 mb-4 object-cover shadow-lg"
             />
-            <p className="text-white text-xl font-bold mb-2">{displayName}</p>
-            <p className="text-gray-400 text-sm animate-pulse">
-              {callState === 'busy' 
-                ? 'Người dùng đang bận' 
-                : incomingOffer 
-                  ? 'Đang kết nối...' 
-                  : 'Đang gọi...'}
+            <p className="text-gray-900 text-xl font-bold mb-2">{displayName}</p>
+            <p className="text-gray-500 text-sm animate-pulse">
+              {incomingOffer 
+                ? 'Đang kết nối...' 
+                : 'Đang gọi...'}
             </p>
           </div>
         )}
 
         {/* Overlay thông báo kết thúc cuộc gọi */}
         {endMessage && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/95">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
             <img
               src={displayAvatar}
               alt="avatar"
-              className="w-24 h-24 rounded-full border-4 border-white/30 mb-4 object-cover"
+              className="w-24 h-24 rounded-full border-4 border-blue-200 mb-4 object-cover shadow-lg"
             />
-            <p className="text-white text-xl font-bold mb-2">{displayName}</p>
-            <p className="text-gray-400 text-base">{endMessage}</p>
+            <p className="text-gray-900 text-xl font-bold mb-2">{displayName}</p>
+            <p className="text-gray-600 text-base">{endMessage}</p>
           </div>
         )}
 
         {/* Header khi đã kết nối - hiển thị tên và thời gian */}
         {callState === 'connected' && (
-          <div className="absolute top-0 left-0 right-0 flex flex-col items-center py-4 bg-gradient-to-b from-black/60 to-transparent">
-            <p className="text-white text-lg font-semibold">{displayName}</p>
-            <p className="text-green-400 text-sm font-medium mt-1">
-              {formatDuration(callDuration)}
-            </p>
+          <div className="absolute top-0 left-0 right-0 flex flex-col items-center py-5 bg-gradient-to-b from-black/70 to-transparent z-10">
+            <p className="text-white text-lg font-semibold drop-shadow-lg">{displayName}</p>
+            <div className="flex items-center gap-2 mt-2 bg-black/40 px-4 py-1.5 rounded-full backdrop-blur-sm">
+              <svg 
+                className="w-4 h-4 text-green-400" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                <path strokeLinecap="round" strokeWidth="2" d="M12 6v6l4 2"/>
+              </svg>
+              <p className="text-green-400 text-base font-bold tracking-wider">
+                {formatDuration(callDuration)}
+              </p>
+            </div>
           </div>
         )}
 
         {/* Local video PiP hoặc avatar */}
-        <div className="absolute bottom-20 right-4 w-32 h-24 rounded-xl border-2 border-white/30 bg-gray-700 overflow-hidden">
+        <div className="absolute bottom-20 right-4 w-32 h-24 rounded-xl border-2 border-white/30 bg-gray-200 overflow-hidden">
           {isLocalVideoOff ? (
-            <div className="w-full h-full flex items-center justify-center bg-gray-800">
+            <div className="w-full h-full flex items-center justify-center bg-gray-100">
               <img
                 src={
                   user.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.name
@@ -419,25 +420,46 @@ const VideoCallModal = ({
         </div>
 
         {/* Controls */}
-        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-4 py-4 bg-linear-to-t from-black/60 to-transparent">
-          <button
-            onClick={toggleMute}
-            className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/20 hover:bg-white/30'}`}
-          >
-            {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
-          </button>
-          <button
-            onClick={endCall}
-            className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white text-xl transition-colors"
-          >
-            <FaPhoneSlash />
-          </button>
-          <button
-            onClick={toggleVideo}
-            className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg transition-colors ${isLocalVideoOff ? 'bg-red-500' : 'bg-white/20 hover:bg-white/30'}`}
-          >
-            {isLocalVideoOff ? <FaVideoSlash /> : <FaVideo />}
-          </button>
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent">
+          {/* Timer bar - hiển thị khi đã kết nối */}
+          {callState === 'connected' && (
+            <div className="flex items-center justify-center py-2">
+              <div className="flex items-center gap-2 bg-black/50 px-4 py-2 rounded-full backdrop-blur-sm">
+                <svg 
+                  className="w-4 h-4 text-green-400 animate-pulse" 
+                  fill="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="12" cy="12" r="8"/>
+                </svg>
+                <span className="text-white text-sm font-semibold tracking-wider">
+                  {formatDuration(callDuration)}
+                </span>
+              </div>
+            </div>
+          )}
+          
+          {/* Control buttons */}
+          <div className="flex items-center justify-center gap-4 py-4">
+            <button
+              onClick={toggleMute}
+              className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/20 hover:bg-white/30'}`}
+            >
+              {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
+            </button>
+            <button
+              onClick={endCall}
+              className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white text-xl transition-colors"
+            >
+              <FaPhoneSlash />
+            </button>
+            <button
+              onClick={toggleVideo}
+              className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg transition-colors ${isLocalVideoOff ? 'bg-red-500' : 'bg-white/20 hover:bg-white/30'}`}
+            >
+              {isLocalVideoOff ? <FaVideoSlash /> : <FaVideo />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

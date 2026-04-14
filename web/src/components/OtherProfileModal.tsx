@@ -101,13 +101,13 @@ const OtherProfileModal = ({
         <div className="flex-1 relative flex" ref={requestMenuRef}>
           <button
             onClick={onAccept}
-            className="flex-1 h-[42px] rounded-l-xl text-[14.5px] font-bold bg-gradient-to-r from-[#0068FF] to-[#005AE6] text-white hover:brightness-110 transition-all flex items-center justify-center gap-2 shadow-sm"
+            className="flex-1 h-[42px] rounded-l-xl text-[14.5px] font-bold bg-gradient-to-r from-[#0068FF] to-[#005AE6] text-gray-900 hover:brightness-110 transition-all flex items-center justify-center gap-2 shadow-sm"
           >
             <FaUserCheck className="text-[16px]" /> Chấp nhận
           </button>
           <button
             onClick={() => setShowRequestMenu(!showRequestMenu)}
-            className="w-[42px] h-[42px] rounded-r-xl bg-[#005AE6] text-white border-l border-white/20 hover:brightness-110 transition-all flex items-center justify-center shadow-sm"
+            className="w-[42px] h-[42px] rounded-r-xl bg-[#005AE6] text-gray-900 border-l border-white/20 hover:brightness-110 transition-all flex items-center justify-center shadow-sm"
           >
             <FaChevronDown className={`text-[10px] transition-transform ${showRequestMenu ? "rotate-180" : ""}`} />
           </button>
@@ -156,7 +156,7 @@ const OtherProfileModal = ({
             {onBack && <FaChevronLeft className="text-white text-[15px] cursor-pointer" onClick={onBack} />}
             <span className="text-white text-[15px] font-semibold shadow-sm">Thông tin tài khoản</span>
           </div>
-          <button onClick={onClose} className="text-white/90 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-gray-900/90 hover:text-gray-900 transition-colors">
             <FaTimes className="text-xl" />
           </button>
         </div>
@@ -196,7 +196,7 @@ const OtherProfileModal = ({
             {user.friendStatus !== 'self' && (
               <button
                 onClick={handleStartChat}
-                className={`flex-1 h-[42px] rounded-xl text-[14.5px] font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${user.friendStatus?.startsWith('pending') ? 'bg-blue-50 text-[#0068FF] border border-blue-100 hover:bg-blue-100' : 'bg-[#0068FF] text-white hover:bg-[#005AE6]'}`}
+                className={`flex-1 h-[42px] rounded-xl text-[14.5px] font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${user.friendStatus?.startsWith('pending') ? 'bg-blue-50 text-[#0068FF] border border-blue-100 hover:bg-blue-100' : 'bg-[#0068FF] text-gray-900 hover:bg-[#005AE6]'}`}
               >
                 <FaCommentDots className="text-[16px]" /> Nhắn tin
               </button>
