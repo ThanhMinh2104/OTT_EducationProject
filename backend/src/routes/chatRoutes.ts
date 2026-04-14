@@ -21,7 +21,7 @@ const uploadDocument = multer({
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
 });
 
-const ALLOWED_AUDIO_TYPES = ['audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4'];
+const ALLOWED_AUDIO_TYPES = ['audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/m4a', 'audio/x-m4a'];
 const ALLOWED_DOCUMENT_TYPES = [
   'application/pdf',
   'application/msword',
@@ -177,7 +177,7 @@ export default function chatRoutes(io: Server) {
       console.log('Upload audio request:', { hasFile: !!file, mimetype: file?.mimetype, size: file?.size });
       if (!file) return res.status(400).json({ error: 'Không có file' }) as any;
       if (!ALLOWED_AUDIO_TYPES.includes(file.mimetype)) {
-        return res.status(400).json({ error: 'Chỉ chấp nhận file audio (mp3, wav, webm, ogg, mp4)' }) as any;
+        return res.status(400).json({ error: 'Chỉ chấp nhận file audio (mp3, wav, webm, ogg, mp4, m4a)' }) as any;
       }
       console.log('Uploading to Cloudinary...');
       const url = await uploadToCloudinary(file);
