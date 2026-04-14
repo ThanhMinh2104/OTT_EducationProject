@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   FaUserPlus,
   FaCheck,
@@ -257,16 +257,16 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
   };
 
   // Zalo Style: Grouping by Alphabet A-Z
-  const getGroupedFriends = () => {
+  const groupedFriends = useMemo(() => {
     const filtered = friends.filter(
       (f) =>
-        (f.alias || f.name).toLowerCase().includes(search.toLowerCase()) ||
+        (f.alias?.trim() || f.name).toLowerCase().includes(search.toLowerCase()) ||
         f.sdt?.includes(search)
     );
 
     const groups: { [key: string]: Friend[] } = {};
     filtered.forEach((f) => {
-      const name = f.alias || f.name;
+      const name = f.alias?.trim() || f.name;
       const firstChar = name.charAt(0).toUpperCase();
       if (!groups[firstChar]) groups[firstChar] = [];
       groups[firstChar].push(f);
@@ -276,11 +276,9 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       .sort()
       .map((key) => ({
         label: key,
-        items: groups[key].sort((a, b) => (a.alias || a.name).localeCompare(b.alias || b.name)),
+        items: groups[key].sort((a, b) => (a.alias?.trim() || a.name).localeCompare(b.alias?.trim() || b.name)),
       }));
-  };
-
-  const groupedFriends = getGroupedFriends();
+  }, [friends, search]);
   const pendingCount = requests.length;
   const sentCount = sentRequests.length;
 
