@@ -1,18 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
-  View, Text, TouchableOpacity, StyleSheet, FlatList, Image,
-  TextInput, Modal, Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { io } from 'socket.io-client';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
-import { API_URL } from '../utils/config';
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  Image,
+  TextInput,
+  Modal,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { io } from "socket.io-client";
+import { StackNavigationProp } from "@react-navigation/stack";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import { RootStackParamList } from "../navigation/AppNavigator";
+import { API_URL } from "../utils/config";
+import StickerEmojiPicker from "../components/StickerEmojiPicker";
+import AudioPlayer from "../components/AudioPlayer";
 
 const socket = io(API_URL);
 
-type Props = { navigation: StackNavigationProp<RootStackParamList, 'Chat'> };
+type Props = { navigation: StackNavigationProp<RootStackParamList, "Chat"> };
 
 interface Message {
   messageID?: string;
@@ -31,7 +43,7 @@ interface Message {
 interface Chat {
   chatID: string;
   name: string;
-  type: 'private' | 'group';
+  type: "private" | "group";
   avatar?: string;
   members: { userID: string; role: string }[];
   lastMessage: Message[];
@@ -48,40 +60,47 @@ const ChatScreen = ({ navigation }: Props) => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState("");
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     (async () => {
-      const stored = await AsyncStorage.getItem('user');
-      if (!stored) { navigation.replace('Login'); return; }
+      const stored = await AsyncStorage.getItem("user");
+      if (!stored) {
+        navigation.replace("Login");
+        return;
+      }
       const u = JSON.parse(stored);
       setUser(u);
-      socket.emit('join_user', u.userID);
-      socket.emit('getChat', u.userID);
+      socket.emit("join_user", u.userID);
+      socket.emit("getChat", u.userID);
     })();
 
-    socket.on('ChatByUserID', (data: Chat[]) => {
+    socket.on("ChatByUserID", (data: Chat[]) => {
       setChats(data);
     });
 
-    socket.on('new_message', (msg: Message) => {
+    socket.on("new_message", (msg: Message) => {
       if (selectedChat && msg.chatID === selectedChat.chatID) {
         setMessages((prev) => [...prev, msg]);
       }
     });
 
     return () => {
-      socket.off('ChatByUserID');
-      socket.off('new_message');
+      socket.off("ChatByUserID");
+      socket.off("new_message");
     };
   }, [navigation, selectedChat?.chatID]);
 
   const handleSelectChat = (chat: Chat) => {
     setSelectedChat(chat);
     setMessages(chat.lastMessage || []);
-    socket.emit('join_chat', chat.chatID);
+    socket.emit("join_chat", chat.chatID);
   };
 
   const sendMessage = () => {
@@ -91,33 +110,153 @@ const ChatScreen = ({ navigation }: Props) => {
       chatID: selectedChat.chatID,
       senderID: user.userID,
       content: inputText,
-      type: 'text',
+      type: "text",
       timestamp: new Date().toISOString(),
       senderInfo: { name: user.name, avatar: user.anhDaiDien || null },
     };
-    socket.emit('send_message', msg);
+    socket.emit("send_message", msg);
     setMessages((prev) => [...prev, msg]);
-    setInputText('');
+    setInputText("");
+    setReplyTo(null);
+  };
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      await uploadFiles(
+        result.assets.map((a) => ({ uri: a.uri, type: "image" })),
+      );
+    }
+  };
+
+  const handlePickFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "*/*",
+      multiple: true,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      await uploadFiles(
+        result.assets.map((a) => ({ uri: a.uri, type: "file", name: a.name })),
+      );
+    }
+  };
+
+  const uploadFiles = async (
+    files: { uri: string; type: string; name?: string }[],
+  ) => {
+    if (!selectedChat || !user) return;
+    setIsUploading(true);
+
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const formData = new FormData();
+
+      files.forEach((file) => {
+        formData.append("files", {
+          uri: file.uri,
+          name: file.name || `file_${Date.now()}`,
+          type:
+            file.type === "image" ? "image/jpeg" : "application/octet-stream",
+        } as any);
+      });
+
+      const res = await fetch(`${API_URL}/api/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (data.urls && data.urls.length > 0) {
+        const msg: Message = {
+          tempID: Date.now().toString(),
+          chatID: selectedChat.chatID,
+          senderID: user.userID,
+          content: files[0].name || "",
+          type: files[0].type,
+          timestamp: new Date().toISOString(),
+          media_url: data.urls,
+          senderInfo: { name: user.name, avatar: user.anhDaiDien || null },
+        };
+        socket.emit("send_message", msg);
+        setMessages((prev) => [...prev, msg]);
+      }
+    } catch (error) {
+      Alert.alert("Lỗi", "Không thể tải file lên");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleEmojiSelect = (emoji: string) => {
+    setInputText((prev) => prev + emoji);
+    setShowEmoji(false);
+  };
+
+  const handleStickerSelect = async (url: string) => {
+    if (!selectedChat || !user) return;
+    const msg: Message = {
+      tempID: Date.now().toString(),
+      chatID: selectedChat.chatID,
+      senderID: user.userID,
+      content: "",
+      type: "sticker",
+      timestamp: new Date().toISOString(),
+      media_url: [url],
+      senderInfo: { name: user.name, avatar: user.anhDaiDien || null },
+    };
+    socket.emit("send_message", msg);
+    setMessages((prev) => [...prev, msg]);
+    setShowEmoji(false);
+  };
+
+  const handleGifSelect = async (url: string) => {
+    if (!selectedChat || !user) return;
+    const msg: Message = {
+      tempID: Date.now().toString(),
+      chatID: selectedChat.chatID,
+      senderID: user.userID,
+      content: "",
+      type: "gif",
+      timestamp: new Date().toISOString(),
+      media_url: [url],
+      senderInfo: { name: user.name, avatar: user.anhDaiDien || null },
+    };
+    socket.emit("send_message", msg);
+    setMessages((prev) => [...prev, msg]);
+    setShowEmoji(false);
   };
 
   const handleDeleteLocal = (msg: Message) => {
     if (!msg.messageID || !user?.userID || !selectedChat) return;
-    socket.emit('delete_message_local', {
+    socket.emit("delete_message_local", {
       messageID: msg.messageID,
       userID: user.userID,
       chatID: selectedChat.chatID,
     });
     setShowMenu(false);
-    Alert.alert('Thành công', 'Tin nhắn đã được xóa phía bạn');
+    Alert.alert("Thành công", "Tin nhắn đã được xóa phía bạn");
   };
 
   const handleForwardMessage = (msg: Message) => {
     if (!msg.messageID) {
-      Alert.alert('Lỗi', 'Không thể chuyển tiếp tin nhắn này');
+      Alert.alert("Lỗi", "Không thể chuyển tiếp tin nhắn này");
       return;
     }
     setShowMenu(false);
-    navigation.navigate('Forward', { message: msg, chatID: selectedChat!.chatID });
+    navigation.navigate("Forward", {
+      message: msg,
+      chatID: selectedChat!.chatID,
+    });
   };
 
   const handleLongPress = (msg: Message) => {
@@ -139,13 +278,15 @@ const ChatScreen = ({ navigation }: Props) => {
                 onPress={() => handleSelectChat(item)}
               >
                 <Image
-                  source={{ uri: item.avatar || 'https://via.placeholder.com/50' }}
+                  source={{
+                    uri: item.avatar || "https://via.placeholder.com/50",
+                  }}
                   style={styles.chatAvatar}
                 />
                 <View style={styles.chatInfo}>
                   <Text style={styles.chatName}>{item.name}</Text>
                   <Text style={styles.lastMessage} numberOfLines={1}>
-                    {item.lastMessage?.[0]?.content || 'Chưa có tin nhắn'}
+                    {item.lastMessage?.[0]?.content || "Chưa có tin nhắn"}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -169,27 +310,33 @@ const ChatScreen = ({ navigation }: Props) => {
       {/* Messages */}
       <FlatList
         data={messages}
-        keyExtractor={(item) => item.messageID || item.tempID || Math.random().toString()}
+        keyExtractor={(item) =>
+          item.messageID || item.tempID || Math.random().toString()
+        }
         renderItem={({ item }) => (
           <TouchableOpacity
             onLongPress={() => handleLongPress(item)}
             delayLongPress={500}
             style={[
               styles.messageContainer,
-              item.senderID === user?.userID ? styles.messageMine : styles.messageOther,
+              item.senderID === user?.userID
+                ? styles.messageMine
+                : styles.messageOther,
             ]}
           >
             <View
               style={[
                 styles.messageBubble,
-                item.senderID === user?.userID ? styles.bubbleMine : styles.bubbleOther,
+                item.senderID === user?.userID
+                  ? styles.bubbleMine
+                  : styles.bubbleOther,
               ]}
             >
               <Text style={styles.messageText}>{item.content}</Text>
               <Text style={styles.messageTime}>
-                {new Date(item.timestamp).toLocaleTimeString('vi-VN', {
-                  hour: '2-digit',
-                  minute: '2-digit',
+                {new Date(item.timestamp).toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
                 })}
               </Text>
             </View>
@@ -212,7 +359,12 @@ const ChatScreen = ({ navigation }: Props) => {
       </View>
 
       {/* Long-press Menu */}
-      <Modal transparent visible={showMenu} animationType="fade" onRequestClose={() => setShowMenu(false)}>
+      <Modal
+        transparent
+        visible={showMenu}
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
         <TouchableOpacity
           style={styles.menuOverlay}
           activeOpacity={1}
@@ -241,7 +393,7 @@ const ChatScreen = ({ navigation }: Props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
   },
 
   /* Chat List */
@@ -251,14 +403,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 16,
-    color: '#1a1a1a',
+    color: "#1a1a1a",
   },
   chatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
@@ -275,33 +427,33 @@ const styles = StyleSheet.create({
   },
   chatName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontWeight: "600",
+    color: "#1a1a1a",
   },
   lastMessage: {
     fontSize: 13,
-    color: '#999',
+    color: "#999",
     marginTop: 4,
   },
 
   /* Chat Screen */
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0e9de8',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0e9de8",
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
   },
   backBtn: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   chatTitle: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     flex: 1,
   },
 
@@ -309,92 +461,92 @@ const styles = StyleSheet.create({
   messageContainer: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   messageMine: {
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   messageOther: {
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
   },
   messageBubble: {
-    maxWidth: '75%',
+    maxWidth: "75%",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
   },
   bubbleMine: {
-    backgroundColor: '#0e9de8',
+    backgroundColor: "#0e9de8",
   },
   bubbleOther: {
-    backgroundColor: '#e0e0e0',
+    backgroundColor: "#e0e0e0",
   },
   messageText: {
     fontSize: 14,
-    color: '#1a1a1a',
+    color: "#1a1a1a",
   },
   messageTime: {
     fontSize: 11,
-    color: '#999',
+    color: "#999",
     marginTop: 4,
   },
 
   /* Input */
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: "#eee",
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: "#ddd",
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 14,
-    color: '#1a1a1a',
+    color: "#1a1a1a",
   },
   sendBtn: {
-    backgroundColor: '#0e9de8',
+    backgroundColor: "#0e9de8",
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
   sendBtnText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: "#fff",
+    fontWeight: "600",
     fontSize: 14,
   },
 
   /* Menu */
   menuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   menuBox: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     minWidth: 200,
   },
   menuItem: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: "#eee",
   },
   menuItemText: {
     fontSize: 14,
-    color: '#1a1a1a',
-    fontWeight: '500',
+    color: "#1a1a1a",
+    fontWeight: "500",
   },
 });
 
