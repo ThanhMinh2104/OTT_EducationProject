@@ -690,10 +690,11 @@ export default function chatRoutes(io: Server) {
       // Tạo contact ngược từ người gửi về người nhận
       const reverseContact = await Contacts.findOne({ userID: senderID, contactID: userID });
       if (!reverseContact) {
+        const receiver = await Users.findOne({ userID });
         await Contacts.create({
           userID: senderID,
           contactID: userID,
-          alias: '', // Để trống, sẽ dùng tên thật từ User model
+          alias: receiver?.name || 'Bạn', // Set tên của người nhận
           status: 'accepted',
           created_at: new Date(),
         });
