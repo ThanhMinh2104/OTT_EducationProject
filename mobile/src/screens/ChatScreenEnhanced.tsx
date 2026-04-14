@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackNavigationProp } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { API_URL } from '../utils/config';
@@ -15,6 +16,10 @@ import StickerEmojiPicker from '../components/StickerEmojiPicker';
 import AudioPlayer from '../components/AudioPlayer';
 import CallScreen from './CallScreen';
 import IncomingCallModal from '../components/IncomingCallModal';
+import { downloadAndOpenFile } from '../utils/fileDownload';
+import ImageViewer from '../components/ImageViewer';
+import VideoViewer from '../components/VideoViewer';
+import ChatInfoPanel from '../components/ChatInfoPanel';
 
 type Props = {
   navigation: StackNavigationProp<RootStackParamList, any>;
@@ -117,6 +122,22 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [typingUsers, setTypingUsers] = useState<{ userID: string; userName: string }[]>([]);
   const [searchText, setSearchText] = useState('');
+
+  // Image/Video viewer states
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [videoViewerVisible, setVideoViewerVisible] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState('');
+
+  // Chat info panel state
+  const [showChatInfo, setShowChatInfo] = useState(false);
+
+  // Audio recording states
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioUri, setAudioUri] = useState<string | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Call states
   const [showCall, setShowCall] = useState(false);
@@ -362,6 +383,17 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
     }
   };
 
+  const handlePickVideo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      allowsMultipleSelection: false,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      await uploadFiles(result.assets.map(a => ({ uri: a.uri, type: 'video', name: a.fileName || `video_${Date.now()}.mp4` })));
+    }
+  };
+
   const handlePickFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true });
     if (!result.canceled && result.assets.length > 0) {
@@ -379,7 +411,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
         formData.append('files', {
           uri: file.uri,
           name: file.name || `file_${Date.now()}`,
-          type: file.type === 'image' ? 'image/jpeg' : 'application/octet-stream',
+          type: file.type === 'image' 
+            ? 'image/jpeg' 
+            : file.type === 'video'
+            ? 'video/mp4'
+            : 'application/octet-stream',
         } as any);
       });
       const res = await fetch(`${API_URL}/api/upload`, {
@@ -389,7 +425,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
       });
       const data = await res.json();
       if (data.urls?.length > 0) {
-        const msgType = files[0].type === 'image' ? 'image' : 'file';
+        const msgType = files[0].type === 'image' 
+          ? 'image' 
+          : files[0].type === 'video'
+          ? 'video'
+          : 'file';
         const msg = buildMsg({
           content: msgType === 'file' ? files[0].name || '' : '',
           type: msgType,
@@ -405,6 +445,121 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
       setIsUploading(false);
     }
   };
+
+  // Audio recording functions
+  const startRecording = async () => {
+    try {
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) {
+        Alert.alert('Lỗi', 'Cần quyền truy cập microphone để ghi âm');
+        return;
+      }
+
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: true,
+      });
+
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((t) => t + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Start recording error:', err);
+      Alert.alert('Lỗi', 'Không thể bắt đầu ghi âm');
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      await audioRecorder.stop();
+      // URI sẽ có sẵn trong audioRecorder.uri
+      setAudioUri(audioRecorder.uri);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    } catch (err) {
+      console.error('Stop recording error:', err);
+      Alert.alert('Lỗi', 'Không thể dừng ghi âm');
+    }
+  };
+
+  const cancelRecording = async () => {
+    try {
+      if (audioRecorder.isRecording) {
+        await audioRecorder.stop();
+      }
+      setAudioUri(null);
+      setRecordingTime(0);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    } catch (err) {
+      console.error('Cancel recording error:', err);
+    }
+  };
+
+  const sendAudio = async () => {
+    if (!audioUri || !selectedChat || !user) return;
+    setIsUploading(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const formData = new FormData();
+      
+      // Thử nhiều MIME types để tương thích với backend
+      // Backend chấp nhận: audio/mpeg, audio/wav, audio/webm, audio/ogg, audio/mp4, audio/m4a, audio/x-m4a
+      formData.append('file', {
+        uri: audioUri,
+        name: `voice-message-${Date.now()}.m4a`,
+        type: 'audio/m4a', // Thử audio/m4a trước
+      } as any);
+
+      console.log('Uploading audio:', { uri: audioUri, type: 'audio/m4a', token: token ? 'exists' : 'missing' });
+
+      const res = await fetch(`${API_URL}/api/upload/audio`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      
+      const data = await res.json();
+      console.log('Upload response:', { status: res.status, data });
+
+      if (!res.ok) {
+        throw new Error(data.error || data.message || 'Upload failed');
+      }
+
+      // Backend trả về { url, fileName, fileSize, mimeType }
+      if (!data.url) {
+        throw new Error('No audio URL in response');
+      }
+
+      const msg = buildMsg({
+        content: '',
+        type: 'audio',
+        media_url: [data.url],
+      });
+      
+      console.log('Sending audio message:', msg);
+      socket.emit('send_message', msg);
+      setMessages((prev) => [...prev, msg]);
+      setAudioUri(null);
+      setRecordingTime(0);
+      setReplyTo(null);
+    } catch (err) {
+      console.error('Send audio error:', err);
+      Alert.alert('Lỗi', `Không thể gửi audio: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const formatRecordTime = (s: number) =>
+    `${Math.floor(s / 60)
+      .toString()
+      .padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
   const handleEmojiSelect = (emoji: string) => setInputText(prev => prev + emoji);
 
@@ -472,13 +627,45 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
           <View>
             <View style={styles.imageContainer}>
               {item.media_url.map((url, idx) => (
-                <Image key={idx} source={{ uri: url }} style={styles.messageImage} />
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => {
+                    setSelectedImages(item.media_url || []);
+                    setSelectedImageIndex(idx);
+                    setImageViewerVisible(true);
+                  }}
+                >
+                  <Image source={{ uri: url }} style={styles.messageImage} />
+                </TouchableOpacity>
               ))}
             </View>
             <Text style={[styles.messageTime, isMine ? styles.timeOnMedia : styles.timeOnMediaOther]}>
               {timeStr}
             </Text>
           </View>
+        );
+      }
+      if (item.type === 'video' && item.media_url?.[0]) {
+        return (
+          <TouchableOpacity
+            onPress={() => {
+              setSelectedVideo(item.media_url![0]);
+              setVideoViewerVisible(true);
+            }}
+          >
+            <View style={styles.videoContainer}>
+              <Image
+                source={{ uri: item.media_url[0] }}
+                style={styles.videoThumbnail}
+              />
+              <View style={styles.videoPlayButton}>
+                <Ionicons name="play" size={40} color="#fff" />
+              </View>
+            </View>
+            <Text style={[styles.messageTime, isMine ? styles.timeOnMedia : styles.timeOnMediaOther]}>
+              {timeStr}
+            </Text>
+          </TouchableOpacity>
         );
       }
       if (item.type === 'sticker' && item.media_url?.[0]) {
@@ -514,7 +701,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
         return (
           <TouchableOpacity
             style={[styles.fileCard, isMine ? styles.fileCardMine : styles.fileCardOther]}
-            onPress={() => Linking.openURL(item.media_url![0])}
+            onPress={() => {
+              // Import ở đầu file: import { downloadAndOpenFile } from '../utils/fileDownload';
+              downloadAndOpenFile(
+                item.media_url![0],
+                fileName,
+                undefined // mimeType - có thể thêm vào Message interface nếu cần
+              );
+            }}
             activeOpacity={0.8}
           >
             <View style={[styles.fileExtBadge, { backgroundColor: color }]}>
@@ -708,7 +902,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => startCall('video')}>
           <Ionicons name="videocam-outline" size={22} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerIconBtn}>
+        <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowChatInfo(true)}>
           <Ionicons name="menu-outline" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -755,6 +949,53 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
         />
       )}
 
+      {/* Recording bar */}
+      {audioRecorder.isRecording && (
+        <View style={styles.recordingBar}>
+          <View style={styles.recordingDot} />
+          {/* Waveform animation */}
+          <View style={styles.waveformContainer}>
+            {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <View
+                key={i}
+                style={[
+                  styles.waveformBar,
+                  { height: Math.random() * 20 + 10 },
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={styles.recordingTime}>{formatRecordTime(recordingTime)}</Text>
+          <TouchableOpacity onPress={cancelRecording} style={styles.recordingCancelBtn}>
+            <Ionicons name="close" size={20} color="#888" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={stopRecording} style={styles.recordingStopBtn}>
+            <Ionicons name="stop" size={14} color="#fff" />
+            <Text style={styles.recordingStopText}>Dừng</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Audio preview */}
+      {audioUri && !audioRecorder.isRecording && (
+        <View style={styles.audioPreviewBar}>
+          <View style={styles.audioPreviewInfo}>
+            <Ionicons name="mic" size={20} color="#0068ff" />
+            <Text style={styles.audioPreviewText}>Tin nhắn thoại ({formatRecordTime(recordingTime)})</Text>
+          </View>
+          <TouchableOpacity onPress={cancelRecording} style={styles.audioPreviewCancelBtn}>
+            <Ionicons name="close" size={20} color="#888" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={sendAudio}
+            disabled={isUploading}
+            style={[styles.audioPreviewSendBtn, isUploading && styles.audioPreviewSendBtnDisabled]}
+          >
+            <Text style={styles.audioPreviewSendText}>{isUploading ? '...' : 'Gửi'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Input */}
       <View style={styles.inputContainer}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => setShowEmoji(!showEmoji)}>
@@ -766,10 +1007,13 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
             <TouchableOpacity style={styles.iconBtn} onPress={handlePickImage}>
               <Ionicons name="image-outline" size={24} color="#555" />
             </TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtn} onPress={handlePickVideo}>
+              <Ionicons name="videocam-outline" size={24} color="#555" />
+            </TouchableOpacity>
             <TouchableOpacity style={styles.iconBtn} onPress={handlePickFile}>
               <Ionicons name="attach-outline" size={24} color="#555" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn}>
+            <TouchableOpacity style={styles.iconBtn} onPress={startRecording}>
               <Ionicons name="mic-outline" size={24} color="#555" />
             </TouchableOpacity>
           </>
@@ -878,6 +1122,43 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
               chatID: selectedChat?.chatID,
             });
             setIncomingCall(null);
+          }}
+        />
+      )}
+
+      {/* Image Viewer */}
+      <ImageViewer
+        visible={imageViewerVisible}
+        images={selectedImages}
+        initialIndex={selectedImageIndex}
+        onClose={() => setImageViewerVisible(false)}
+      />
+
+      {/* Video Viewer */}
+      <VideoViewer
+        visible={videoViewerVisible}
+        videoUrl={selectedVideo}
+        onClose={() => setVideoViewerVisible(false)}
+      />
+
+      {/* Chat Info Panel */}
+      {selectedChat && (
+        <ChatInfoPanel
+          visible={showChatInfo}
+          chat={selectedChat}
+          memberInfo={
+            selectedChat.type === 'private'
+              ? memberCache[
+                  selectedChat.members.find((m) => m.userID !== user?.userID)
+                    ?.userID || ''
+                ] || null
+              : null
+          }
+          messages={messages}
+          onClose={() => setShowChatInfo(false)}
+          onHistoryDeleted={() => {
+            setMessages([]);
+            setShowChatInfo(false);
           }}
         />
       )}
@@ -993,6 +1274,29 @@ const styles = StyleSheet.create({
   // Media
   imageContainer: { gap: 3 },
   messageImage: { width: 200, height: 200, borderRadius: 12, resizeMode: 'cover' },
+  videoContainer: {
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  videoThumbnail: {
+    width: 250,
+    height: 200,
+    backgroundColor: '#000',
+  },
+  videoPlayButton: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -30,
+    marginLeft: -30,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   stickerImage: { width: 130, height: 130, resizeMode: 'contain' },
   gifImage: { width: 200, height: 160, borderRadius: 12, resizeMode: 'cover' },
 
@@ -1044,6 +1348,104 @@ const styles = StyleSheet.create({
   sendBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: '#0068ff', alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Recording bar
+  recordingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#ffebee',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#ffcdd2',
+    gap: 12,
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#f44336',
+  },
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    height: 24,
+  },
+  waveformBar: {
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: '#f44336',
+  },
+  recordingTime: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#f44336',
+  },
+  recordingCancelBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingStopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#f44336',
+    borderRadius: 8,
+  },
+  recordingStopText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  // Audio preview bar
+  audioPreviewBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#e3f2fd',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#bbdefb',
+    gap: 12,
+  },
+  audioPreviewInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  audioPreviewText: {
+    fontSize: 14,
+    color: '#0068ff',
+    fontWeight: '500',
+  },
+  audioPreviewCancelBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  audioPreviewSendBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#0068ff',
+    borderRadius: 8,
+  },
+  audioPreviewSendBtnDisabled: {
+    opacity: 0.5,
+  },
+  audioPreviewSendText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
   },
 
   // Loading
