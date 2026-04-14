@@ -365,9 +365,9 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                       <div className="flex-1 overflow-hidden">
                         <div className="flex items-center gap-1.5">
                           <p className="text-[14.5px] font-bold text-gray-800 truncate">
-                            {friend.alias || friend.name}
+                            {friend.alias?.trim() ? friend.alias : friend.name}
                           </p>
-                          {friend.alias && (
+                          {friend.alias?.trim() && (
                             <FaUserTag className="text-[10px] text-blue-400" title="Biệt danh" />
                           )}
                         </div>

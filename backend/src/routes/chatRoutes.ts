@@ -649,6 +649,25 @@ export default function chatRoutes(io: Server) {
       );
       if (!contact) return res.status(404).json({ message: 'Không tìm thấy lời mời' }) as any;
 
+      // Tạo contact ngược từ người gửi về người nhận
+      const reverseContact = await Contacts.findOne({ userID: senderID, contactID: userID });
+      if (!reverseContact) {
+        const sender = await Users.findOne({ userID: senderID });
+        await Contacts.create({
+          userID: senderID,
+          contactID: userID,
+          alias: sender?.name || 'Bạn',
+          status: 'accepted',
+          created_at: new Date(),
+        });
+      } else if (reverseContact.status !== 'accepted') {
+        await Contacts.findOneAndUpdate(
+          { userID: senderID, contactID: userID },
+          { status: 'accepted' },
+          { new: true }
+        );
+      }
+
       const sender = await Users.findOne({ userID: senderID });
       const receiver = await Users.findOne({ userID });
       
@@ -702,6 +721,10 @@ export default function chatRoutes(io: Server) {
       const result = await Promise.all(friends.map(async (f) => {
         const friendID = f.userID === userID ? f.contactID : f.userID;
         const friendUser = await Users.findOne({ userID: friendID }).select('name anhDaiDien sdt trangThai anhBia ngaysinh gioTinh').lean();
+        
+        // Lấy alias từ contact record của người dùng hiện tại
+        const contactRecord = f.userID === userID ? f : await Contacts.findOne({ userID, contactID: friendID }).lean();
+        
         return { 
           userID: friendID, 
           name: friendUser?.name, 
@@ -711,7 +734,7 @@ export default function chatRoutes(io: Server) {
           anhBia: friendUser?.anhBia,
           ngaysinh: friendUser?.ngaysinh,
           gioTinh: friendUser?.gioTinh,
-          alias: f.contactID === friendID ? f.alias : undefined 
+          alias: contactRecord?.alias || friendUser?.name
         };
       }));
 
