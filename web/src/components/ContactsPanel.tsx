@@ -258,7 +258,12 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
 
   // Zalo Style: Grouping by Alphabet A-Z
   const groupedFriends = useMemo(() => {
-    const filtered = friends.filter(
+    // Deduplicate friends by userID
+    const uniqueFriends = Array.from(
+      new Map(friends.map(f => [f.userID, f])).values()
+    );
+
+    const filtered = uniqueFriends.filter(
       (f) =>
         (f.alias?.trim() || f.name).toLowerCase().includes(search.toLowerCase()) ||
         f.sdt?.includes(search)

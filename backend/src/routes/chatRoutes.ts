@@ -711,19 +711,16 @@ export default function chatRoutes(io: Server) {
   router.post('/contacts/friends', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
       const userID = req.userID!;
+      // Chỉ lấy contact records nơi userID là người dùng hiện tại
+      // Để tránh duplicate (vì mỗi friendship có 2 records)
       const friends = await Contacts.find({
-        $or: [
-          { userID, status: 'accepted' },
-          { contactID: userID, status: 'accepted' },
-        ],
+        userID,
+        status: 'accepted',
       }).lean();
 
       const result = await Promise.all(friends.map(async (f) => {
-        const friendID = f.userID === userID ? f.contactID : f.userID;
+        const friendID = f.contactID;
         const friendUser = await Users.findOne({ userID: friendID }).select('name anhDaiDien sdt trangThai anhBia ngaysinh gioTinh').lean();
-        
-        // Lấy alias từ contact record của người dùng hiện tại
-        const contactRecord = f.userID === userID ? f : await Contacts.findOne({ userID, contactID: friendID }).lean();
         
         return { 
           userID: friendID, 
@@ -734,7 +731,7 @@ export default function chatRoutes(io: Server) {
           anhBia: friendUser?.anhBia,
           ngaysinh: friendUser?.ngaysinh,
           gioTinh: friendUser?.gioTinh,
-          alias: contactRecord?.alias || friendUser?.name
+          alias: f.alias || friendUser?.name
         };
       }));
 
