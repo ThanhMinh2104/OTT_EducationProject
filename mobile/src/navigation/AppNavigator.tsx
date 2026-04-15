@@ -13,6 +13,8 @@ import VerifyOtpDK from "../screens/VerifyOtpDK";
 import ForgotPasswordScreen from "../screens/ForgotPassword";
 import VerifyOtpResetScreen from "../screens/VerifyOtpReset";
 import ConfirmPasswordScreen from "../screens/ConfirmPassword";
+import StrangerInboxScreen from "../screens/StrangerInboxScreen";
+
 
 export type RootStackParamList = {
   Login: undefined;
@@ -27,7 +29,9 @@ export type RootStackParamList = {
   ChatEnhanced: undefined;
   Contacts: { user: any };
   Forward: { message: any; chatID: string };
+  StrangerInbox: undefined;
 };
+
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -45,7 +49,9 @@ const AppNavigator = () => (
       <Stack.Screen name="ChatEnhanced" component={ChatScreenEnhanced} />
       <Stack.Screen name="Contacts" component={ContactsScreen} />
       <Stack.Screen name="Forward" component={ForwardScreen} />
+      <Stack.Screen name="StrangerInbox" component={StrangerInboxScreen} />
       <Stack.Screen name="VerifyOtp" component={VerifyOtpDK} />
+
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="VerifyOtpReset" component={VerifyOtpResetScreen} />
       <Stack.Screen name="ConfirmPassword" component={ConfirmPasswordScreen} />

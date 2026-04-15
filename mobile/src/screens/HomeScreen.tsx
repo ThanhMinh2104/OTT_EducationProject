@@ -16,7 +16,7 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import UserProfileModal, { User } from "../components/UserProfileModal";
-import ContactsPanel from "../components/ContactsPanel";
+import ContactsScreen from "../screens/ContactsScreen";
 import AddFriendModal from "../components/AddFriendModal";
 import { API_URL } from "../utils/config";
 import socket from "../utils/socket";
@@ -97,8 +97,12 @@ const HomeScreen = ({ navigation }: Props) => {
     await AsyncStorage.setItem("user", JSON.stringify(u));
   };
 
+  const [pendingChat, setPendingChat] = useState<any>(null);
+  
   const handleStartChat = (chat: any) => {
-    // Khi ContactsPanel mở chat, chuyển sang tab chat
+    // Khi ContactsPanel mở chat, chuyển sang tab chat và lưu chat cần mở
+    console.log('📥 HomeScreen: Starting chat:', chat);
+    setPendingChat(chat);
     setActiveTab("chat");
   };
 
@@ -118,6 +122,8 @@ const HomeScreen = ({ navigation }: Props) => {
             navigation={navigation as any}
             onChatOpen={() => setIsChatOpen(true)}
             onChatClose={() => setIsChatOpen(false)}
+            pendingChat={pendingChat}
+            onPendingChatHandled={() => setPendingChat(null)}
           />
         </View>
 
@@ -127,14 +133,8 @@ const HomeScreen = ({ navigation }: Props) => {
             {/* Header danh bạ */}
             <View style={styles.contactsHeader}>
               <Text style={styles.contactsTitle}>Danh bạ</Text>
-              <TouchableOpacity
-                style={styles.addFriendBtn}
-                onPress={() => setShowAddFriend(true)}
-              >
-                <Ionicons name="person-add-outline" size={22} color="#fff" />
-              </TouchableOpacity>
             </View>
-            <ContactsPanel user={user} onStartChat={handleStartChat} />
+            <ContactsScreen user={user} onStartChat={handleStartChat} />
           </View>
         )}
 

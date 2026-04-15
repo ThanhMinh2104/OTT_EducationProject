@@ -36,6 +36,19 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       const chatMemberDoc = await ChatMember.findOne({ chatID: data.chatID });
       const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
 
+      // ✅ Khôi phục chat nếu đã bị xóa (undelete khi có tin nhắn mới)
+      if (chatMemberDoc) {
+        const updates = chatMemberDoc.members.map((m) => {
+          if (m.deletedAt) {
+            console.log(`🔄 Undeleting chat ${data.chatID} for user ${m.userID}`);
+            return { ...m, deletedAt: undefined };
+          }
+          return m;
+        });
+        chatMemberDoc.members = updates;
+        await chatMemberDoc.save();
+      }
+
       // KIỂM TRA CHẶN (Chỉ áp dụng cho chat 1-1)
       if (memberIDs.length === 2) {
         const recipientID = memberIDs.find(id => id !== data.senderID);

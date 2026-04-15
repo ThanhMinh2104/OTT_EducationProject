@@ -40,23 +40,29 @@ const generateChatID = async (): Promise<string> => {
 
 // Helper: lấy danh sách chat đầy đủ cho user
 export const getChatsForUser = async (userID: string, includeStrangers: boolean = false) => {
+  console.log(`📋 getChatsForUser called: userID=${userID}, includeStrangers=${includeStrangers}`);
+  
   const memberDocs = await ChatMember.find({ 'members.userID': userID }).lean();
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`  → Found ${memberDocs.length} ChatMember records for ${userID}`);
-  }
+  console.log(`  → Found ${memberDocs.length} ChatMember records for ${userID}`);
   
   const chatIDs = memberDocs.map((m) => m.chatID);
   if (!chatIDs.length) {
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`  → No chats found for ${userID}`);
-    }
+    console.log(`  → No chats found for ${userID}`);
     return [];
   }
+  
+  console.log(`  → ChatIDs:`, chatIDs);
 
   const chats = await Chat.find({ chatID: { $in: chatIDs } }).lean();
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`  → Found ${chats.length} Chat records`);
-  }
+  console.log(`  → Found ${chats.length} Chat records`);
+  
+  // Log chi tiết về deletedAt
+  memberDocs.forEach((doc) => {
+    const member = doc.members.find((m) => m.userID === userID);
+    if (member?.deletedAt) {
+      console.log(`  ⚠️ Chat ${doc.chatID} has deletedAt for user ${userID}:`, member.deletedAt);
+    }
+  });
 
   // Chỉ lấy 20 tin nhắn gần nhất mỗi chat thay vì toàn bộ
   const allMessages = await Message.aggregate([
@@ -121,7 +127,11 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
     .filter((c) => {
       const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
       const currentMember = memberDoc?.members.find((m) => m.userID === userID);
-      return !currentMember?.deletedAt;
+      const hasDeletedAt = !!currentMember?.deletedAt;
+      if (hasDeletedAt) {
+        console.log(`  ❌ Filtering out chat ${c.chatID} - has deletedAt`);
+      }
+      return !hasDeletedAt;
     })
     .map((c) => {
       const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
@@ -138,16 +148,12 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
       ).length;
 
       // Stranger check — không cần thêm DB query
+      // Stranger check — Bất kỳ ai chưa là bạn bè (accepted) thì đều là người lạ
       let isStranger = false;
       if (c.type === 'private') {
         const otherMember = membersByChat[c.chatID]?.find((m) => m.userID !== userID);
         if (otherMember && !friendIDs.has(otherMember.userID)) {
-          const initiatorID = firstMsgMap[c.chatID];
-          if (initiatorID === userID) {
-            isStranger = false; // Mình gửi trước → không vào folder
-          } else {
-            isStranger = !myRepliedSet.has(c.chatID); // Chưa reply → stranger
-          }
+          isStranger = true;
         }
       }
 
@@ -161,9 +167,13 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
     });
 
   if (includeStrangers) {
-    return filteredChats.filter((c) => c.isStranger);
+    const result = filteredChats.filter((c) => c.isStranger);
+    console.log(`  ✅ Returning ${result.length} stranger chats`);
+    return result;
   } else {
-    return filteredChats.filter((c) => !c.isStranger);
+    const result = filteredChats.filter((c) => !c.isStranger);
+    console.log(`  ✅ Returning ${result.length} friend chats`);
+    return result;
   }
 };
 
@@ -400,7 +410,15 @@ export default function chatRoutes(io: Server) {
         const found = await Chat.findOne({ chatID: { $in: chatIDs }, type: 'private' }).lean();
         if (found) {
           const memberDoc = await ChatMember.findOne({ chatID: found.chatID }).lean();
-          return res.json({ ...found, members: memberDoc?.members || [], lastMessage: [] }) as any;
+          const contact = await Contacts.findOne({
+            $or: [
+              { userID: userID1, contactID: userID2 },
+              { userID: userID2, contactID: userID1 },
+            ],
+            status: 'accepted'
+          });
+          const isStranger = !contact;
+          return res.json({ ...found, members: memberDoc?.members || [], lastMessage: [], isStranger }) as any;
         }
       }
 
@@ -418,10 +436,20 @@ export default function chatRoutes(io: Server) {
         created_at: new Date(),
       });
       await ChatMember.create({ chatID, members });
+      
+      const contact = await Contacts.findOne({
+        $or: [
+          { userID: userID1, contactID: userID2 },
+          { userID: userID2, contactID: userID1 },
+        ],
+        status: 'accepted'
+      });
+      const isStranger = !contact;
+
       const result = { ...newChat.toObject(), members, lastMessage: [] };
-      io.to(userID1).emit('newChat1-1', result);
-      io.to(userID2).emit('newChat1-1', result);
-      res.status(201).json(result);
+      io.to(userID1).emit('newChat1-1', { ...result, isStranger });
+      io.to(userID2).emit('newChat1-1', { ...result, isStranger });
+      res.status(201).json({ ...result, isStranger });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -807,6 +835,80 @@ export default function chatRoutes(io: Server) {
         anhDaiDien: sender?.anhDaiDien,
         actorID: userID 
       });
+
+      // ── TỰ ĐỘNG TẠO CHAT VÀ GỬI THÔNG BÁO HỆ THỐNG ──────────────────────────
+      try {
+        console.log(`[Friendship] Accepted: ${senderID} <-> ${userID}. Managing chat...`);
+        // Tìm chat 1-1 đã tồn tại
+        const existingMembers = await ChatMember.find({ 
+          'members.userID': { $all: [userID, senderID] } 
+        }).lean();
+        
+        let chat: any = null;
+        if (existingMembers.length) {
+          const chatIDs = existingMembers.map((m) => m.chatID);
+          chat = await Chat.findOne({ chatID: { $in: chatIDs }, type: 'private' }).lean();
+          if (chat) {
+            const memberDoc = await ChatMember.findOne({ chatID: chat.chatID }).lean();
+            chat.members = memberDoc?.members || [];
+          }
+        }
+
+        let isNewChat = false;
+        if (!chat) {
+          isNewChat = true;
+          const chatID = await generateChatID();
+          const members = [
+            { userID: senderID, role: 'admin' },
+            { userID, role: 'member' }
+          ];
+          const newChatDoc = await Chat.create({
+            chatID,
+            type: 'private',
+            avatar: sender?.anhDaiDien || '',
+            name: `${sender?.name || 'User'} & ${receiver?.name || 'User'}`,
+            created_at: new Date(),
+          });
+          await ChatMember.create({ chatID, members });
+          chat = { ...newChatDoc.toObject(), members };
+        }
+
+        if (chat) {
+          // 1. Thông báo cập nhật danh sách chat trước
+          console.log(`[Socket] Emitting newChat1-1 (isStranger: false) to users`);
+          io.to(senderID).emit('newChat1-1', { ...chat, isStranger: false });
+          io.to(userID).emit('newChat1-1', { ...chat, isStranger: false });
+
+          // 2. Tạo tin nhắn hệ thống trong DB
+          const systemMsgObj = {
+            messageID: `msg-sys-${Date.now()}`,
+            chatID: chat.chatID,
+            senderID: 'system',
+            content: isNewChat 
+              ? `${sender?.name} và ${receiver?.name} đã trở thành bạn bè. Hãy bắt đầu cuộc trò chuyện.`
+              : `${sender?.name} và ${receiver?.name} đã trở thành bạn bè.`,
+            type: 'notification',
+            timestamp: new Date(),
+            status: 'sent',
+          };
+          
+          await Message.create(systemMsgObj);
+
+          // 3. Phát tin nhắn qua socket với đầy đủ senderInfo để tránh lỗi UI
+          const fullSystemMsg = {
+            ...systemMsgObj,
+            senderInfo: { name: 'Hệ thống', avatar: null }
+          };
+
+          console.log(`[Socket] Emitting new_message (system) to users`);
+          io.to(senderID).emit('new_message', fullSystemMsg);
+          io.to(userID).emit('new_message', fullSystemMsg);
+          io.to(chat.chatID).emit(chat.chatID, fullSystemMsg); 
+        }
+      } catch (chatError) {
+        console.error('Lỗi tự động tạo chat khi kết bạn:', chatError);
+      }
+
       res.json({ message: 'Đã chấp nhận kết bạn' });
     } catch (e: any) {
       console.error('accept-friend-request error:', e);
@@ -1017,6 +1119,10 @@ export default function chatRoutes(io: Server) {
         return res.status(404).json({ message: 'Không tìm thấy người dùng hiện tại' }) as any;
       }
 
+      // Notify cả 2 phía để đồng bộ real-time
+      io.to(userID).emit('friend_status_update', { userID: targetUserID, friendStatus: 'blocked', ownerID: userID });
+      io.to(targetUserID).emit('friend_status_update', { userID, friendStatus: 'blocked_by_other', ownerID: userID });
+
       res.json({ message: 'Đã chặn người dùng này', friendStatus: 'blocked' });
     } catch (e: any) {
       console.error('🔥 CRITICAL API ERROR (block):', e);
@@ -1046,10 +1152,68 @@ export default function chatRoutes(io: Server) {
         return res.status(404).json({ message: 'Không tìm thấy người dùng' }) as any;
       }
 
+      // Notify cả 2 phía để đồng bộ real-time
+      io.to(userID).emit('friend_status_update', { userID: targetUserID, friendStatus: 'none', ownerID: userID });
+      io.to(targetUserID).emit('friend_status_update', { userID, friendStatus: 'none', ownerID: userID });
+
       res.json({ message: 'Đã bỏ chặn người dùng này', status: 'success' });
     } catch (e: any) {
       console.error('🔥 CRITICAL API ERROR (unblock):', e);
       res.status(500).json({ message: 'Lỗi hệ thống khi gỡ chặn' });
+    }
+  });
+
+  // Danh sách người dùng đã chặn
+  router.get('/contacts/blocked', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const userID = req.userID!;
+      const currentUser = await Users.findOne({ userID }).lean();
+      if (!currentUser?.blockedUsers?.length) return res.json([]) as any;
+      const blockedUsers = await Users.find({ userID: { $in: currentUser.blockedUsers } })
+        .select('userID name sdt anhDaiDien trangThai')
+        .lean();
+      res.json(blockedUsers);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Tạo chat với người lạ (không cần kết bạn)
+  router.post('/chats/stranger', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { userID2 } = req.body;
+      const userID1 = req.userID!;
+      if (!userID2) return res.status(400).json({ message: 'userID2 required' }) as any;
+
+      const existing = await ChatMember.find({ 'members.userID': { $all: [userID1, userID2] } }).lean();
+      if (existing.length) {
+        const chatIDs = existing.map((m) => m.chatID);
+        const found = await Chat.findOne({ chatID: { $in: chatIDs }, type: 'private' }).lean();
+        if (found) {
+          const memberDoc = await ChatMember.findOne({ chatID: found.chatID }).lean();
+          return res.json({ ...found, members: memberDoc?.members || [], lastMessage: [] }) as any;
+        }
+      }
+
+      const user1 = await Users.findOne({ userID: userID1 });
+      const user2 = await Users.findOne({ userID: userID2 });
+      if (!user1 || !user2) return res.status(404).json({ message: 'User không tồn tại' }) as any;
+
+      const chatID = await generateChatID();
+      const members = [{ userID: userID1, role: 'admin' }, { userID: userID2, role: 'member' }];
+      const newChat = await Chat.create({
+        chatID, type: 'private',
+        avatar: user2.anhDaiDien || '',
+        name: `${user1.name.split(' ').pop()} & ${user2.name.split(' ').pop()}`,
+        created_at: new Date(),
+      });
+      await ChatMember.create({ chatID, members });
+      const result = { ...newChat.toObject(), members, lastMessage: [] };
+      io.to(userID1).emit('newChat1-1', result);
+      io.to(userID2).emit('newChat1-1', result);
+      res.status(201).json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
     }
   });
 

@@ -519,6 +519,23 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         (prev?.userID === updatedUser.userID ? { ...prev, ...updatedUser } : prev)
       );
     };
+    
+    const onFriendStatusUpdate = (data: { userID: string; friendStatus: string; ownerID: string }) => {
+      console.log('📥 ChatWindow received friend_status_update:', data);
+      // Cập nhật friendStatus của memberInfo nếu là người đang chat
+      setMemberInfo((prev) => {
+        if (!prev) return prev;
+        // Nếu mình là người bị tác động (data.userID === currentUser)
+        if (data.userID === user?.userID && prev.userID === data.ownerID) {
+          return { ...prev, friendStatus: data.friendStatus === 'blocked' ? 'blocked_by_other' : data.friendStatus };
+        }
+        // Nếu mình là người thực hiện (data.ownerID === currentUser)
+        if (data.ownerID === user?.userID && prev.userID === data.userID) {
+          return { ...prev, friendStatus: data.friendStatus };
+        }
+        return prev;
+      });
+    };
 
     socket.on('new_message', onNewMessage);
     socket.on(chatID, onNewMessage);
@@ -527,7 +544,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     socket.on('ghim_notification', onGhim);
     socket.on('unghim_notification', onUnghim);
     socket.on(`status_update_${chatID}`, onStatusUpdate);
-    socket.on('friend_status_update', onUpdateUser);
+    socket.on('updatee_user', onUpdateUser);
+    socket.on('friend_status_update', onFriendStatusUpdate);
 
     const onTypingStart = ({
       chatID: evtChatID,
@@ -655,7 +673,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('ghim_notification', onGhim);
       socket.off('unghim_notification', onUnghim);
       socket.off(`status_update_${chatID}`, onStatusUpdate);
-      socket.off('friend_status_update', onUpdateUser);
+      socket.off('updatee_user', onUpdateUser);
+      socket.off('friend_status_update', onFriendStatusUpdate);
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
       socket.off('message_seen', onMessageSeen);
@@ -2129,23 +2148,29 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             {/* Input area */}
             <div className="flex-shrink-0">
               {memberInfo?.friendStatus === 'blocked' ? (
-                <div className="flex items-center justify-center p-4 bg-white border-t border-gray-100 gap-2.5">
-                  <FaInfoCircle className="text-[#0068ff] text-[17px] shrink-0" />
-                  <p className="text-[14px] text-gray-500 m-0">
-                    Bỏ chặn để gửi tin nhắn tới người này.{" "}
+                <div className="flex items-center justify-center p-5 bg-blue-50/50 border-t border-blue-100 gap-3 animate-fade-in">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                    <FaInfoCircle className="text-[#0068ff] text-lg" />
+                  </div>
+                  <div className="flex flex-col">
+                    <p className="text-[14px] text-gray-600 m-0 font-medium">
+                      Bạn đã chặn người dùng này
+                    </p>
                     <button
                       onClick={() => setShowUnblockConfirm(true)}
-                      className="text-[#0068ff] font-semibold hover:underline bg-transparent border-none p-0 cursor-pointer text-[14px]"
+                      className="text-[#0068ff] font-bold hover:underline bg-transparent border-none p-0 cursor-pointer text-[13px] text-left"
                     >
-                      Bỏ chặn
+                      Bỏ chặn để tiếp tục trò chuyện
                     </button>
-                  </p>
+                  </div>
                 </div>
               ) : memberInfo?.friendStatus === 'blocked_by_other' ? (
-                <div className="flex items-center justify-center p-6 bg-white border-t border-gray-100 gap-3">
-                  <FaBan className="text-gray-400 text-[15px] shrink-0" />
-                  <p className="text-[14px] text-gray-400 m-0 italic font-medium">
-                    Xin lỗi! Bạn hiện không thể gửi tin nhắn tới người này.
+                <div className="flex items-center justify-center p-6 bg-gray-50/80 border-t border-gray-100 gap-3 animate-fade-in shadow-inner">
+                  <div className="w-10 h-10 rounded-full bg-gray-200/50 flex items-center justify-center shrink-0">
+                    <FaBan className="text-gray-400 text-lg" />
+                  </div>
+                  <p className="text-[14px] text-gray-500 m-0 italic font-semibold tracking-tight">
+                    Xin lỗi! Hiện tại bạn không thể gửi tin nhắn cho người này.
                   </p>
                 </div>
               ) : (
@@ -2585,13 +2610,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           try {
             await axiosInstance.post('/contacts/unblock', { targetUserID: String(memberInfo.userID) });
             toast.success('Đã bỏ chặn');
-            if (socket) {
-              socket.emit('friend_status_update', {
-                userID: String(memberInfo.userID),
-                friendStatus: 'none',
-                ownerID: String(user.userID)
-              });
-            }
+            // Backend sẽ emit friend_status_update, không cần emit từ client
             setMemberInfo(prev => prev ? { ...prev, friendStatus: 'none' } : null);
           } catch (err) {
             toast.error('Lỗi khi bỏ chặn');

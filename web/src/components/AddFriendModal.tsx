@@ -3,6 +3,7 @@ import {
   FaTimes,
   FaChevronLeft,
   FaPen,
+  FaCommentDots
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -311,6 +312,22 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
                       {user.sdt}
                     </p>
                   </div>
+                  {/* Nút Nhắn tin nhanh */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedUser(user);
+                      // Kích hoạt nhắn tin (hàm handleStartChat yêu cầu selectedUser phải được set)
+                      setTimeout(() => {
+                        const btn = document.getElementById('start-chat-hidden-btn');
+                        btn?.click();
+                      }, 0);
+                    }}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-blue-50 text-[#0068FF] hover:bg-[#0068FF] hover:text-white transition-all mr-1"
+                    title="Nhắn tin ngay"
+                  >
+                    <FaCommentDots className="text-[17px]" />
+                  </button>
                   {/* Nút xóa kết quả gần đây */}
                   <button
                     onClick={(e) => handleRemoveRecent(e, user.userID)}
@@ -336,11 +353,14 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
           <button
             onClick={handleSearch}
             disabled={loading}
-            className="px-8 py-2 rounded-lg text-[14.5px] font-semibold bg-[#0068FF] hover:bg-[#005AE6] transition-colors disabled:opacity-50 text-gray-900"
+            className="px-8 py-2 rounded-lg text-[14.5px] font-semibold bg-[#0068FF] hover:bg-[#005AE6] transition-colors disabled:opacity-50 text-white"
           >
             Tìm kiếm
           </button>
         </div>
+        
+        {/* Hidden button to trigger start chat logic safely */}
+        <button id="start-chat-hidden-btn" className="hidden" onClick={handleStartChat} />
       </div>
     </div>
   );
@@ -415,7 +435,7 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
             <button
               onClick={handleSendRequest}
               disabled={sending}
-              className="px-8 py-2.5 rounded-lg text-[14.5px] font-semibold bg-[#0068FF] hover:bg-[#005AE6] transition-colors disabled:opacity-50 text-gray-900"
+              className="px-8 py-2.5 rounded-lg text-[14.5px] font-semibold bg-[#0068FF] hover:bg-[#005AE6] transition-colors disabled:opacity-50 text-white"
             >
               {sending ? 'Đang gửi...' : 'Kết bạn'}
             </button>

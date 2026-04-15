@@ -97,6 +97,29 @@ const ChatInfoPanel = ({
   const [selectedVideo, setSelectedVideo] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
+  const [friendStatus, setFriendStatus] = useState<string>('none');
+
+  // Fetch friend status khi mở panel
+  React.useEffect(() => {
+    if (visible && chat.type === 'private' && memberInfo?.userID) {
+      const fetchStatus = async () => {
+        try {
+          const token = await AsyncStorage.getItem('token');
+          const res = await fetch(`${API_URL}/api/contacts/friend-status/${memberInfo.userID}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          setFriendStatus(data.friendStatus || 'none');
+        } catch {
+          setFriendStatus('none');
+        }
+      };
+      fetchStatus();
+    }
+  }, [visible, chat.type, memberInfo?.userID]);
 
   // Extract media from messages
   const mediaImages = messages
@@ -159,6 +182,46 @@ const ChatInfoPanel = ({
       Alert.alert('Lỗi', 'Không thể xóa lịch sử');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleBlock = async () => {
+    if (!memberInfo?.userID) return;
+    setIsBlocking(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      await fetch(`${API_URL}/api/contacts/block`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetUserID: memberInfo.userID }),
+      });
+      setFriendStatus('blocked');
+      setShowBlockConfirm(false);
+      Alert.alert('Thành công', 'Đã chặn người dùng này');
+    } catch {
+      Alert.alert('Lỗi', 'Không thể thực hiện thao tác');
+    } finally {
+      setIsBlocking(false);
+    }
+  };
+
+  const handleUnblock = async () => {
+    if (!memberInfo?.userID) return;
+    setIsBlocking(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      await fetch(`${API_URL}/api/contacts/unblock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetUserID: memberInfo.userID }),
+      });
+      setFriendStatus('none');
+      setShowUnblockConfirm(false);
+      Alert.alert('Thành công', 'Đã bỏ chặn người dùng này');
+    } catch {
+      Alert.alert('Lỗi', 'Không thể thực hiện thao tác');
+    } finally {
+      setIsBlocking(false);
     }
   };
 
@@ -393,6 +456,35 @@ const ChatInfoPanel = ({
 
           {/* Delete History Button */}
           <View style={styles.actions}>
+            {/* Block/Unblock Button - chỉ hiện cho private chat */}
+            {chat.type === 'private' && memberInfo && (
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  friendStatus === 'blocked' ? styles.unblockButton : styles.blockButton
+                ]}
+                onPress={() => {
+                  if (friendStatus === 'blocked') {
+                    setShowUnblockConfirm(true);
+                  } else {
+                    setShowBlockConfirm(true);
+                  }
+                }}
+              >
+                <Ionicons 
+                  name={friendStatus === 'blocked' ? "checkmark-circle-outline" : "ban-outline"} 
+                  size={18} 
+                  color={friendStatus === 'blocked' ? "#4caf50" : "#ff9500"} 
+                />
+                <Text style={[
+                  styles.actionButtonText,
+                  friendStatus === 'blocked' ? styles.unblockButtonText : styles.blockButtonText
+                ]}>
+                  {friendStatus === 'blocked' ? 'Bỏ chặn' : 'Chặn người dùng'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={() => setShowDeleteConfirm(true)}
@@ -451,6 +543,80 @@ const ChatInfoPanel = ({
                 >
                   <Text style={styles.modalButtonTextDelete}>
                     {isDeleting ? 'Đang xóa...' : 'Xóa'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Block Confirmation Modal */}
+        <Modal
+          visible={showBlockConfirm}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowBlockConfirm(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={[styles.modalIconContainer, { backgroundColor: '#fff3e0' }]}>
+                <Ionicons name="ban-outline" size={32} color="#ff9500" />
+              </View>
+              <Text style={styles.modalTitle}>Chặn người dùng</Text>
+              <Text style={styles.modalMessage}>
+                Bạn sẽ không nhận được tin nhắn từ {memberInfo?.name}. Họ cũng không thể gọi cho bạn.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => setShowBlockConfirm(false)}
+                >
+                  <Text style={styles.modalButtonTextCancel}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: '#ff9500' }]}
+                  onPress={handleBlock}
+                  disabled={isBlocking}
+                >
+                  <Text style={styles.modalButtonTextDelete}>
+                    {isBlocking ? 'Đang chặn...' : 'Chặn'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Unblock Confirmation Modal */}
+        <Modal
+          visible={showUnblockConfirm}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowUnblockConfirm(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={[styles.modalIconContainer, { backgroundColor: '#e8f5e9' }]}>
+                <Ionicons name="checkmark-circle-outline" size={32} color="#4caf50" />
+              </View>
+              <Text style={styles.modalTitle}>Bỏ chặn người dùng</Text>
+              <Text style={styles.modalMessage}>
+                Bạn sẽ có thể nhận tin nhắn và cuộc gọi từ {memberInfo?.name}.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => setShowUnblockConfirm(false)}
+                >
+                  <Text style={styles.modalButtonTextCancel}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: '#4caf50' }]}
+                  onPress={handleUnblock}
+                  disabled={isBlocking}
+                >
+                  <Text style={styles.modalButtonTextDelete}>
+                    {isBlocking ? 'Đang bỏ chặn...' : 'Bỏ chặn'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -689,6 +855,34 @@ const styles = StyleSheet.create({
   actions: {
     padding: 16,
     paddingTop: 8,
+    gap: 12,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+  },
+  blockButton: {
+    borderColor: '#ff9500',
+  },
+  unblockButton: {
+    borderColor: '#4caf50',
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  blockButtonText: {
+    color: '#ff9500',
+  },
+  unblockButtonText: {
+    color: '#4caf50',
   },
   deleteButton: {
     flexDirection: 'row',

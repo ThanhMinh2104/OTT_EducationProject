@@ -66,15 +66,6 @@ const OtherProfileModal = ({
     try {
       await axiosInstance.post('/contacts/block', { targetUserID: user.userID });
       toast.success('Đã chặn người dùng');
-
-      if (socket && user?.userID && currentUser?.userID) {
-        socket.emit('friend_status_update', {
-          userID: String(user.userID),
-          friendStatus: 'blocked',
-          ownerID: String(currentUser.userID)
-        });
-      }
-
       onStatusChange?.('blocked');
       onClose();
     } catch { toast.error('Lỗi khi thực hiện thao tác'); }
@@ -85,15 +76,6 @@ const OtherProfileModal = ({
     try {
       await axiosInstance.post('/contacts/unblock', { targetUserID: user.userID });
       toast.success('Đã bỏ chặn người dùng');
-
-      if (socket && user?.userID && currentUser?.userID) {
-        socket.emit('friend_status_update', {
-          userID: String(user.userID),
-          friendStatus: 'none',
-          ownerID: String(currentUser.userID)
-        });
-      }
-
       onStatusChange?.('none');
       onClose();
     } catch { toast.error('Lỗi khi thực hiện thao tác'); }
