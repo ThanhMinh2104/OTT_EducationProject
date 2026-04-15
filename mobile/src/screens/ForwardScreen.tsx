@@ -16,15 +16,6 @@ type Props = {
   route: RouteProp<RootStackParamList, 'Forward'>;
 };
 
-interface Chat {
-  chatID: string;
-  name: string;
-  type: 'private' | 'group';
-  avatar?: string;
-  members: { userID: string; role: string }[];
-  lastMessage: any[];
-}
-
 interface Message {
   messageID?: string;
   content?: string;
@@ -38,9 +29,15 @@ interface User {
   anhDaiDien?: string;
 }
 
+interface ChatMember {
+  userID: string;
+  name: string;
+  anhDaiDien?: string;
+}
+
 const ForwardScreen = ({ navigation, route }: Props) => {
   const { message, chatID } = route.params as { message: Message; chatID: string };
-  const [chats, setChats] = useState<Chat[]>([]);
+  const [members, setMembers] = useState<ChatMember[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [forwarding, setForwarding] = useState(false);
@@ -55,7 +52,8 @@ const ForwardScreen = ({ navigation, route }: Props) => {
       if (stored) {
         const u = JSON.parse(stored);
         setUser(u);
-        socket.emit('getChat', u.userID);
+        // Lấy thông tin các thành viên trong chat hiện tại
+        fetchChatMembers(chatID, u.userID);
       }
     } catch (err) {
       console.error('Load data error:', err);
@@ -64,18 +62,27 @@ const ForwardScreen = ({ navigation, route }: Props) => {
     }
   };
 
-  useEffect(() => {
-    const handleChatList = (data: Chat[]) => {
-      // Filter out current chat
-      const filtered = data.filter((c) => c.chatID !== chatID);
-      setChats(filtered);
-    };
+  const fetchChatMembers = async (chatId: string, currentUserId: string) => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/chat/${chatId}/members`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    socket.on('ChatByUserID', handleChatList);
-    return () => socket.off('ChatByUserID', handleChatList);
-  }, [chatID]);
+      if (response.ok) {
+        const data = await response.json();
+        // Lọc bỏ chính mình ra khỏi danh sách
+        const filteredMembers = data.members.filter((m: ChatMember) => m.userID !== currentUserId);
+        setMembers(filteredMembers);
+      }
+    } catch (err) {
+      console.error('Fetch members error:', err);
+    }
+  };
 
-  const handleForward = async (targetChat: Chat) => {
+  const handleForward = async (targetMember: ChatMember) => {
     if (!message.messageID || !user?.userID) {
       Alert.alert('Lỗi', 'Không thể chuyển tiếp tin nhắn này');
       return;
@@ -83,18 +90,38 @@ const ForwardScreen = ({ navigation, route }: Props) => {
 
     setForwarding(true);
     try {
-      socket.emit('forward_message', {
-        originalMessageID: message.messageID,
-        targetChatID: targetChat.chatID,
-        senderID: user.userID,
-        senderInfo: {
-          name: user.name,
-          avatar: user.anhDaiDien || null,
+      // Tìm hoặc tạo chat riêng với thành viên này
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/createChat1-1`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({
+          userID2: targetMember.userID,
+        }),
       });
 
-      Alert.alert('Thành công', `Tin nhắn đã được chuyển tiếp tới ${targetChat.name}`);
-      navigation.goBack();
+      if (response.ok) {
+        const chatData = await response.json();
+        const targetChatID = chatData.chatID;
+        
+        socket.emit('forward_message', {
+          originalMessageID: message.messageID,
+          targetChatID,
+          senderID: user.userID,
+          senderInfo: {
+            name: user.name,
+            avatar: user.anhDaiDien || null,
+          },
+        });
+
+        Alert.alert('Thành công', `Tin nhắn đã được chuyển tiếp tới ${targetMember.name}`);
+        navigation.goBack();
+      } else {
+        Alert.alert('Lỗi', 'Không thể tạo cuộc trò chuyện');
+      }
     } catch (err) {
       Alert.alert('Lỗi', 'Không thể chuyển tiếp tin nhắn');
       console.error('Forward error:', err);
@@ -139,8 +166,8 @@ const ForwardScreen = ({ navigation, route }: Props) => {
 
       {/* Chat List */}
       <FlatList
-        data={chats}
-        keyExtractor={(item) => item.chatID}
+        data={members}
+        keyExtractor={(item) => item.userID}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.chatItem}
@@ -149,14 +176,12 @@ const ForwardScreen = ({ navigation, route }: Props) => {
             activeOpacity={0.7}
           >
             <Image
-              source={{ uri: item.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${item.chatID}` }}
+              source={{ uri: item.anhDaiDien || `https://api.dicebear.com/7.x/identicon/svg?seed=${item.userID}` }}
               style={styles.avatar}
             />
             <View style={styles.chatInfo}>
               <Text style={styles.chatName}>{item.name}</Text>
-              <Text style={styles.chatType}>
-                {item.type === 'private' ? 'Tin nhắn riêng' : 'Nhóm'}
-              </Text>
+              <Text style={styles.chatType}>Thành viên trong nhóm</Text>
             </View>
             {forwarding && (
               <ActivityIndicator size="small" color="#0e9de8" />
@@ -165,7 +190,7 @@ const ForwardScreen = ({ navigation, route }: Props) => {
         )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Không có cuộc trò chuyện nào</Text>
+            <Text style={styles.emptyText}>Không có thành viên nào khác trong nhóm</Text>
           </View>
         }
         contentContainerStyle={styles.listContent}

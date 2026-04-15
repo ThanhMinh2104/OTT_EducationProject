@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, Image,
-  TextInput, Modal, Alert, ActivityIndicator, Linking,
+  TextInput, Modal, Alert, ActivityIndicator, Linking, ScrollView, Clipboard,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -41,6 +41,7 @@ interface Message {
   status?: string;
   senderInfo?: { name: string; avatar?: string | null };
   replyTo?: { messageID?: string; senderID?: string; content?: string; type?: string } | null;
+  pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
 }
 
 interface Chat {
@@ -134,6 +135,17 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
 
   // Chat info panel state
   const [showChatInfo, setShowChatInfo] = useState(false);
+  
+  // Pinned messages states
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
+  const [showPinnedList, setShowPinnedList] = useState(false);
+  
+  // Forward message states
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [selectedChatsForForward, setSelectedChatsForForward] = useState<string[]>([]);
 
   // Audio recording states
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -296,12 +308,39 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
       setTypingUsers(prev => prev.filter(u => u.userID !== uid));
     };
 
+    const onGhimNotification = (updated: Message) => {
+      console.log("📌 Received ghim_notification:", updated);
+      if (updated.chatID === chatID) {
+        setMessages((prev) =>
+          prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m))
+        );
+        setPinnedMessages((prev) => {
+          const exists = prev.find((m) => m.messageID === updated.messageID);
+          return exists
+            ? prev.map((m) => (m.messageID === updated.messageID ? updated : m))
+            : [...prev, updated];
+        });
+      }
+    };
+
+    const onUnghimNotification = (updated: Message) => {
+      console.log("📌 Received unghim_notification:", updated);
+      if (updated.chatID === chatID) {
+        setMessages((prev) =>
+          prev.map((m) => (m.messageID === updated.messageID ? { ...m, pinnedInfo: null } : m))
+        );
+        setPinnedMessages((prev) => prev.filter((m) => m.messageID !== updated.messageID));
+      }
+    };
+
     socket.on('new_message', onNewMessage);
     socket.on(chatID, onNewMessage);
     socket.on('unsend_notification', onUnsend);
     socket.on('message_deleted_local', onDeletedLocal);
     socket.on('typing_start', onTypingStart);
     socket.on('typing_stop', onTypingStop);
+    socket.on('ghim_notification', onGhimNotification);
+    socket.on('unghim_notification', onUnghimNotification);
 
     return () => {
       socket.off('new_message', onNewMessage);
@@ -310,6 +349,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
       socket.off('message_deleted_local', onDeletedLocal);
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
+      socket.off('ghim_notification', onGhimNotification);
+      socket.off('unghim_notification', onUnghimNotification);
       setTypingUsers([]);
     };
   }, [selectedChat?.chatID, user?.userID]);
@@ -317,6 +358,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
     setMessages(chat.lastMessage || []);
+    setPinnedMessages(
+      (chat.lastMessage || []).filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
+    );
     setReplyTo(null);
     setInputText('');
     onChatOpen?.(); // ẩn tab bar
@@ -346,6 +390,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
           return true;
         });
         setMessages(deduped);
+        setPinnedMessages(deduped.filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy));
       }
     } catch { /* fallback to lastMessage */ }
   };
@@ -604,9 +649,61 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
   };
 
   const handleForwardMessage = (msg: Message) => {
-    if (!msg.messageID) { Alert.alert('Lỗi', 'Không thể chuyển tiếp tin nhắn này'); return; }
+    if (!msg.messageID) { 
+      Alert.alert('Lỗi', 'Không thể chuyển tiếp tin nhắn này'); 
+      return; 
+    }
+    setForwardingMessage(msg);
+    setSelectedChatsForForward([]);
     setShowMenu(false);
-    navigation.navigate('Forward', { message: msg, chatID: selectedChat!.chatID });
+    setShowForwardModal(true);
+  };
+
+  const handleForwardSubmit = async () => {
+    if (!forwardingMessage || !user || selectedChatsForForward.length === 0) {
+      Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một cuộc trò chuyện');
+      return;
+    }
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      
+      for (const targetChatID of selectedChatsForForward) {
+        const forwardData = {
+          originalMessageID: forwardingMessage.messageID,
+          targetChatID,
+          senderID: user.userID,
+          content: forwardingMessage.content || '',
+          type: forwardingMessage.type,
+          media_url: forwardingMessage.media_url || [],
+        };
+
+        await fetch(`${API_URL}/api/messages/forward`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(forwardData),
+        });
+      }
+
+      Alert.alert('Thành công', `Đã chuyển tiếp tin nhắn đến ${selectedChatsForForward.length} cuộc trò chuyện`);
+      setShowForwardModal(false);
+      setForwardingMessage(null);
+      setSelectedChatsForForward([]);
+    } catch (error) {
+      console.error('Forward error:', error);
+      Alert.alert('Lỗi', 'Không thể chuyển tiếp tin nhắn');
+    }
+  };
+
+  const toggleChatSelection = (chatID: string) => {
+    setSelectedChatsForForward(prev =>
+      prev.includes(chatID)
+        ? prev.filter(id => id !== chatID)
+        : [...prev, chatID]
+    );
   };
 
   const startCall = (type: 'voice' | 'video') => {
@@ -617,6 +714,45 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
   const handleLongPress = (msg: Message) => {
     setSelectedMessage(msg);
     setShowMenu(true);
+  };
+
+  const handleMoveToTop = (msg: Message) => {
+    if (!msg.messageID || !selectedChat) return;
+    // Bỏ ghim rồi ghim lại để đưa lên đầu
+    socket.emit("unghim_message", { messageID: msg.messageID, chatID: selectedChat.chatID });
+    setTimeout(() => {
+      socket.emit("ghim_message", {
+        messageID: msg.messageID,
+        chatID: selectedChat.chatID,
+        senderID: user!.userID,
+      });
+    }, 100);
+    setPinnedMenuId(null);
+    Alert.alert("Thành công", "Đã đưa lên đầu");
+  };
+
+  const handleCopyPinned = (msg: Message) => {
+    if (msg.content) {
+      Clipboard.setString(msg.content);
+      Alert.alert("Thành công", "Đã sao chép");
+    }
+    setPinnedMenuId(null);
+  };
+
+  const handleUnpinFromMenu = (msg: Message) => {
+    if (!msg.messageID || !selectedChat) return;
+    socket.emit("unghim_message", { messageID: msg.messageID, chatID: selectedChat.chatID });
+    setPinnedMenuId(null);
+    Alert.alert("Thành công", "Đã bỏ ghim");
+  };
+
+  const scrollToMessage = (messageID?: string) => {
+    if (!messageID) return;
+    const index = messages.findIndex((m) => m.messageID === messageID);
+    if (index !== -1 && flatListRef.current) {
+      flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      setShowInfoPanel(false);
+    }
   };
 
   const renderMessage = (item: Message) => {
@@ -743,7 +879,16 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
       }
       // Text
       return (
-        <View style={[styles.messageBubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
+        <View style={[
+          styles.messageBubble,
+          isMine ? styles.bubbleMine : styles.bubbleOther,
+          item.pinnedInfo && styles.bubblePinned
+        ]}>
+          {item.pinnedInfo && (
+            <View style={styles.pinnedIndicator}>
+              <Text style={styles.pinnedIndicatorText}>📌 Đã ghim</Text>
+            </View>
+          )}
           {item.replyTo && (
             <View style={[styles.replyInBubble, isMine ? styles.replyInBubbleMine : styles.replyInBubbleOther]}>
               <Text style={[styles.replyInBubbleText, isMine && { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={1}>
@@ -912,10 +1057,104 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => startCall('video')}>
           <Ionicons name="videocam-outline" size={22} color="#fff" />
         </TouchableOpacity>
+        <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowInfoPanel(true)}>
+          <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowChatInfo(true)}>
           <Ionicons name="menu-outline" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
+
+      {/* Pinned Messages Banner */}
+      {pinnedMessages.length > 0 && (
+        <View style={styles.pinnedBanner}>
+          <TouchableOpacity
+            style={styles.pinnedBannerHeader}
+            onPress={() => setShowPinnedList(!showPinnedList)}
+          >
+            <View style={styles.pinnedBannerLeft}>
+              <Ionicons name="pin" size={16} color="#0068ff" />
+              <Text style={styles.pinnedBannerTitle}>
+                Danh sách ghim ({pinnedMessages.length})
+              </Text>
+            </View>
+            <Ionicons
+              name={showPinnedList ? "chevron-up" : "chevron-down"}
+              size={20}
+              color="#666"
+            />
+          </TouchableOpacity>
+
+          {/* Expanded list */}
+          {showPinnedList && (
+            <View style={styles.pinnedBannerList}>
+              {pinnedMessages.map((item, idx) => (
+                <View key={item.messageID || item.tempID} style={styles.pinnedBannerItem}>
+                  <TouchableOpacity
+                    style={styles.pinnedBannerItemContent}
+                    onPress={() => {
+                      scrollToMessage(item.messageID);
+                      setShowPinnedList(false);
+                    }}
+                  >
+                    <Ionicons name="pin" size={14} color="#0068ff" />
+                    <View style={styles.pinnedBannerItemText}>
+                      <Text style={styles.pinnedBannerItemSender}>
+                        {item.senderInfo?.name || "Unknown"}
+                      </Text>
+                      <Text style={styles.pinnedBannerItemMessage} numberOfLines={1}>
+                        {item.content || "[Media]"}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Menu 3 chấm */}
+                  <TouchableOpacity
+                    style={styles.pinnedBannerItemMenu}
+                    onPress={() => setPinnedMenuId(pinnedMenuId === item.messageID ? null : item.messageID || null)}
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={18} color="#999" />
+                  </TouchableOpacity>
+
+                  {/* Dropdown menu */}
+                  {pinnedMenuId === item.messageID && (
+                    <View style={[
+                      styles.pinnedBannerDropdown,
+                      idx >= pinnedMessages.length - 1 && styles.pinnedBannerDropdownTop
+                    ]}>
+                      <TouchableOpacity
+                        style={styles.pinnedBannerDropdownItem}
+                        onPress={() => handleMoveToTop(item)}
+                      >
+                        <Ionicons name="arrow-up-outline" size={16} color="#333" />
+                        <Text style={styles.pinnedBannerDropdownText}>Đưa lên đầu</Text>
+                      </TouchableOpacity>
+
+                      {(item.type === "text" || item.type === "emoji") && (
+                        <TouchableOpacity
+                          style={styles.pinnedBannerDropdownItem}
+                          onPress={() => handleCopyPinned(item)}
+                        >
+                          <Ionicons name="copy-outline" size={16} color="#333" />
+                          <Text style={styles.pinnedBannerDropdownText}>Sao chép</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      <TouchableOpacity
+                        style={styles.pinnedBannerDropdownItem}
+                        onPress={() => handleUnpinFromMenu(item)}
+                      >
+                        <Ionicons name="close-circle-outline" size={16} color="#f44336" />
+                        <Text style={[styles.pinnedBannerDropdownText, { color: "#f44336" }]}>Bỏ ghim</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Messages */}
       <FlatList
@@ -1075,6 +1314,49 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
             }}>
               <Text style={styles.menuItemText}>↩️ Trả lời</Text>
             </TouchableOpacity>
+            
+            {/* Nút Ghim tin nhắn */}
+            {selectedMessage?.messageID && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  if (!selectedMessage.messageID || !user || !selectedChat) {
+                    setShowMenu(false);
+                    return;
+                  }
+                  
+                  if (selectedMessage.pinnedInfo) {
+                    // Bỏ ghim
+                    socket.emit("unghim_message", {
+                      messageID: selectedMessage.messageID,
+                      chatID: selectedChat.chatID,
+                    });
+                    Alert.alert("Thành công", "Đã bỏ ghim tin nhắn");
+                  } else {
+                    // Kiểm tra giới hạn 3 tin nhắn ghim
+                    const pinnedCount = messages.filter((m) => m.pinnedInfo).length;
+                    if (pinnedCount >= 3) {
+                      Alert.alert("Thông báo", "Chỉ có thể ghim tối đa 3 tin nhắn");
+                      setShowMenu(false);
+                      return;
+                    }
+                    // Ghim tin nhắn
+                    socket.emit("ghim_message", {
+                      messageID: selectedMessage.messageID,
+                      chatID: selectedChat.chatID,
+                      senderID: user.userID,
+                    });
+                    Alert.alert("Thành công", "Đã ghim tin nhắn");
+                  }
+                  setShowMenu(false);
+                }}
+              >
+                <Text style={styles.menuItemText}>
+                  {selectedMessage?.pinnedInfo ? "📌 Bỏ ghim" : "📌 Ghim tin nhắn"}
+                </Text>
+              </TouchableOpacity>
+            )}
+            
             {selectedMessage?.senderID === user?.userID && (
               <TouchableOpacity style={styles.menuItem} onPress={() => handleUnsend(selectedMessage!)}>
                 <Text style={[styles.menuItemText, { color: '#ff3b30' }]}>🔄 Thu hồi</Text>
@@ -1150,6 +1432,216 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
         videoUrl={selectedVideo}
         onClose={() => setVideoViewerVisible(false)}
       />
+
+      {/* Info Panel Modal - Danh sách ghim */}
+      <Modal
+        transparent
+        visible={showInfoPanel}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowInfoPanel(false);
+          setPinnedMenuId(null);
+        }}
+      >
+        <View style={styles.infoPanelOverlay}>
+          <TouchableOpacity
+            style={styles.infoPanelBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              setShowInfoPanel(false);
+              setPinnedMenuId(null);
+            }}
+          />
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setPinnedMenuId(null)}
+            style={styles.infoPanelContainer}
+          >
+            {/* Header */}
+            <View style={styles.infoPanelHeader}>
+              <TouchableOpacity onPress={() => {
+                setShowInfoPanel(false);
+                setPinnedMenuId(null);
+              }}>
+                <Ionicons name="close" size={28} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.infoPanelContent}>
+              {/* Nhắc hẹn sắp tới */}
+              <View style={styles.infoPanelSection}>
+                <Text style={styles.infoPanelSectionTitle}>Nhắc hẹn sắp tới</Text>
+                <View style={styles.infoPanelEmptyBox}>
+                  <Text style={styles.infoPanelEmptyText}>Chưa có nhắc hẹn nào</Text>
+                </View>
+              </View>
+
+              {/* Danh sách ghim */}
+              <View style={styles.infoPanelSection}>
+                <Text style={styles.infoPanelSectionTitle}>Danh sách ghim</Text>
+                {pinnedMessages.length === 0 ? (
+                  <View style={styles.infoPanelEmptyBox}>
+                    <Text style={styles.infoPanelEmptyText}>Chưa có tin nhắn ghim</Text>
+                  </View>
+                ) : (
+                  <View style={styles.pinnedListInPanel}>
+                    {pinnedMessages.map((item, idx) => (
+                      <View key={item.messageID || item.tempID} style={styles.pinnedItemInPanel}>
+                        <TouchableOpacity
+                          style={styles.pinnedItemContent}
+                          onPress={() => {
+                            scrollToMessage(item.messageID);
+                            setShowInfoPanel(false);
+                          }}
+                        >
+                          <Ionicons name="chatbox-outline" size={20} color="#0e9de8" />
+                          <View style={styles.pinnedItemTextContainer}>
+                            <Text style={styles.pinnedItemSender}>
+                              {item.senderInfo?.name || "Unknown"}
+                            </Text>
+                            <Text style={styles.pinnedItemContent2} numberOfLines={2}>
+                              {item.content || "Media"}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        
+                        {/* Menu 3 chấm */}
+                   
+
+                        {/* Dropdown menu */}
+                        {pinnedMenuId === item.messageID && (
+                          <View style={[
+                            styles.pinnedItemDropdown,
+                            idx >= pinnedMessages.length - 1 && styles.pinnedItemDropdownTop
+                          ]}>
+                            <TouchableOpacity
+                              style={styles.pinnedItemDropdownItem}
+                              onPress={() => handleMoveToTop(item)}
+                            >
+                              <Ionicons name="arrow-up-outline" size={18} color="#333" />
+                              <Text style={styles.pinnedItemDropdownText}>Đưa lên đầu</Text>
+                            </TouchableOpacity>
+                            
+                            {(item.type === "text" || item.type === "emoji") && (
+                              <TouchableOpacity
+                                style={styles.pinnedItemDropdownItem}
+                                onPress={() => handleCopyPinned(item)}
+                              >
+                                <Ionicons name="copy-outline" size={18} color="#333" />
+                                <Text style={styles.pinnedItemDropdownText}>Sao chép</Text>
+                              </TouchableOpacity>
+                            )}
+                            
+                            <TouchableOpacity
+                              style={styles.pinnedItemDropdownItem}
+                              onPress={() => handleUnpinFromMenu(item)}
+                            >
+                              <Ionicons name="close-circle-outline" size={18} color="#f44336" />
+                              <Text style={[styles.pinnedItemDropdownText, { color: "#f44336" }]}>Bỏ ghim</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+
+            {/* Footer buttons */}
+            
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* Forward Message Modal */}
+      <Modal
+        transparent
+        visible={showForwardModal}
+        animationType="slide"
+        onRequestClose={() => setShowForwardModal(false)}
+      >
+        <View style={styles.forwardModalOverlay}>
+          <View style={styles.forwardModalContainer}>
+            {/* Header */}
+            <View style={styles.forwardModalHeader}>
+              <TouchableOpacity onPress={() => setShowForwardModal(false)}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.forwardModalTitle}>Chuyển tiếp tới</Text>
+              <View style={{ width: 24 }} />
+            </View>
+
+            {/* Message Preview */}
+            {forwardingMessage && (
+              <View style={styles.forwardMessagePreview}>
+                <Text style={styles.forwardPreviewLabel}>Tin nhắn gốc:</Text>
+                <View style={styles.forwardPreviewBox}>
+                  <Text style={styles.forwardPreviewText} numberOfLines={2}>
+                    {forwardingMessage.content || '[Media]'}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Chat List */}
+            <FlatList
+              data={chats.filter(c => c.chatID !== selectedChat?.chatID)}
+              keyExtractor={item => item.chatID}
+              renderItem={({ item }) => {
+                const isSelected = selectedChatsForForward.includes(item.chatID);
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.forwardChatItem,
+                      isSelected && styles.forwardChatItemSelected
+                    ]}
+                    onPress={() => toggleChatSelection(item.chatID)}
+                  >
+                    <Image
+                      source={{ uri: getChatAvatar(item) }}
+                      style={styles.forwardChatAvatar}
+                    />
+                    <View style={styles.forwardChatInfo}>
+                      <Text style={styles.forwardChatName} numberOfLines={1}>
+                        {getChatDisplayName(item)}
+                      </Text>
+                      <Text style={styles.forwardChatSubtext} numberOfLines={1}>
+                        {item.type === 'group' ? 'Nhóm' : 'Tin nhắn riêng'}
+                      </Text>
+                    </View>
+                    {isSelected && (
+                      <Ionicons name="checkmark-circle" size={24} color="#0068ff" />
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={styles.forwardEmptyState}>
+                  <Text style={styles.forwardEmptyText}>Không có cuộc trò chuyện nào</Text>
+                </View>
+              }
+            />
+
+            {/* Footer */}
+            <View style={styles.forwardModalFooter}>
+              <Text style={styles.forwardSelectedCount}>
+                Đã chọn: {selectedChatsForForward.length}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.forwardSubmitBtn,
+                  selectedChatsForForward.length === 0 && styles.forwardSubmitBtnDisabled
+                ]}
+                onPress={handleForwardSubmit}
+                disabled={selectedChatsForForward.length === 0}
+              >
+                <Text style={styles.forwardSubmitBtnText}>Chuyển tiếp</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Chat Info Panel */}
       {selectedChat && (
@@ -1254,6 +1746,18 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
+  },
+  bubblePinned: {
+    borderWidth: 2,
+    borderColor: '#0e9de8',
+  },
+  pinnedIndicator: {
+    marginBottom: 4,
+  },
+  pinnedIndicatorText: {
+    fontSize: 11,
+    color: '#0e9de8',
+    fontWeight: '600',
   },
   bubbleUnsent: {
     backgroundColor: 'transparent',
@@ -1473,6 +1977,351 @@ const styles = StyleSheet.create({
   },
   menuItem: { paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#f0f0f0' },
   menuItemText: { fontSize: 16, color: '#111', fontWeight: '500' },
+
+  // Pinned Messages Banner
+  pinnedBanner: {
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  pinnedBannerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  pinnedBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  pinnedBannerTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0068ff",
+  },
+  pinnedBannerList: {
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+  },
+  pinnedBannerItem: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f0f0f0",
+  },
+  pinnedBannerItemContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingRight: 30,
+  },
+  pinnedBannerItemText: {
+    flex: 1,
+  },
+  pinnedBannerItemSender: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#0068ff",
+    marginBottom: 2,
+  },
+  pinnedBannerItemMessage: {
+    fontSize: 13,
+    color: "#333",
+  },
+  pinnedBannerItemMenu: {
+    padding: 4,
+  },
+  pinnedBannerDropdown: {
+    position: "absolute",
+    top: 40,
+    right: 14,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    minWidth: 150,
+    zIndex: 1000,
+  },
+  pinnedBannerDropdownTop: {
+    top: "auto",
+    bottom: 40,
+  },
+  pinnedBannerDropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f0f0f0",
+  },
+  pinnedBannerDropdownText: {
+    fontSize: 13,
+    color: "#333",
+  },
+
+  // Info Panel
+  infoPanelOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  infoPanelBackdrop: {
+    flex: 1,
+  },
+  infoPanelContainer: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "80%",
+    overflow: "hidden",
+  },
+  infoPanelHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  infoPanelContent: {
+    flex: 1,
+  },
+  infoPanelSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 8,
+    borderBottomColor: "#f5f5f5",
+  },
+  infoPanelSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1a1a1a",
+    marginBottom: 12,
+  },
+  infoPanelEmptyBox: {
+    backgroundColor: "#f9f9f9",
+    borderRadius: 8,
+    paddingVertical: 24,
+    alignItems: "center",
+  },
+  infoPanelEmptyText: {
+    fontSize: 14,
+    color: "#999",
+  },
+  pinnedListInPanel: {
+    gap: 8,
+  },
+  pinnedItemInPanel: {
+    position: "relative",
+    backgroundColor: "#f9f9f9",
+    borderRadius: 8,
+    padding: 12,
+  },
+  pinnedItemContent: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    flex: 1,
+    paddingRight: 30,
+  },
+  pinnedItemTextContainer: {
+    flex: 1,
+  },
+  pinnedItemSender: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0e9de8",
+    marginBottom: 4,
+  },
+  pinnedItemContent2: {
+    fontSize: 13,
+    color: "#424242",
+  },
+  pinnedItemMenuBtn: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    padding: 4,
+  },
+  pinnedItemDropdown: {
+    position: "absolute",
+    top: 40,
+    right: 12,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    minWidth: 160,
+    zIndex: 1000,
+  },
+  pinnedItemDropdownTop: {
+    top: "auto",
+    bottom: 40,
+  },
+  pinnedItemDropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  pinnedItemDropdownText: {
+    fontSize: 14,
+    color: "#333",
+  },
+  infoPanelFooter: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  infoPanelFooterBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    gap: 6,
+    borderRightWidth: 1,
+    borderRightColor: "#eee",
+  },
+  infoPanelFooterBtnText: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "500",
+  },
+
+  // Forward Modal
+  forwardModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  forwardModalContainer: {
+    flex: 1,
+    backgroundColor: "#fff",
+    marginTop: 50,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  forwardModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0068ff",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  forwardModalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  forwardMessagePreview: {
+    padding: 16,
+    backgroundColor: "#f5f5f5",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  forwardPreviewLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 6,
+  },
+  forwardPreviewBox: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: "#0068ff",
+  },
+  forwardPreviewText: {
+    fontSize: 14,
+    color: "#333",
+  },
+  forwardChatItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e8e8e8",
+  },
+  forwardChatItemSelected: {
+    backgroundColor: "#e3f2fd",
+  },
+  forwardChatAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  forwardChatInfo: {
+    flex: 1,
+  },
+  forwardChatName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111",
+    marginBottom: 3,
+  },
+  forwardChatSubtext: {
+    fontSize: 13,
+    color: "#888",
+  },
+  forwardEmptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 60,
+  },
+  forwardEmptyText: {
+    fontSize: 15,
+    color: "#aaa",
+  },
+  forwardModalFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e0e0e0",
+    backgroundColor: "#fff",
+  },
+  forwardSelectedCount: {
+    fontSize: 14,
+    color: "#666",
+  },
+  forwardSubmitBtn: {
+    backgroundColor: "#0068ff",
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  forwardSubmitBtnDisabled: {
+    backgroundColor: "#ccc",
+  },
+  forwardSubmitBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
 });
 
 export default ChatScreenEnhanced;
