@@ -25,6 +25,8 @@ type Props = {
   navigation: StackNavigationProp<RootStackParamList, any>;
   onChatOpen?: () => void;
   onChatClose?: () => void;
+  initialChat?: Chat | null;
+  onChatOpened?: () => void;
 };
 
 interface Message {
@@ -108,7 +110,7 @@ const getFileColor = (name: string) => {
   return '#8e8e93';
 };
 
-const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
+const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, onChatOpened }: Props) => {
   const [user, setUser] = useState<User | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
@@ -201,6 +203,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose }: Props) => {
       socket.off('call-cancelled');
     };
   }, [navigation]);
+
+  // Xử lý khi nhận initialChat từ ContactsPanel
+  useEffect(() => {
+    if (initialChat && user) {
+      handleSelectChat(initialChat);
+      onChatOpened?.();
+    }
+  }, [initialChat, user]);
 
   const fetchMember = async (memberID: string) => {
     if (memberCache[memberID]) return;
