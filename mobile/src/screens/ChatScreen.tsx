@@ -22,7 +22,10 @@ import socket from "../utils/socket";
 import StickerEmojiPicker from "../components/StickerEmojiPicker";
 import AudioPlayer from "../components/AudioPlayer";
 
-type Props = { navigation: StackNavigationProp<RootStackParamList, "Chat"> };
+type Props = { 
+  navigation: StackNavigationProp<RootStackParamList, "Chat">;
+  route: { params?: { selectedChat?: Chat } };
+};
 
 interface Message {
   messageID?: string;
@@ -53,7 +56,7 @@ interface User {
   anhDaiDien?: string;
 }
 
-const ChatScreen = ({ navigation }: Props) => {
+const ChatScreen = ({ navigation, route }: Props) => {
   const [user, setUser] = useState<User | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
@@ -65,6 +68,19 @@ const ChatScreen = ({ navigation }: Props) => {
   const [isUploading, setIsUploading] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const flatListRef = useRef<FlatList>(null);
+
+  // Nhận selectedChat từ navigation params (từ ContactsScreen)
+  useEffect(() => {
+    if (route.params?.selectedChat) {
+      const chat = route.params.selectedChat;
+      setSelectedChat(chat);
+      setMessages(chat.lastMessage || []);
+      if (user) {
+        socket.emit("join_chat", chat.chatID);
+        socket.emit("read_messages", { chatID: chat.chatID, userID: user.userID });
+      }
+    }
+  }, [route.params?.selectedChat, user]);
 
   useEffect(() => {
     (async () => {
@@ -299,7 +315,15 @@ const ChatScreen = ({ navigation }: Props) => {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setSelectedChat(null)}>
+        <TouchableOpacity onPress={() => {
+          // Nếu được navigate từ ContactsPanel (có params), quay lại
+          if (route.params?.selectedChat) {
+            navigation.goBack();
+          } else {
+            // Nếu chọn từ danh sách chat trong screen này, chỉ clear selection
+            setSelectedChat(null);
+          }
+        }}>
           <Text style={styles.backBtn}>← Quay lại</Text>
         </TouchableOpacity>
         <Text style={styles.chatTitle}>{selectedChat.name}</Text>

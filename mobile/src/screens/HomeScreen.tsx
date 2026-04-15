@@ -34,6 +34,7 @@ const HomeScreen = ({ navigation }: Props) => {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatToOpen, setChatToOpen] = useState<any>(null);
 
   useEffect(() => {
     (async () => {
@@ -98,7 +99,8 @@ const HomeScreen = ({ navigation }: Props) => {
   };
 
   const handleStartChat = (chat: any) => {
-    // Khi ContactsPanel mở chat, chuyển sang tab chat
+    // Chuyển sang tab chat và mở chat với người đó
+    setChatToOpen(chat);
     setActiveTab("chat");
   };
 
@@ -118,6 +120,8 @@ const HomeScreen = ({ navigation }: Props) => {
             navigation={navigation as any}
             onChatOpen={() => setIsChatOpen(true)}
             onChatClose={() => setIsChatOpen(false)}
+            initialChat={chatToOpen}
+            onChatOpened={() => setChatToOpen(null)}
           />
         </View>
 
