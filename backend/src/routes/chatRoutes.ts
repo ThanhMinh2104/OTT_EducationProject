@@ -439,7 +439,7 @@ export default function chatRoutes(io: Server) {
       const historyDeletedAt = currentMember?.historyDeletedAt;
       
       // Lấy messages, filter theo historyDeletedAt nếu có
-      const query: any = { chatID };
+      const query: any = { chatID, deletedFor: { $ne: userID } };
       if (historyDeletedAt) {
         query.timestamp = { $gt: historyDeletedAt.toISOString() };
       }

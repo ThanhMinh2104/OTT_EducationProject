@@ -11,6 +11,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { API_URL } from '../utils/config';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = { navigation: StackNavigationProp<RootStackParamList, 'ForgotPassword'> };
 
@@ -18,6 +19,7 @@ const isPhone = (v: string) => /^(0[35789])[0-9]{8}$/.test(v);
 const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 const ForgotPasswordScreen = ({ navigation }: Props) => {
+  const insets = useSafeAreaInsets();
   const [identity, setIdentity] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -73,7 +75,7 @@ const ForgotPasswordScreen = ({ navigation }: Props) => {
       <StatusBar barStyle="light-content" backgroundColor="#2572e9" />
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <LinearGradient colors={['#60aef8', '#3b90f4', '#2572e9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.headerGradient}>
+          <LinearGradient colors={['#60aef8', '#3b90f4', '#2572e9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}>
             <View style={styles.circle1} />
             <View style={styles.circle2} />
             <View style={styles.circle3} />
@@ -158,7 +160,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f7ff' },
   scrollContent: { flexGrow: 1 },
   headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingTop: 20,
     paddingBottom: 60,
     paddingHorizontal: 24,
     alignItems: 'center',

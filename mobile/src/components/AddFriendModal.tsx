@@ -6,6 +6,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../utils/config';
 import socket from '../utils/socket';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface FoundUser {
   userID: string;
@@ -25,6 +26,7 @@ interface Props {
 type Step = 'search' | 'profile';
 
 const AddFriendModal = ({ visible, onClose, currentUser, onStartChat }: Props) => {
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>('search');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -206,7 +208,7 @@ const AddFriendModal = ({ visible, onClose, currentUser, onStartChat }: Props) =
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
       <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           {step === 'profile' ? (
             <TouchableOpacity onPress={() => setStep('search')}>
               <Text style={styles.backBtn}>← Quay lại</Text>

@@ -21,6 +21,7 @@ import axios from "axios";
 import { API_URL } from "../utils/config";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Props = {
   navigation: StackNavigationProp<RootStackParamList, "VerifyOtp">;
@@ -28,6 +29,7 @@ type Props = {
 };
 
 const VerifyOtpDK = ({ navigation }: Props) => {
+  const insets = useSafeAreaInsets();
   const [otp, setOtp] = useState("");
   const [email, setEmail] = useState("");
   const [sdt, setSdt] = useState("");
@@ -151,7 +153,7 @@ const VerifyOtpDK = ({ navigation }: Props) => {
             colors={["#60aef8", "#3b90f4", "#2572e9"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
+            style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
           >
             <View style={styles.circle1} />
             <View style={styles.circle2} />
@@ -305,7 +307,7 @@ const styles = StyleSheet.create({
 
   // ── Header gradient ──
   headerGradient: {
-    paddingTop: Platform.OS === "ios" ? 60 : 50,
+    paddingTop: 20,
     paddingBottom: 60,
     paddingHorizontal: 24,
     alignItems: "center",

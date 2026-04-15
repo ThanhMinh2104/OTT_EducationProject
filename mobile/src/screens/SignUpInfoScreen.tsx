@@ -21,6 +21,7 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 import { API_URL } from "../utils/config";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const validateName = (name: string) =>
   /^([A-ZÀ-Ỵ][a-zà-ỹ]*)(\s[A-ZÀ-Ỵ][a-zà-ỹ]*)+$/.test(name);
@@ -45,6 +46,7 @@ type Props = {
 };
 
 const SignUpInfoScreen = ({ navigation, route }: Props) => {
+  const insets = useSafeAreaInsets();
   const { email, sdt } = route.params;
   const [name, setName] = useState("");
   const [birthDate, setBirthDate] = useState<Date | null>(null);
@@ -178,7 +180,7 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
             colors={["#60aef8", "#3b90f4", "#2572e9"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
+            style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
           >
             <View style={styles.circle1} />
             <View style={styles.circle2} />
@@ -763,7 +765,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f0f7ff" },
   scrollContent: { flexGrow: 1 },
   headerGradient: {
-    paddingTop: Platform.OS === "ios" ? 60 : 50,
+    paddingTop: 20,
     paddingBottom: 60,
     paddingHorizontal: 24,
     alignItems: "center",

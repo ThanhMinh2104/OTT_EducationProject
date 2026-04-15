@@ -21,6 +21,7 @@ import { RootStackParamList } from "../navigation/AppNavigator";
 import { API_URL } from "../utils/config";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const socket = io(API_URL);
 
@@ -33,6 +34,7 @@ type Props = { navigation: StackNavigationProp<RootStackParamList, "Login"> };
 const { width } = Dimensions.get("window");
 
 const LoginPassword = ({ navigation }: Props) => {
+  const insets = useSafeAreaInsets();
   const [sdt, setSDT] = useState("");
   const [matKhau, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +126,7 @@ const LoginPassword = ({ navigation }: Props) => {
             colors={["#60aef8", "#3b90f4", "#2572e9"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
+            style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
           >
             {/* Decorative circles */}
             <View style={styles.circle1} />
@@ -307,7 +309,7 @@ const styles = StyleSheet.create({
 
   // ── Header gradient ──
   headerGradient: {
-    paddingTop: Platform.OS === "ios" ? 60 : 50,
+    paddingTop: 20,
     paddingBottom: 60,
     paddingHorizontal: 24,
     alignItems: "center",
