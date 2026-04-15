@@ -513,6 +513,32 @@ export default function chatRoutes(io: Server) {
     }
   });
 
+  // Lấy danh sách thành viên trong chat
+  router.get('/chat/:chatID/members', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { chatID } = req.params;
+      const userID = req.userID!;
+      
+      // Kiểm tra user có trong chat không
+      const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
+      if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
+      
+      // Lấy thông tin chi tiết của các thành viên
+      const memberIDs = memberDoc.members.map((m) => m.userID);
+      const users = await Users.find({ userID: { $in: memberIDs } }).lean();
+      
+      const members = users.map((u) => ({
+        userID: u.userID,
+        name: u.name,
+        anhDaiDien: u.anhDaiDien || null,
+      }));
+      
+      res.json({ members });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // Tìm kiếm tin nhắn
   router.get('/messages/search', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {

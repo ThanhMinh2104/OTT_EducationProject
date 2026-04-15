@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import axiosInstance from '../utils/axios';
 
 const socket: Socket = io('http://localhost:5000');
+const API = 'http://localhost:5000/api';
 
 interface Message {
   messageID?: string;
@@ -17,11 +18,23 @@ interface Message {
   forwardedFrom?: string;
 }
 
+interface Member {
+  userID: string;
+  role: string;
+}
+
 interface Chat {
   chatID: string;
   name: string;
   avatar?: string;
   type: 'private' | 'group';
+  members: Member[];
+}
+
+interface MemberInfo {
+  userID: string;
+  name: string;
+  anhDaiDien?: string;
 }
 
 interface User {
@@ -37,18 +50,38 @@ interface Props {
 
 const ForwardMessageModal = ({ message, onClose, user }: Props) => {
   const [chats, setChats] = useState<Chat[]>([]);
+  const [memberCache, setMemberCache] = useState<Record<string, MemberInfo>>({});
   const [selectedChatID, setSelectedChatID] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
-    // Fetch list of chats
     const fetchChats = async () => {
       try {
         setIsLoading(true);
         const response = await axiosInstance.post('/chats/userID');
-        const data = Array.isArray(response.data) ? response.data : [];
+        const data: Chat[] = Array.isArray(response.data) ? response.data : [];
         setChats(data);
+
+        // Fetch tên thật cho các chat private
+        const privateChats = data.filter((c) => c.type === 'private');
+        await Promise.all(
+          privateChats.map(async (c) => {
+            const otherId = c.members.find((m) => m.userID !== user?.userID)?.userID;
+            if (!otherId) return;
+            try {
+              const res = await fetch(`${API}/usersID`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userID: otherId }),
+              });
+              const info: MemberInfo = await res.json();
+              setMemberCache((prev) => ({ ...prev, [otherId]: info }));
+            } catch {
+              /* ignore */
+            }
+          })
+        );
       } catch (error) {
         console.error('Error fetching chats:', error);
         setChats([]);
@@ -58,7 +91,23 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
     };
 
     fetchChats();
-  }, []);
+  }, [user?.userID]);
+
+  const getDisplayName = (chat: Chat): string => {
+    if (chat.type === 'private') {
+      const otherId = chat.members.find((m) => m.userID !== user?.userID)?.userID;
+      if (otherId && memberCache[otherId]) return memberCache[otherId].name;
+    }
+    return chat.name;
+  };
+
+  const getDisplayAvatar = (chat: Chat): string => {
+    if (chat.type === 'private') {
+      const otherId = chat.members.find((m) => m.userID !== user?.userID)?.userID;
+      if (otherId && memberCache[otherId]?.anhDaiDien) return memberCache[otherId].anhDaiDien!;
+    }
+    return chat.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.chatID}`;
+  };
 
   const handleForward = async () => {
     if (!selectedChatID || !user?.userID || !message.messageID) return;
@@ -74,7 +123,6 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
           avatar: null,
         },
       });
-
       onClose();
     } catch (error) {
       console.error('Error forwarding message:', error);
@@ -82,8 +130,6 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
       setIsSending(false);
     }
   };
-
-  const selectedChat = chats.find((c) => c.chatID === selectedChatID);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
@@ -94,10 +140,7 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">Chuyển tiếp tin nhắn</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <FaTimes className="text-lg" />
           </button>
         </div>
@@ -136,14 +179,12 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
                   }`}
                 >
                   <img
-                    src={chat.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + chat.chatID}
-                    alt={chat.name}
+                    src={getDisplayAvatar(chat)}
+                    alt={getDisplayName(chat)}
                     className="w-10 h-10 rounded-full object-cover"
                   />
                   <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-gray-900">
-                      {chat.name}
-                    </p>
+                    <p className="text-sm font-medium text-gray-900">{getDisplayName(chat)}</p>
                     <p className="text-xs text-gray-500">
                       {chat.type === 'private' ? 'Tin nhắn riêng' : 'Nhóm'}
                     </p>
