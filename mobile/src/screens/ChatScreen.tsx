@@ -579,9 +579,8 @@ const ChatScreen = ({ navigation, route }: Props) => {
                             </Text>
                           </View>
                         </TouchableOpacity>
-                        
-                        {/* Menu 3 chấm */}
-                        <TouchableOpacity
+                      
+                          <TouchableOpacity
                           style={styles.pinnedItemMenuBtn}
                           onPress={() => setPinnedMenuId(pinnedMenuId === item.messageID ? null : item.messageID || null)}
                         >

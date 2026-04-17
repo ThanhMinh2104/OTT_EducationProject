@@ -327,7 +327,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
       console.log("📌 Received unghim_notification:", updated);
       if (updated.chatID === chatID) {
         setMessages((prev) =>
-          prev.map((m) => (m.messageID === updated.messageID ? { ...m, pinnedInfo: null } : m))
+          prev.map((m) => (m.messageID === updated.messageID ? { ...m, pinnedInfo: undefined } : m))
         );
         setPinnedMessages((prev) => prev.filter((m) => m.messageID !== updated.messageID));
       }
@@ -358,9 +358,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
     setMessages(chat.lastMessage || []);
-    setPinnedMessages(
-      (chat.lastMessage || []).filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
+    const initialPinned = (chat.lastMessage || []).filter(
+      (m) => m.pinnedInfo?.pinnedBy // Chỉ cần check pinnedBy, không cần check pinnedInfo
     );
+    console.log('📌 Initial pinned messages:', initialPinned.length, initialPinned);
+    setPinnedMessages(initialPinned);
     setReplyTo(null);
     setInputText('');
     onChatOpen?.(); // ẩn tab bar
@@ -390,7 +392,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
           return true;
         });
         setMessages(deduped);
-        setPinnedMessages(deduped.filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy));
+        const pinnedFromAPI = deduped.filter((m) => m.pinnedInfo?.pinnedBy); // Chỉ check pinnedBy
+        console.log('📌 Pinned messages from API:', pinnedFromAPI.length, pinnedFromAPI);
+        setPinnedMessages(pinnedFromAPI);
       }
     } catch { /* fallback to lastMessage */ }
   };
@@ -666,25 +670,20 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
     }
 
     try {
-      const token = await AsyncStorage.getItem('token');
+      console.log('🔄 Forwarding message to', selectedChatsForForward.length, 'chats');
       
+      // Sử dụng socket event thay vì API
       for (const targetChatID of selectedChatsForForward) {
-        const forwardData = {
+        console.log('📤 Forwarding to chat:', targetChatID);
+        
+        socket.emit('forward_message', {
           originalMessageID: forwardingMessage.messageID,
           targetChatID,
           senderID: user.userID,
-          content: forwardingMessage.content || '',
-          type: forwardingMessage.type,
-          media_url: forwardingMessage.media_url || [],
-        };
-
-        await fetch(`${API_URL}/api/messages/forward`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+          senderInfo: {
+            name: user.name,
+            avatar: user.anhDaiDien || null,
           },
-          body: JSON.stringify(forwardData),
         });
       }
 
@@ -719,7 +718,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
   const handleMoveToTop = (msg: Message) => {
     if (!msg.messageID || !selectedChat) return;
     // Bỏ ghim rồi ghim lại để đưa lên đầu
-    socket.emit("unghim_message", { messageID: msg.messageID, chatID: selectedChat.chatID });
+    socket.emit("unghim_message", { 
+      messageID: msg.messageID, 
+      chatID: selectedChat.chatID,
+      senderID: user!.userID 
+    });
     setTimeout(() => {
       socket.emit("ghim_message", {
         messageID: msg.messageID,
@@ -741,7 +744,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
 
   const handleUnpinFromMenu = (msg: Message) => {
     if (!msg.messageID || !selectedChat) return;
-    socket.emit("unghim_message", { messageID: msg.messageID, chatID: selectedChat.chatID });
+    socket.emit("unghim_message", { 
+      messageID: msg.messageID, 
+      chatID: selectedChat.chatID,
+      senderID: user!.userID 
+    });
     setPinnedMenuId(null);
     Alert.alert("Thành công", "Đã bỏ ghim");
   };
@@ -758,7 +765,19 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
   const renderMessage = (item: Message) => {
     const isMine = item.senderID === user?.userID;
     const isUnsent = item.type === 'unsend';
+    const isNotification = item.type === 'notification';
     const timeStr = new Date(item.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+    // Render notification messages (ghim, bỏ ghim, etc.)
+    if (isNotification) {
+      return (
+        <View key={item.messageID || item.tempID} style={styles.notificationContainer}>
+          <View style={styles.notificationBubble}>
+            <Text style={styles.notificationText}>{item.content}</Text>
+          </View>
+        </View>
+      );
+    }
 
     const renderBubbleContent = () => {
       if (isUnsent) {
@@ -780,6 +799,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
                     setSelectedImageIndex(idx);
                     setImageViewerVisible(true);
                   }}
+                  onLongPress={() => handleLongPress(item)}
+                  delayLongPress={500}
                 >
                   <Image source={{ uri: url }} style={styles.messageImage} />
                 </TouchableOpacity>
@@ -798,6 +819,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
               setSelectedVideo(item.media_url![0]);
               setVideoViewerVisible(true);
             }}
+            onLongPress={() => handleLongPress(item)}
+            delayLongPress={500}
           >
             <View style={styles.videoContainer}>
               <Image
@@ -816,28 +839,41 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
       }
       if (item.type === 'sticker' && item.media_url?.[0]) {
         return (
-          <View>
+          <TouchableOpacity
+            onLongPress={() => handleLongPress(item)}
+            delayLongPress={500}
+            activeOpacity={1}
+          >
             <Image source={{ uri: item.media_url[0] }} style={styles.stickerImage} />
             <Text style={[styles.messageTime, styles.timeOnMediaOther]}>{timeStr}</Text>
-          </View>
+          </TouchableOpacity>
         );
       }
       if (item.type === 'gif' && item.media_url?.[0]) {
         return (
-          <View>
+          <TouchableOpacity
+            onLongPress={() => handleLongPress(item)}
+            delayLongPress={500}
+            activeOpacity={1}
+          >
             <Image source={{ uri: item.media_url[0] }} style={styles.gifImage} />
             <Text style={[styles.messageTime, isMine ? styles.timeOnMedia : styles.timeOnMediaOther]}>
               {timeStr}
             </Text>
-          </View>
+          </TouchableOpacity>
         );
       }
       if (item.type === 'audio' && item.media_url?.[0]) {
         return (
-          <View style={[styles.messageBubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
+          <TouchableOpacity
+            onLongPress={() => handleLongPress(item)}
+            delayLongPress={500}
+            activeOpacity={1}
+            style={[styles.messageBubble, isMine ? styles.bubbleMine : styles.bubbleOther]}
+          >
             <AudioPlayer audioUrl={item.media_url[0]} isMine={isMine} />
             <Text style={[styles.messageTime, isMine ? styles.timeMine : styles.timeOther]}>{timeStr}</Text>
-          </View>
+          </TouchableOpacity>
         );
       }
       if (item.type === 'file' && item.media_url?.[0]) {
@@ -855,6 +891,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
                 undefined // mimeType - có thể thêm vào Message interface nếu cần
               );
             }}
+            onLongPress={() => handleLongPress(item)}
+            delayLongPress={500}
             activeOpacity={0.8}
           >
             <View style={[styles.fileExtBadge, { backgroundColor: color }]}>
@@ -1057,9 +1095,6 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => startCall('video')}>
           <Ionicons name="videocam-outline" size={22} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowInfoPanel(true)}>
-          <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
-        </TouchableOpacity>
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowChatInfo(true)}>
           <Ionicons name="menu-outline" size={24} color="#fff" />
         </TouchableOpacity>
@@ -1108,7 +1143,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
                     </View>
                   </TouchableOpacity>
 
-                  {/* Menu 3 chấm */}
+                {/* Menu 3 chấm */}
                   <TouchableOpacity
                     style={styles.pinnedBannerItemMenu}
                     onPress={() => setPinnedMenuId(pinnedMenuId === item.messageID ? null : item.messageID || null)}
@@ -1330,11 +1365,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
                     socket.emit("unghim_message", {
                       messageID: selectedMessage.messageID,
                       chatID: selectedChat.chatID,
+                      senderID: user.userID,
                     });
                     Alert.alert("Thành công", "Đã bỏ ghim tin nhắn");
                   } else {
                     // Kiểm tra giới hạn 3 tin nhắn ghim
-                    const pinnedCount = messages.filter((m) => m.pinnedInfo).length;
+                    const pinnedCount = pinnedMessages.length;
                     if (pinnedCount >= 3) {
                       Alert.alert("Thông báo", "Chỉ có thể ghim tối đa 3 tin nhắn");
                       setShowMenu(false);
@@ -2321,6 +2357,27 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "600",
+  },
+
+  // Notification message styles
+  notificationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginVertical: 4,
+    paddingHorizontal: 10,
+  },
+  notificationBubble: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    maxWidth: '80%',
+  },
+  notificationText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
 

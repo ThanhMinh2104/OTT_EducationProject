@@ -106,8 +106,11 @@ const MessageSchema = new Schema<IMessage>(
       media_url: { type: [String], default: [] },
     },
     pinnedInfo: {
-      pinnedBy: { type: String },
-      pinnedAt: { type: Date, default: Date.now },
+      type: {
+        pinnedBy: { type: String },
+        pinnedAt: { type: Date, default: Date.now },
+      },
+      default: undefined, // Không tạo object rỗng mặc định
     },
     seenBy: [
       {

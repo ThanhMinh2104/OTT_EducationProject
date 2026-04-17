@@ -1002,7 +1002,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     if (!msg.messageID) return;
     if (msg.pinnedInfo) {
       // Unpin message
-      socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+      socket.emit('unghim_message', { 
+        messageID: msg.messageID, 
+        chatID: selectedChat!.chatID,
+        senderID: user?.userID 
+      });
     } else {
       // Check if already have 3 pinned messages
       if (pinnedMessages.length >= 3) {
@@ -1023,7 +1027,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const handleMoveToTop = (msg: Message) => {
     if (!msg.messageID) return;
     // Unpin and re-pin to move to top
-    socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+    socket.emit('unghim_message', { 
+      messageID: msg.messageID, 
+      chatID: selectedChat!.chatID,
+      senderID: user?.userID 
+    });
     setTimeout(() => {
       socket.emit('ghim_message', {
         messageID: msg.messageID,
@@ -1045,7 +1053,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   const handleUnpinFromMenu = (msg: Message) => {
     if (!msg.messageID) return;
-    socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+    socket.emit('unghim_message', { 
+      messageID: msg.messageID, 
+      chatID: selectedChat!.chatID,
+      senderID: user?.userID 
+    });
     setPinnedMenuId(null);
     toast.success('Đã bỏ ghim');
   };
@@ -1832,6 +1844,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 return (
                   <div
                     key={msgKey}
+                    id={`msg-${msg.messageID}`}
                     ref={(el) => {
                       if (el && msg.messageID) msgRefsMap.current.set(msg.messageID, el);
                     }}

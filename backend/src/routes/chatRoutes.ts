@@ -72,7 +72,12 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
 
   const enriched = flatMessages.map((msg: any) => {
     const s = senders.find((u) => u.userID === msg.senderID);
-    return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+    // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
+    const cleanedMsg = { ...msg };
+    if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
+      delete cleanedMsg.pinnedInfo;
+    }
+    return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
   });
 
   const msgByChat: Record<string, typeof enriched> = {};
@@ -449,7 +454,12 @@ export default function chatRoutes(io: Server) {
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = msgs.map((msg) => {
         const s = senders.find((u) => u.userID === msg.senderID);
-        return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+        // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
+        const cleanedMsg = { ...msg };
+        if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
+          delete cleanedMsg.pinnedInfo;
+        }
+        return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
       });
       res.json(enriched);
     } catch (e: any) {
@@ -505,7 +515,12 @@ export default function chatRoutes(io: Server) {
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = messages.map((msg) => {
         const s = senders.find((u) => u.userID === msg.senderID);
-        return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+        // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
+        const cleanedMsg = { ...msg };
+        if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
+          delete cleanedMsg.pinnedInfo;
+        }
+        return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
       });
       res.json({ ...chatDoc, members, lastMessage: enriched });
     } catch (e: any) {
