@@ -140,10 +140,54 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       );
       if (!msg) return;
 
+      // Lấy thông tin người ghim
+      const user = await Users.findOne({ userID: senderID });
+      const userName = user?.name || 'Người dùng';
+
+      // Tạo tin nhắn notification với nội dung phù hợp
+      const notifMessageID = await generateMessageID();
+      let displayContent = '';
+      
+      if (msg.content) {
+        displayContent = msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content;
+      } else {
+        // Hiển thị loại media thay vì "[Media]"
+        const mediaTypes: Record<string, string> = {
+          'image': 'hình ảnh',
+          'video': 'video',
+          'audio': 'tin nhắn thoại',
+          'file': 'file',
+          'sticker': 'sticker',
+          'gif': 'GIF',
+        };
+        displayContent = mediaTypes[msg.type] || 'tin nhắn';
+      }
+      
+      const notificationMsg = new Message({
+        messageID: notifMessageID,
+        chatID,
+        senderID,
+        content: `${userName} đã ghim ${displayContent}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      
+      await notificationMsg.save();
+
       const chatMemberDoc = await ChatMember.findOne({ chatID });
       const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
 
-      memberIDs.forEach((id) => io.to(id).emit('ghim_notification', msg));
+      // Emit ghim_notification và notification message
+      memberIDs.forEach((id) => {
+        io.to(id).emit('ghim_notification', msg);
+        io.to(id).emit('new_message', {
+          ...notificationMsg.toObject(),
+          senderInfo: { name: userName, avatar: user?.anhDaiDien || null },
+        });
+      });
+      // Chỉ emit ghim_notification cho room, không emit notification message để tránh duplicate
       io.to(chatID).emit('ghim_notification', msg);
     } catch (e) {
       console.error('ghim_message error:', e);
@@ -151,7 +195,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
   });
 
   // ==================== 5. BỎ GHIM TIN NHẮN ====================
-  socket.on('unghim_message', async ({ messageID, chatID }: any) => {
+  socket.on('unghim_message', async ({ messageID, chatID, senderID }: any) => {
     try {
       const msg = await Message.findOneAndUpdate(
         { messageID },
@@ -160,10 +204,54 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       );
       if (!msg) return;
 
+      // Lấy thông tin người bỏ ghim
+      const user = await Users.findOne({ userID: senderID });
+      const userName = user?.name || 'Người dùng';
+
+      // Tạo tin nhắn notification với nội dung phù hợp
+      const notifMessageID = await generateMessageID();
+      let displayContent = '';
+      
+      if (msg.content) {
+        displayContent = msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content;
+      } else {
+        // Hiển thị loại media thay vì "[Media]"
+        const mediaTypes: Record<string, string> = {
+          'image': 'hình ảnh',
+          'video': 'video',
+          'audio': 'tin nhắn thoại',
+          'file': 'file',
+          'sticker': 'sticker',
+          'gif': 'GIF',
+        };
+        displayContent = mediaTypes[msg.type] || 'tin nhắn';
+      }
+      
+      const notificationMsg = new Message({
+        messageID: notifMessageID,
+        chatID,
+        senderID,
+        content: `${userName} đã bỏ ghim ${displayContent}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      
+      await notificationMsg.save();
+
       const chatMemberDoc = await ChatMember.findOne({ chatID });
       const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
 
-      memberIDs.forEach((id) => io.to(id).emit('unghim_notification', msg));
+      // Emit unghim_notification và notification message
+      memberIDs.forEach((id) => {
+        io.to(id).emit('unghim_notification', msg);
+        io.to(id).emit('new_message', {
+          ...notificationMsg.toObject(),
+          senderInfo: { name: userName, avatar: user?.anhDaiDien || null },
+        });
+      });
+      // Chỉ emit unghim_notification cho room, không emit notification message để tránh duplicate
       io.to(chatID).emit('unghim_notification', msg);
     } catch (e) {
       console.error('unghim_message error:', e);
@@ -211,18 +299,26 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       name: string;
       avatar: string;
     };
-  }) => {
+  }, callback?: (response: any) => void) => {
     try {
+      console.log('📨 Forward message request received:', {
+        originalMessageID: data.originalMessageID,
+        targetChatID: data.targetChatID,
+        senderID: data.senderID,
+      });
+
       // Lấy tin nhắn gốc
       const originalMsg = await Message.findOne({ messageID: data.originalMessageID });
       if (!originalMsg) {
-        console.error('Original message not found:', data.originalMessageID);
+        console.error('❌ Original message not found:', data.originalMessageID);
+        if (callback) callback({ success: false, error: 'Message not found' });
         return;
       }
 
       // Không cho phép forward tin nhắn đã thu hồi
       if (originalMsg.type === 'unsend') {
-        console.error('Cannot forward unsent message');
+        console.error('❌ Cannot forward unsent message');
+        if (callback) callback({ success: false, error: 'Cannot forward unsent message' });
         return;
       }
 
@@ -245,10 +341,13 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       });
 
       const saved = await newMsg.save();
+      console.log('💾 New message saved:', messageID);
 
       // Lấy danh sách thành viên của chat đích
       const chatMemberDoc = await ChatMember.findOne({ chatID: data.targetChatID });
       const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
+
+      console.log('👥 Target chat members:', memberIDs);
 
       const fullMessage = {
         messageID: saved.messageID,
@@ -265,10 +364,21 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       };
 
       // Gửi tới tất cả thành viên của chat đích
-      memberIDs.forEach((id) => io.to(id).emit('new_message', fullMessage));
-      io.to(data.targetChatID).emit(data.targetChatID, fullMessage);
+      memberIDs.forEach((id) => {
+        io.to(id).emit('new_message', fullMessage);
+        console.log(`  📤 Emitted to user room: ${id}`);
+      });
 
       console.log(`✅ Message ${data.originalMessageID} forwarded to chat ${data.targetChatID} as ${messageID}`);
+
+      // Gửi callback xác nhận thành công
+      if (callback) {
+        callback({ 
+          success: true, 
+          messageID: saved.messageID,
+          targetChatID: data.targetChatID 
+        });
+      }
 
       // Cập nhật trạng thái delivered sau 1 giây
       setTimeout(async () => {
@@ -279,7 +389,8 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         });
       }, 1000);
     } catch (e) {
-      console.error('forward_message error:', e);
+      console.error('❌ forward_message error:', e);
+      if (callback) callback({ success: false, error: String(e) });
     }
   });
 };

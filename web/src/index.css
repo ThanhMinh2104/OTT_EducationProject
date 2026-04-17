@@ -207,3 +207,20 @@
 @utility animate-bounce-in {
   animation: bounce-in 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
+
+/* Highlight message animation */
+@keyframes highlightPulse {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(59, 130, 246, 0.2);
+  }
+}
+
+.highlight-message {
+  animation: highlightPulse 1s ease-in-out 2;
+  border-radius: 12px;
+  padding: 4px;
+  margin: -4px;
+}
