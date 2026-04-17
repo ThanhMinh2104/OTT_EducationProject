@@ -95,12 +95,16 @@ io.on('connection', (socket) => {
   // Lấy danh sách chat của user
   socket.on('getChat', async (userID: string) => {
     try {
-      const chats = await getChatsForUser(userID);
+      // Lấy TẤT CẢ chat (bao gồm cả người lạ) để frontend tự phân loại
+      const allChats = await getChatsForUser(userID, false); // Chỉ lấy bạn bè
+      const strangerChats = await getChatsForUser(userID, true); // Chỉ lấy người lạ
+      const combined = [...allChats, ...strangerChats];
+      
       if (process.env.NODE_ENV === 'development') {
-        console.log(`📋 getChat for ${userID}: ${chats.length} chats`);
+        console.log(`📋 getChat for ${userID}: ${allChats.length} friend chats + ${strangerChats.length} stranger chats = ${combined.length} total`);
       }
       // Emit tới user room, không phải chỉ socket hiện tại
-      io.to(userID).emit('ChatByUserID', chats);
+      io.to(userID).emit('ChatByUserID', combined);
     } catch (e) {
       console.error('getChat error:', e);
     }

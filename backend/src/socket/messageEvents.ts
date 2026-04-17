@@ -17,6 +17,22 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
     try {
       const messageID = await generateMessageID();
 
+      // Lấy danh sách thành viên trong chat
+      const chatMemberDoc = await ChatMember.findOne({ chatID: data.chatID });
+      const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
+
+      // KIỂM TRA CHẶN (Chỉ áp dụng cho chat 1-1)
+      let blockedRecipientID: string | null = null;
+      if (memberIDs.length === 2) {
+        const recipientID = memberIDs.find(id => id !== data.senderID);
+        if (recipientID) {
+          const recipient = await Users.findOne({ userID: recipientID });
+          if (recipient?.blockedUsers?.includes(data.senderID)) {
+            blockedRecipientID = recipientID;
+          }
+        }
+      }
+
       const newMsg = new Message({
         messageID,
         chatID: data.chatID,
@@ -29,28 +45,22 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         pinnedInfo: null,
         replyTo: data.replyTo || null,
         groupId: data.groupId || null, // ⭐ Thêm groupId
+        deletedFor: blockedRecipientID ? [blockedRecipientID] : [], // ⭐ Ẩn với người chặn
       });
 
       const saved = await newMsg.save();
 
-      // Lấy danh sách thành viên trong chat
-      const chatMemberDoc = await ChatMember.findOne({ chatID: data.chatID });
-      const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
-
-      // KIỂM TRA CHẶN (Chỉ áp dụng cho chat 1-1)
-      if (memberIDs.length === 2) {
-        const recipientID = memberIDs.find(id => id !== data.senderID);
-        if (recipientID) {
-          const recipient = await Users.findOne({ userID: recipientID });
-          if (recipient?.blockedUsers?.includes(data.senderID)) {
-            // Người nhận đang chặn người gửi
-            socket.emit('error_notification', {
-              message: 'Tin nhắn không thể gửi. Bạn đã bị người này chặn.',
-              chatID: data.chatID
-            });
-            return;
+      // ✅ Khôi phục chat nếu đã bị xóa (undelete khi có tin nhắn mới)
+      if (chatMemberDoc) {
+        const updates = chatMemberDoc.members.map((m) => {
+          if (m.deletedAt) {
+            console.log(`🔄 Undeleting chat ${data.chatID} for user ${m.userID}`);
+            return { ...m, deletedAt: undefined };
           }
-        }
+          return m;
+        });
+        chatMemberDoc.members = updates;
+        await chatMemberDoc.save();
       }
 
       const fullMessage = {
@@ -66,17 +76,31 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         },
       };
 
-      // Gửi tới tất cả thành viên
-      memberIDs.forEach((id) => io.to(id).emit('new_message', fullMessage));
-      io.to(data.chatID).emit(data.chatID, fullMessage);
+      if (blockedRecipientID) {
+        // Chỉ gửi lại cho chính người gửi (để hiển thị trên UI của họ)
+        io.to(data.senderID).emit('new_message', fullMessage);
+        // Lưu ý: KHÔNG emit tới chatID room để người chặn không nhận được
+      } else {
+        // Gửi tới tất cả thành viên
+        memberIDs.forEach((id) => io.to(id).emit('new_message', fullMessage));
+        io.to(data.chatID).emit(data.chatID, fullMessage);
+      }
 
       // Cập nhật trạng thái delivered sau 1 giây
       setTimeout(async () => {
         await Message.findOneAndUpdate({ messageID: saved.messageID }, { status: 'delivered' });
-        io.to(data.chatID).emit(`status_update_${data.chatID}`, {
-          messageID: saved.messageID,
-          status: 'delivered',
-        });
+        if (!blockedRecipientID) {
+          io.to(data.chatID).emit(`status_update_${data.chatID}`, {
+            messageID: saved.messageID,
+            status: 'delivered',
+          });
+        } else {
+          // Báo cho người gửi là sent/delivered ảo
+          io.to(data.senderID).emit(`status_update_${data.chatID}`, {
+            messageID: saved.messageID,
+            status: 'delivered',
+          });
+        }
       }, 1000);
     } catch (e) {
       console.error('send_message error:', e);

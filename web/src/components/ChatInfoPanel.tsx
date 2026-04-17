@@ -176,13 +176,7 @@ const ChatInfoPanel = ({ chat, user, memberInfo, messages, onClose, onHistoryDel
     try {
       await axiosInstance.post('/contacts/block', { targetUserID: memberInfo.userID });
       toast.success('Đã chặn người dùng');
-      if (socket && user?.userID) {
-        socket.emit('friend_status_update', { 
-          userID: String(memberInfo.userID), 
-          friendStatus: 'blocked',
-          ownerID: String(user.userID) 
-        });
-      }
+      // Backend sẽ emit friend_status_update, không cần emit từ client
       onStatusChange?.('blocked');
     } catch { toast.error('Lỗi khi thực hiện thao tác'); }
   };
@@ -193,13 +187,7 @@ const ChatInfoPanel = ({ chat, user, memberInfo, messages, onClose, onHistoryDel
     try {
       await axiosInstance.post('/contacts/unblock', { targetUserID: memberInfo.userID });
       toast.success('Đã bỏ chặn người dùng');
-      if (socket && user?.userID) {
-        socket.emit('friend_status_update', { 
-          userID: String(memberInfo.userID), 
-          friendStatus: 'none', 
-          ownerID: String(user.userID) 
-        });
-      }
+      // Backend sẽ emit friend_status_update, không cần emit từ client
       onStatusChange?.('none');
     } catch { toast.error('Lỗi khi thực hiện thao tác'); }
   };
