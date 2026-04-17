@@ -212,14 +212,15 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
     }
   };
 
-  const handleCancelSent = async () => {
-    if (!requestToRecall) return;
+  const handleCancelSent = async (reqArg?: SentRequest) => {
+    const target = reqArg || requestToRecall;
+    if (!target) return;
     try {
-      await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: requestToRecall.recipientID });
-      setSentRequests((prev) => prev.filter((r) => r.recipientID !== requestToRecall.recipientID));
+      await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: target.recipientID });
+      setSentRequests((prev) => prev.filter((r) => r.recipientID !== target.recipientID));
       toast.success('Đã thu hồi lời mời');
-      updateLocalStorageStatus(requestToRecall.recipientID, 'none');
-      setRequestToRecall(null);
+      updateLocalStorageStatus(target.recipientID, 'none');
+      if (!reqArg) setRequestToRecall(null);
     } catch {
       toast.error('Lỗi khi thu hồi lời mời');
     }
@@ -390,7 +391,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                       </div>
                       <div className="relative">
                         <button
-                          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 group-hover:text-gray-600 transition-all opacity-0 group-hover:opacity-100"
+                          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
                           onClick={(e) => {
                             e.stopPropagation();
                             setActiveFriendMenu(activeFriendMenu === friend.userID ? null : friend.userID);
@@ -552,7 +553,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
             setSelectedProfile(null);
           }}
           onRecall={() => {
-            setRequestToRecall({ recipientID: selectedProfile.userID, name: selectedProfile.name } as any);
+            handleCancelSent({ recipientID: selectedProfile.userID } as any);
             setSelectedProfile(null);
           }}
         />

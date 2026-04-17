@@ -93,6 +93,7 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [isReceivedExpanded, setIsReceivedExpanded] = useState(true);
   const [isSentExpanded, setIsSentExpanded] = useState(true);
+  const [activeMenuFriend, setActiveMenuFriend] = useState<Friend | null>(null);
 
   const getToken = () => AsyncStorage.getItem('token');
 
@@ -357,24 +358,10 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
                   {friend.sdt ? <Text style={s.friendPhone}>{friend.sdt}</Text> : null}
                 </View>
                 <TouchableOpacity 
-                  style={s.chatBtn} 
-                  onPress={() => {
-                    setSelectedProfile({ ...friend, friendStatus: 'accepted' });
-                    // Logic mở dialog xóa bạn trong OtherProfileModal sẽ được kích hoạt
-                  }}
+                   style={s.chatBtn} 
+                   onPress={() => setActiveMenuFriend(friend)}
                 >
-                  <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={s.chatBtn}
-                  onPress={() => {
-                    setSelectedProfile({ ...friend, friendStatus: 'accepted' });
-                  }}
-                >
-                  <MaterialIcons name="block" size={20} color="#6b7280" />
-                </TouchableOpacity>
-                <TouchableOpacity style={s.chatBtn} onPress={() => handleStartChat(friend.userID)}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={20} color="#0068ff" />
+                  <Ionicons name="ellipsis-horizontal" size={20} color="#6b7280" />
                 </TouchableOpacity>
               </TouchableOpacity>
             );
@@ -542,6 +529,72 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
         onConfirm={handleCancelSent}
         onCancel={() => setRecallTarget(null)}
       />
+
+      {/* Friend Action Menu (Bottom Sheet) */}
+      {activeMenuFriend && (
+        <Modal
+          visible={!!activeMenuFriend}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setActiveMenuFriend(null)}
+        >
+          <TouchableOpacity 
+            style={s.menuOverlay} 
+            activeOpacity={1} 
+            onPress={() => setActiveMenuFriend(null)}
+          >
+            <View style={s.menuContent}>
+              <View style={s.menuHeader}>
+                <Image 
+                  source={{ uri: activeMenuFriend.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${activeMenuFriend.userID}` }}
+                  style={s.menuAvatar}
+                />
+                <Text style={s.menuTitle}>{activeMenuFriend.name}</Text>
+              </View>
+              
+              <TouchableOpacity 
+                style={s.menuItem} 
+                onPress={() => {
+                  handleStartChat(activeMenuFriend.userID);
+                  setActiveMenuFriend(null);
+                }}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={22} color="#0068ff" />
+                <Text style={s.menuItemText}>Nhắn tin</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={s.menuItem} 
+                onPress={() => {
+                  setSelectedProfile({ ...activeMenuFriend, friendStatus: 'accepted' });
+                  setActiveMenuFriend(null);
+                }}
+              >
+                <MaterialIcons name="block" size={22} color="#6b7280" />
+                <Text style={s.menuItemText}>Chặn bạn bè</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[s.menuItem, { borderBottomWidth: 0 }]} 
+                onPress={() => {
+                  setSelectedProfile({ ...activeMenuFriend, friendStatus: 'accepted' });
+                  setActiveMenuFriend(null);
+                }}
+              >
+                <Ionicons name="trash-outline" size={22} color="#ef4444" />
+                <Text style={[s.menuItemText, { color: '#ef4444' }]}>Xóa bạn bè</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={s.menuCancelBtn} 
+                onPress={() => setActiveMenuFriend(null)}
+              >
+                <Text style={s.menuCancelText}>Hủy</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -621,6 +674,62 @@ const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
   emptyEmoji: { fontSize: 40, marginBottom: 12 },
   emptyText: { fontSize: 15, color: '#6b7280' },
+
+  // Action Menu styles
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+  },
+  menuHeader: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  menuAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    marginBottom: 10,
+  },
+  menuTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+    gap: 15,
+  },
+  menuItemText: {
+    fontSize: 15,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  menuCancelBtn: {
+    marginTop: 10,
+    paddingVertical: 15,
+    alignItems: 'center',
+    borderTopWidth: 8,
+    borderTopColor: '#f9fafb',
+  },
+  menuCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
 });
 
 export default ContactsScreen;

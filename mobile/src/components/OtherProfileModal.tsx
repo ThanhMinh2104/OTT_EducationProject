@@ -29,6 +29,8 @@ interface Props {
   onBack?: () => void;
   onStartChat?: (chat: any) => void;
   onAddFriend?: () => void;
+  onAcceptFriend?: () => void;
+  onCancelRequest?: () => void;
   onStatusChange?: (status: string) => void;
 }
 
@@ -70,11 +72,13 @@ const cd = StyleSheet.create({
 });
 
 const OtherProfileModal = ({
-  visible, user, currentUser, onClose, onBack, onStartChat, onAddFriend, onStatusChange,
+  visible, user, currentUser, onClose, onBack, onStartChat, onAddFriend, onAcceptFriend, onCancelRequest, onStatusChange,
 }: Props) => {
   const [showUnfriendConfirm, setShowUnfriendConfirm] = useState(false);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
+  const [showRecallConfirm, setShowRecallConfirm] = useState(false);
+  const [showFriendMenu, setShowFriendMenu] = useState(false);
   const [localStatus, setLocalStatus] = useState(user.friendStatus);
 
   // sync khi user prop thay đổi
@@ -165,20 +169,40 @@ const OtherProfileModal = ({
       <View style={s.actionRow}>
         {/* Left action */}
         {localStatus === 'accepted' && (
-          <TouchableOpacity style={[s.actionBtn, s.actionBtnGray, { flex: 1 }]} onPress={() => setShowUnfriendConfirm(true)}>
-            <Ionicons name="people" size={16} color="#374151" style={{ marginRight: 6 }} />
-            <Text style={s.actionBtnGrayText}>Bạn bè</Text>
-            <Ionicons name="chevron-down" size={12} color="#374151" style={{ marginLeft: 4 }} />
-          </TouchableOpacity>
+          <View style={{ flex: 1, position: 'relative' }}>
+            <TouchableOpacity 
+              style={[s.actionBtn, s.actionBtnGray]} 
+              onPress={() => setShowFriendMenu(!showFriendMenu)}
+            >
+              <Ionicons name="people" size={16} color="#374151" style={{ marginRight: 6 }} />
+              <Text style={s.actionBtnGrayText}>Bạn bè</Text>
+              <Ionicons name="chevron-down" size={12} color="#374151" style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+
+            {showFriendMenu && (
+              <View style={s.dropdownMenu}>
+                <TouchableOpacity 
+                  style={s.dropdownItem} 
+                  onPress={() => {
+                    setShowFriendMenu(false);
+                    setShowUnfriendConfirm(true);
+                  }}
+                >
+                  <Ionicons name="person-remove-outline" size={18} color="#ef4444" />
+                  <Text style={[s.dropdownItemText, { color: '#ef4444' }]}>Hủy kết bạn</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         )}
         {localStatus === 'pending_received' && (
-          <TouchableOpacity style={[s.actionBtn, s.actionBtnBlue, { flex: 1 }]} onPress={onAddFriend}>
+          <TouchableOpacity style={[s.actionBtn, s.actionBtnBlue, { flex: 1 }]} onPress={onAcceptFriend}>
             <Ionicons name="checkmark" size={16} color="#fff" style={{ marginRight: 6 }} />
             <Text style={s.actionBtnBlueText}>Chấp nhận</Text>
           </TouchableOpacity>
         )}
         {localStatus === 'pending_sent' && (
-          <TouchableOpacity style={[s.actionBtn, s.actionBtnRed, { flex: 1 }]} onPress={onAddFriend}>
+          <TouchableOpacity style={[s.actionBtn, s.actionBtnRed, { flex: 1 }]} onPress={() => setShowRecallConfirm(true)}>
             <Ionicons name="arrow-undo" size={16} color="#ef4444" style={{ marginRight: 6 }} />
             <Text style={s.actionBtnRedText}>Thu hồi lời mời</Text>
           </TouchableOpacity>
@@ -305,12 +329,7 @@ const OtherProfileModal = ({
                   <Ionicons name="warning-outline" size={22} color="#6b7280" style={s.menuIcon} />
                   <Text style={s.menuText}>Báo xấu</Text>
                 </TouchableOpacity>
-                {localStatus === 'accepted' && (
-                  <TouchableOpacity style={s.menuItem} onPress={() => setShowUnfriendConfirm(true)}>
-                    <Ionicons name="trash-outline" size={22} color="#ef4444" style={s.menuIcon} />
-                    <Text style={[s.menuText, { color: '#ef4444' }]}>Xóa khỏi danh sách bạn bè</Text>
-                  </TouchableOpacity>
-                )}
+
               </View>
             )}
 
@@ -341,6 +360,16 @@ const OtherProfileModal = ({
         message={`Bạn có muốn bỏ chặn liên lạc với ${user.name}?`}
         onConfirm={handleUnblock}
         onCancel={() => setShowUnblockConfirm(false)}
+      />
+      <ConfirmDialog
+        visible={showRecallConfirm}
+        title="Xác nhận thu hồi"
+        message={`Bạn có muốn thu hồi lời mời kết bạn gửi cho ${user.name}?`}
+        onConfirm={() => {
+          setShowRecallConfirm(false);
+          onCancelRequest?.();
+        }}
+        onCancel={() => setShowRecallConfirm(false)}
       />
     </Modal>
   );
@@ -386,6 +415,36 @@ const s = StyleSheet.create({
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14 },
   menuIcon: { marginRight: 16 },
   menuText: { fontSize: 15, fontWeight: '500', color: '#374151' },
+  // Dropdown
+  dropdownMenu: {
+    position: 'absolute',
+    top: 46,
+    left: 0,
+    width: 160,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+    zIndex: 1000,
+    padding: 6,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  dropdownItemText: {
+    fontSize: 14.5,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
 });
 
 export default OtherProfileModal;

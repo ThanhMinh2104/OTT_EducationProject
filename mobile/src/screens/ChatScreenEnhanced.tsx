@@ -69,6 +69,7 @@ interface User {
   userID: string;
   name: string;
   anhDaiDien?: string;
+  trangThai?: string;
 }
 
 const getLastMsgPreview = (chat: Chat, userID: string): string => {
@@ -79,6 +80,10 @@ const getLastMsgPreview = (chat: Chat, userID: string): string => {
   if (!last) return 'Chưa có tin nhắn';
   const isMine = last.senderID === userID;
   const prefix = isMine ? 'Bạn: ' : '';
+
+  if (last.content && last.content.startsWith('##FRIENDSHIP##')) {
+    return 'Các bạn đã trở thành bạn bè';
+  }
   switch (last.type) {
     case 'image': return prefix + '[Hình ảnh]';
     case 'video': return prefix + '[Video]';
@@ -122,7 +127,7 @@ const getFileColor = (name: string) => {
   return '#8e8e93';
 };
 
-const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, onPendingChatHandled }: Props) => {
+const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, onPendingChatHandled, initialChat, onChatOpened }: Props) => {
   const insets = useSafeAreaInsets();
   const [user, setUser] = useState<User | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
@@ -137,6 +142,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [typingUsers, setTypingUsers] = useState<{ userID: string; userName: string }[]>([]);
   const [searchText, setSearchText] = useState('');
+  const [currentFriendStatus, setCurrentFriendStatus] = useState<string>('none');
 
   // Image/Video viewer states
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
@@ -181,6 +187,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [strangerChats, setStrangerChats] = useState<Chat[]>([]);
   const [showStrangerInbox, setShowStrangerInbox] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [addFriendTarget, setAddFriendTarget] = useState<any>(null);
   const [otherProfile, setOtherProfile] = useState<OtherUser | null>(null);
 
   // Xử lý pendingChat từ HomeScreen (khi tạo chat mới từ ContactsScreen)
@@ -291,32 +299,26 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         console.log('  → Adding to strangerChats');
         setStrangerChats(prev => {
           const exists = prev.find(c => c.chatID === newChat.chatID);
-          if (exists) {
-            console.log('  → Chat already exists in strangerChats');
-            return prev;
-          }
-          console.log('  → Added to strangerChats');
+          if (exists) return prev;
           return [newChat, ...prev].sort((a, b) => {
             const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
             const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
             return new Date(bT as string).getTime() - new Date(aT as string).getTime();
           });
         });
+        setChats(prev => prev.filter(c => c.chatID !== newChat.chatID)); // Xóa khỏi danh sách bạn bè (nếu có)
       } else {
         console.log('  → Adding to chats (friends)');
         setChats(prev => {
           const exists = prev.find(c => c.chatID === newChat.chatID);
-          if (exists) {
-            console.log('  → Chat already exists in chats');
-            return prev;
-          }
-          console.log('  → Added to chats');
+          if (exists) return prev;
           return [newChat, ...prev].sort((a, b) => {
             const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
             const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
             return new Date(bT).getTime() - new Date(aT).getTime();
           });
         });
+        setStrangerChats(prev => prev.filter(c => c.chatID !== newChat.chatID)); // Xóa khỏi danh sách người lạ (nếu có)
       }
 
       // Fetch member info nếu là private chat
@@ -485,6 +487,101 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     finally { setDeletingChat(null); }
   };
 
+  const handleUnfriend = async () => {
+    if (!user || selectedChat?.type !== 'private') return;
+    const otherId = selectedChat.members.find((m) => m.userID !== user.userID)?.userID;
+    if (!otherId) return;
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/contacts/friend/${otherId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        setCurrentFriendStatus('none');
+        // Update user chats to move it to strangers locally
+        setChats(prev => prev.filter(c => c.chatID !== selectedChat.chatID));
+        setStrangerChats(prev => {
+          const exists = prev.find(c => c.chatID === selectedChat.chatID);
+          if (exists) return prev;
+          return [{ ...selectedChat, isStranger: true, lastMessage: selectedChat.lastMessage || [] }, ...prev];
+        });
+        setSelectedChat(prev => prev ? { ...prev, isStranger: true } : prev);
+      }
+    } catch (err) {
+      console.error("Failed to unfriend", err);
+    }
+  };
+
+  const handleSendFriendRequest = async () => {
+    if (!user || selectedChat?.type !== 'private') return;
+    const otherId = selectedChat.members.find((m) => m.userID !== user.userID)?.userID;
+    if (!otherId) return;
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/contacts/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ friendID: otherId }),
+      });
+
+      if (response.ok) {
+        setCurrentFriendStatus('pending_sent');
+        Alert.alert('Thành công', 'Đã gửi yêu cầu kết bạn');
+      }
+    } catch (err) {
+      console.error("Failed to send friend request", err);
+    }
+  };
+
+  const handleAcceptFriendRequest = async () => {
+    if (!user || selectedChat?.type !== 'private') return;
+    const otherId = selectedChat.members.find((m) => m.userID !== user.userID)?.userID;
+    if (!otherId) return;
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/contacts/accept-friend-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ senderID: otherId }),
+      });
+
+      if (response.ok) {
+        setCurrentFriendStatus('accepted');
+        setSelectedChat(prev => prev ? { ...prev, isStranger: false } : prev);
+        Alert.alert('Thành công', 'Đã chấp nhận lời mời kết bạn');
+      }
+    } catch (err) {
+      console.error("Failed to accept friend request", err);
+    }
+  };
+
+  const handleCancelFriendRequest = async () => {
+    if (!user || selectedChat?.type !== 'private') return;
+    const otherId = selectedChat.members.find((m) => m.userID !== user.userID)?.userID;
+    if (!otherId) return;
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/contacts/cancel-friend-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ recipientID: otherId }),
+      });
+
+      if (response.ok) {
+        setCurrentFriendStatus('none');
+        Alert.alert('Thành công', 'Đã thu hồi lời mời kết bạn');
+      }
+    } catch (err) {
+      console.error("Failed to cancel friend request", err);
+    }
+  };
+
   const openOtherProfile = async (chat: Chat) => {
     if (!user || chat.type !== 'private') return;
     const otherId = chat.members.find((m) => m.userID !== user.userID)?.userID;
@@ -559,7 +656,13 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               const newMsgs = exists
                 ? msgs.map(m => (m.messageID === msg.messageID || m.tempID === msg.tempID) ? { ...m, ...msg } : m)
                 : [...msgs, msg];
-              return { ...c, lastMessage: newMsgs };
+              return {
+                ...c,
+                lastMessage: newMsgs,
+                unreadCount: (!exists && msg.senderID !== user?.userID && msg.chatID !== chatID)
+                  ? (c.unreadCount || 0) + 1
+                  : c.unreadCount
+              };
             });
             // Sort by latest message
             return updated.sort((a, b) => {
@@ -567,15 +670,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
               return new Date(bT).getTime() - new Date(aT).getTime();
             });
-          } else {
-            // Chat chưa tồn tại, có thể là chat mới hoặc từ người lạ
-            // Refetch để backend phân loại đúng
-            console.log('📥 New message from unknown chat, refetching...');
-            if (user?.userID) {
-              socket.emit('getChat', user.userID);
-            }
-            return prev;
           }
+          return prev;
         });
 
         // ✅ Cập nhật cả danh sách người lạ (Stranger Chats)
@@ -590,7 +686,13 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               const newMsgs = exists
                 ? msgs.map(m => (m.messageID === msg.messageID || m.tempID === msg.tempID) ? { ...m, ...msg } : m)
                 : [...msgs, msg];
-              return { ...c, lastMessage: newMsgs };
+              return {
+                ...c,
+                lastMessage: newMsgs,
+                unreadCount: (!exists && msg.senderID !== user?.userID && msg.chatID !== chatID)
+                  ? (c.unreadCount || 0) + 1
+                  : c.unreadCount
+              };
             });
             // Sort by latest message
             return updated.sort((a, b) => {
@@ -715,10 +817,28 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     setInputText('');
     onChatOpen?.(); // ẩn tab bar
 
-    // Fetch member info nếu chưa có
+    // Fetch member info và friend status nếu chưa có
     if (chat.type === 'private' && user) {
       const otherId = chat.members.find((m) => m.userID !== user.userID)?.userID;
-      if (otherId) fetchMember(otherId);
+      if (otherId) {
+        fetchMember(otherId);
+        (async () => {
+          try {
+            const token = await AsyncStorage.getItem('token');
+            const statusRes = await fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (statusRes.ok) {
+              const statusData = await statusRes.json();
+              setCurrentFriendStatus(statusData.friendStatus || 'none');
+            } else {
+              setCurrentFriendStatus('none');
+            }
+          } catch {
+            setCurrentFriendStatus('none');
+          }
+        })();
+      }
     }
 
     // Load full messages from API
@@ -1161,6 +1281,66 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
     // Render notification messages (ghim, bỏ ghim, etc.)
     if (isNotification) {
+      const content = item.content || '';
+      if (content.startsWith('##FRIENDSHIP##')) {
+        const parts = content.split('|');
+        const id1 = parts[1];
+        const id2 = parts[2];
+        const name1 = parts[3];
+        const name2 = parts[4];
+        const isNew = parts[5] === 'new';
+
+        const isSelf1 = id1 === user?.userID;
+        const friendID = isSelf1 ? id2 : id1;
+        const friendName = isSelf1 ? name2 : name1;
+
+        return (
+          <View key={item.messageID || item.tempID} style={styles.notifContainer}>
+            <View style={styles.notifBadge}>
+              <Text style={styles.notifText}>
+                Bạn và{' '}
+                <Text
+                  style={{ fontWeight: 'bold', color: '#0068ff' }}
+                  onPress={async () => {
+                    try {
+                      const token = await AsyncStorage.getItem('token');
+                      const [userRes, statusRes] = await Promise.all([
+                        fetch(`${API_URL}/api/usersID`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ userID: friendID }),
+                        }),
+                        fetch(`${API_URL}/api/contacts/friend-status/${friendID}`, {
+                          headers: { Authorization: `Bearer ${token}` },
+                        }),
+                      ]);
+                      const userData = await userRes.json();
+                      const statusData = await statusRes.json();
+                      setOtherProfile({
+                        userID: userData.userID,
+                        name: userData.name,
+                        sdt: userData.sdt,
+                        anhDaiDien: userData.anhDaiDien,
+                        anhBia: userData.anhBia,
+                        ngaysinh: userData.ngaysinh,
+                        gioTinh: userData.gioTinh,
+                        trangThai: userData.trangThai,
+                        friendStatus: statusData.friendStatus || 'none',
+                      });
+                    } catch (err) {
+                      console.error('Failed to fetch friend profile:', err);
+                    }
+                  }}
+                >
+                  {friendName}
+                </Text>
+                {' '}đã trở thành bạn bè.{isNew ? ' Hãy bắt đầu cuộc trò chuyện.' : ''}
+              </Text>
+            </View>
+          </View>
+        );
+      }
+
       return (
         <View key={item.messageID || item.tempID} style={styles.notificationContainer}>
           <View style={styles.notificationBubble}>
@@ -1534,77 +1714,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           }
         />
 
-        {/* Incoming Call khi đang ở chat list */}
-        {incomingCall && (
-          <IncomingCallModal
-            visible={!!incomingCall}
-            callerInfo={{
-              name: incomingCall.callerInfo.name,
-              avatar: incomingCall.callerInfo.avatar,
-              userID: incomingCall.from,
-            }}
-            callType={incomingCall.callType}
-            onAccept={() => {
-              setCallType(incomingCall.callType);
-              setShowCall(true);
-              setIncomingCall(null);
-            }}
-            onReject={() => {
-              socket.emit('call-cancelled', {
-                to: incomingCall.from,
-                from: user?.userID,
-              });
-              setIncomingCall(null);
-            }}
-          />
-        )}
 
-        {/* Call Screen từ chat list */}
-        {showCall && user && incomingCall === null && (
-          <CallScreen
-            visible={showCall}
-            callType={callType}
-            remoteUserID={incomingCall ? (incomingCall as any).from : ''}
-            remoteInfo={{ name: '', avatar: null }}
-            chatID={''}
-            currentUser={user}
-            onClose={() => setShowCall(false)}
-          />
-        )}
-
-        <AddFriendModal
-          visible={showAddFriend}
-          onClose={() => setShowAddFriend(false)}
-          currentUser={user}
-          onStartChat={(chat: any) => {
-            setShowAddFriend(false);
-            if (chat?.chatID) handleSelectChat(chat);
-          }}
-        />
-
-        {/* Confirm xóa chat */}
-        <Modal visible={!!deletingChat} transparent animationType="fade" onRequestClose={() => setDeletingChat(null)}>
-          <View style={styles.confirmOverlay}>
-            <View style={styles.confirmBox}>
-              <Text style={styles.confirmTitle}>Xóa cuộc trò chuyện</Text>
-              <Text style={styles.confirmMsg}>
-                Xóa cuộc trò chuyện với{' '}
-                <Text style={{ fontWeight: '700' }}>
-                  {deletingChat ? getChatDisplayName(deletingChat) : ''}
-                </Text>
-                ? Hành động này không thể hoàn tác.
-              </Text>
-              <View style={styles.confirmBtns}>
-                <TouchableOpacity style={styles.confirmBtnCancel} onPress={() => setDeletingChat(null)}>
-                  <Text style={styles.confirmBtnCancelText}>Hủy</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.confirmBtnDelete} onPress={handleDeleteChat}>
-                  <Text style={styles.confirmBtnDeleteText}>Xóa</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
 
         {/* Stranger Inbox */}
         <Modal
@@ -1699,6 +1809,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     );
   }
 
+  const handleHeaderPress = () => {
+    if (selectedChat?.type !== 'private') return;
+    openOtherProfile(selectedChat);
+  };
+
   // ===== CHAT WINDOW VIEW =====
   return (
     <View style={styles.container}>
@@ -1707,20 +1822,51 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         <TouchableOpacity onPress={() => { setSelectedChat(null); onChatClose?.(); }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={26} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => openOtherProfile(selectedChat)} activeOpacity={0.8}>
+        <TouchableOpacity onPress={handleHeaderPress} activeOpacity={0.8} style={styles.headerAvatarContainer}>
           <Image
             source={{ uri: getChatAvatar(selectedChat) }}
             style={styles.headerAvatar}
           />
-        </TouchableOpacity>
-        <TouchableOpacity style={{ flex: 1 }} onPress={() => openOtherProfile(selectedChat)} activeOpacity={0.8}>
-          <Text style={styles.chatTitle} numberOfLines={1}>{getChatDisplayName(selectedChat)}</Text>
-          {selectedChat.isStranger && (
-            <Text style={styles.strangerLabel}>Người lạ</Text>
+          {selectedChat && selectedChat.type === 'private' && (
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor: (() => {
+                    const otherId = selectedChat.members.find(m => m.userID !== user?.userID)?.userID;
+                    const otherUser = otherId ? memberCache[otherId] : null;
+                    return otherUser?.trangThai === 'online' ? '#22c55e' : '#9ca3af';
+                  })()
+                }
+              ]}
+            />
           )}
-          {typingUsers.length > 0 && (
+        </TouchableOpacity>
+        <TouchableOpacity style={{ flex: 1 }} onPress={handleHeaderPress} activeOpacity={0.8}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.chatTitle} numberOfLines={1}>{getChatDisplayName(selectedChat)}</Text>
+            {selectedChat.isStranger && (
+              <View style={styles.strangerBadgeSmall}>
+                <Text style={styles.strangerBadgeSmallText}>NGƯỜI LẠ</Text>
+              </View>
+            )}
+          </View>
+          {selectedChat.isStranger ? (
+            <Text style={styles.strangerSubText}>Không có nhóm chung</Text>
+          ) : typingUsers.length > 0 ? (
             <Text style={styles.typingText}>
               {typingUsers.map(u => u.userName).join(', ')} đang nhập...
+            </Text>
+          ) : (
+            <Text style={styles.typingText}>
+              {(() => {
+                if (selectedChat.type === 'private') {
+                  const otherId = selectedChat.members.find(m => m.userID !== user?.userID)?.userID;
+                  const otherUser = otherId ? memberCache[otherId] : null;
+                  return otherUser?.trangThai === 'online' ? 'Đang hoạt động' : 'Ngoại tuyến';
+                }
+                return 'Đang hoạt động';
+              })()}
             </Text>
           )}
         </TouchableOpacity>
@@ -1734,6 +1880,74 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           <Ionicons name="menu-outline" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
+
+      {/* Stranger Banner — Chỉ hiện khi là người lạ/chờ */}
+      {selectedChat && selectedChat.type === 'private' && 
+       (currentFriendStatus === 'none' || currentFriendStatus === 'stranger' || currentFriendStatus === 'pending') && (
+        <View style={styles.strangerActionBanner}>
+          <View style={styles.strangerBannerLeft}>
+            <Ionicons name="people-outline" size={20} color="#666" style={{ marginRight: 8 }} />
+            <Text style={styles.strangerBannerTextMain}>
+              {currentFriendStatus === 'pending'
+                ? 'Bấm vào hồ sơ để xử lý lời mời'
+                : 'Gửi yêu cầu kết bạn tới người này'}
+            </Text>
+          </View>
+          {currentFriendStatus !== 'pending' && (
+            <TouchableOpacity
+              style={[styles.strangerAddFriendBtn, loading && { opacity: 0.5 }]}
+              disabled={loading}
+              onPress={async () => {
+                try {
+                  setLoading(true);
+                  const token = await AsyncStorage.getItem('token');
+                  const otherId = selectedChat.members.find(m => m.userID !== user?.userID)?.userID;
+                  if (!otherId) {
+                    setLoading(false);
+                    return;
+                  }
+
+                  // Lấy thông tin đầy đủ + friendStatus (giống openOtherProfile)
+                  const [userRes, statusRes] = await Promise.all([
+                    fetch(`${API_URL}/api/usersID`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ userID: otherId }),
+                    }),
+                    fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
+                      headers: { Authorization: `Bearer ${token}` },
+                    }),
+                  ]);
+
+                  if (userRes.ok && statusRes.ok) {
+                    const userData = await userRes.json();
+                    const statusData = await statusRes.json();
+                    const target = { ...userData, friendStatus: statusData.status };
+                    
+                    setAddFriendTarget(target);
+                    // Đóng bất kỳ hồ sơ nào đang mở
+                    setOtherProfile(null);
+                    
+                    setTimeout(() => {
+                      setShowAddFriend(true);
+                      setLoading(false);
+                    }, 150);
+                  } else {
+                    setLoading(false);
+                  }
+                } catch (err) {
+                  console.error("Banner Button onPress error:", err);
+                  setLoading(false);
+                }
+              }}
+            >
+              <Text style={styles.strangerAddFriendBtnText}>
+                {loading ? "Đang tải..." : "Gửi kết bạn"}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* Pinned Messages Banner */}
       {pinnedMessages.length > 0 && (
@@ -1826,18 +2040,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         </View>
       )}
 
-      {/* Banner kết bạn — chỉ hiện khi chat với người lạ */}
-      {selectedChat.isStranger && selectedChat.type === 'private' && (
-        <TouchableOpacity
-          style={styles.addFriendBanner}
-          onPress={() => openOtherProfile(selectedChat)}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="person-add-outline" size={18} color="#0068ff" style={{ marginRight: 8 }} />
-          <Text style={styles.addFriendBannerText}>Kết bạn với người này</Text>
-          <Ionicons name="chevron-forward" size={16} color="#0068ff" />
-        </TouchableOpacity>
-      )}
+
 
       {/* Messages */}
       <FlatList
@@ -2357,12 +2560,135 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           }}
         />
       )}
+
+      {/* Global Modals — Dùng chung cho cả Chat List & Chat Window */}
+      {incomingCall && (
+        <IncomingCallModal
+          visible={!!incomingCall}
+          callerInfo={{
+            name: incomingCall.callerInfo.name,
+            avatar: incomingCall.callerInfo.avatar,
+            userID: incomingCall.from,
+          }}
+          callType={incomingCall.callType}
+          onAccept={() => {
+            setCallType(incomingCall.callType);
+            setShowCall(true);
+            setIncomingCall(null);
+          }}
+          onReject={() => {
+            socket.emit('call-cancelled', {
+              to: incomingCall.from,
+              from: user?.userID,
+            });
+            setIncomingCall(null);
+          }}
+        />
+      )}
+
+      {showCall && user && (
+        <CallScreen
+          visible={showCall}
+          callType={callType}
+          remoteUserID={incomingCall ? (incomingCall as any).from : ''}
+          remoteInfo={{ name: '', avatar: null }}
+          chatID={''}
+          currentUser={user}
+          onClose={() => setShowCall(false)}
+        />
+      )}
+
+      {showAddFriend && (
+        <AddFriendModal
+          visible={showAddFriend}
+          onClose={() => {
+            setShowAddFriend(false);
+            setAddFriendTarget(null);
+          }}
+          currentUser={user}
+          initialUser={addFriendTarget}
+          initialStep={addFriendTarget ? "add_friend" : "search"}
+          onStartChat={(chat: any) => {
+            setShowAddFriend(false);
+            setAddFriendTarget(null);
+            if (chat?.chatID) handleSelectChat(chat);
+          }}
+        />
+      )}
+
+      {deletingChat && (
+        <Modal visible={!!deletingChat} transparent animationType="fade" onRequestClose={() => setDeletingChat(null)}>
+          <View style={styles.confirmOverlay}>
+            <View style={styles.confirmBox}>
+              <Text style={styles.confirmTitle}>Xóa cuộc trò chuyện</Text>
+              <Text style={styles.confirmMsg}>
+                Xóa cuộc trò chuyện với{' '}
+                <Text style={{ fontWeight: '700' }}>
+                  {getChatDisplayName(deletingChat)}
+                </Text>
+                ? Hành động này không thể hoàn tác.
+              </Text>
+              <View style={styles.confirmBtns}>
+                <TouchableOpacity style={styles.confirmBtnCancel} onPress={() => setDeletingChat(null)}>
+                  <Text style={styles.confirmBtnCancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmBtnDelete} onPress={handleDeleteChat}>
+                  <Text style={styles.confirmBtnDeleteText}>Xóa</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {otherProfile && (
+        <OtherProfileModal
+          visible={!!otherProfile}
+          user={otherProfile}
+          currentUser={user}
+          onClose={() => setOtherProfile(null)}
+          onStartChat={(chat) => {
+            setSelectedChat(chat);
+            setOtherProfile(null);
+          }}
+          onStatusChange={(newStatus) => {
+            setCurrentFriendStatus(newStatus);
+            if (newStatus === 'none' && selectedChat) {
+              setSelectedChat({ ...selectedChat, isStranger: true });
+            }
+          }}
+          onAddFriend={() => {
+            setAddFriendTarget(otherProfile);
+            setOtherProfile(null);
+            setTimeout(() => {
+              setShowAddFriend(true);
+            }, 200);
+          }}
+          onAcceptFriend={handleAcceptFriendRequest}
+          onCancelRequest={handleCancelFriendRequest}
+        />
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f0f0' },
+  headerAvatarContainer: {
+    position: 'relative',
+    marginRight: 10,
+  },
+  statusDot: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#0068ff',
+    backgroundColor: '#9ca3af',
+  },
 
   // List header
   listHeader: {
@@ -2391,7 +2717,7 @@ const styles = StyleSheet.create({
   chatTime: { fontSize: 12, color: '#aaa' },
   lastMessage: { fontSize: 13, color: '#888' },
   unreadBadge: {
-    backgroundColor: '#0068ff', borderRadius: 10,
+    backgroundColor: '#ff3b30', borderRadius: 10,
     paddingHorizontal: 6, paddingVertical: 2, minWidth: 20, alignItems: 'center', marginLeft: 6,
   },
   unreadText: { color: '#fff', fontSize: 11, fontWeight: '700' },
@@ -2745,12 +3071,58 @@ const styles = StyleSheet.create({
   addFriendBannerText: {
     fontSize: 14, fontWeight: '600', color: '#0068ff', flex: 1,
   },
+  strangerBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  strangerBadgeSmall: {
+    backgroundColor: '#dee2e6',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  strangerBadgeSmallText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#495057',
+  },
+  strangerSubText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  strangerActionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  strangerBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  strangerBannerTextMain: {
+    fontSize: 13,
+    color: '#444',
+  },
+  strangerAddFriendBtn: {
+    backgroundColor: '#e7f3ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  strangerAddFriendBtnText: {
+    color: '#0068ff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   strangerBadge: {
     backgroundColor: '#0068ff', borderRadius: 12,
     minWidth: 22, height: 22, alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  strangerBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   notifContainer: {
     alignItems: 'center',
     marginVertical: 10,

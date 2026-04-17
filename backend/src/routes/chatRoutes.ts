@@ -41,21 +41,21 @@ const generateChatID = async (): Promise<string> => {
 // Helper: lấy danh sách chat đầy đủ cho user
 export const getChatsForUser = async (userID: string, includeStrangers: boolean = false) => {
   console.log(`📋 getChatsForUser called: userID=${userID}, includeStrangers=${includeStrangers}`);
-  
+
   const memberDocs = await ChatMember.find({ 'members.userID': userID }).lean();
   console.log(`  → Found ${memberDocs.length} ChatMember records for ${userID}`);
-  
+
   const chatIDs = memberDocs.map((m) => m.chatID);
   if (!chatIDs.length) {
     console.log(`  → No chats found for ${userID}`);
     return [];
   }
-  
+
   console.log(`  → ChatIDs:`, chatIDs);
 
   const chats = await Chat.find({ chatID: { $in: chatIDs } }).lean();
   console.log(`  → Found ${chats.length} Chat records`);
-  
+
   // Log chi tiết về deletedAt
   memberDocs.forEach((doc) => {
     const member = doc.members.find((m) => m.userID === userID);
@@ -78,12 +78,7 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
 
   const enriched = flatMessages.map((msg: any) => {
     const s = senders.find((u) => u.userID === msg.senderID);
-    // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
-    const cleanedMsg = { ...msg };
-    if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
-      delete cleanedMsg.pinnedInfo;
-    }
-    return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+    return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
   });
 
   const msgByChat: Record<string, typeof enriched> = {};
@@ -245,7 +240,7 @@ export default function chatRoutes(io: Server) {
   router.post('/chats/strangers/summary', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
       const strangerChats = await getChatsForUser(req.userID!, true); // true = only strangers
-      
+
       if (strangerChats.length === 0) {
         return res.json({
           count: 0,
@@ -263,8 +258,8 @@ export default function chatRoutes(io: Server) {
         const msgs = chat.lastMessage || [];
         if (msgs.length > 0) {
           const lastMsg = msgs[msgs.length - 1];
-          const msgTime = typeof lastMsg.timestamp === 'string' 
-            ? lastMsg.timestamp 
+          const msgTime = typeof lastMsg.timestamp === 'string'
+            ? lastMsg.timestamp
             : new Date(lastMsg.timestamp).toISOString();
           if (!latestTimestamp || new Date(msgTime) > new Date(latestTimestamp)) {
             latestTimestamp = msgTime;
@@ -295,7 +290,7 @@ export default function chatRoutes(io: Server) {
       if (!privateChat) return res.status(404).json({ message: 'Không tìm thấy chat 1-1' }) as any;
 
       const memberDoc = await ChatMember.findOne({ chatID: privateChat.chatID }).lean();
-      const msgs = await Message.find({ 
+      const msgs = await Message.find({
         chatID: privateChat.chatID,
         deletedFor: { $ne: userID1 } // ⭐ Filter deleted messages
       }).sort({ timestamp: 1 }).lean();
@@ -317,7 +312,7 @@ export default function chatRoutes(io: Server) {
     try {
       const contacts = await Contacts.find({}).lean();
       let fixed = 0;
-      
+
       for (const contact of contacts) {
         // ⭐ alias phải là tên của contactID, không phải userID
         const friend = await Users.findOne({ userID: contact.contactID });
@@ -329,7 +324,7 @@ export default function chatRoutes(io: Server) {
           }
         }
       }
-      
+
       res.json({ message: `Fixed ${fixed}/${contacts.length} contacts`, total: contacts.length, fixed });
     } catch (e: any) {
       console.error('fix-all-alias error:', e);
@@ -341,14 +336,14 @@ export default function chatRoutes(io: Server) {
   router.post('/debug/delete-my-contacts', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
       const userID = req.userID!;
-      
+
       const result = await Contacts.deleteMany({
         $or: [
           { userID },
           { contactID: userID }
         ]
       });
-      
+
       res.json({ message: `Deleted ${result.deletedCount} contacts` });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -359,10 +354,10 @@ export default function chatRoutes(io: Server) {
   router.post('/debug/fix-alias', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
       const userID = req.userID!;
-      
+
       // Lấy tất cả contacts của user
       const contacts = await Contacts.find({ userID }).lean();
-      
+
       for (const contact of contacts) {
         // Lấy tên thật của contactID
         const friend = await Users.findOne({ userID: contact.contactID });
@@ -370,7 +365,7 @@ export default function chatRoutes(io: Server) {
           await Contacts.findByIdAndUpdate(contact._id, { alias: friend.name });
         }
       }
-      
+
       res.json({ message: `Fixed ${contacts.length} contacts` });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -382,21 +377,21 @@ export default function chatRoutes(io: Server) {
     try {
       const userID = req.userID!;
       const { userID2 } = req.body;
-      
+
       if (!userID2) return res.status(400).json({ message: 'userID2 required' });
-      
+
       const chatID = `chat_${Date.now()}`;
       const members = [{ userID, role: 'admin' }, { userID: userID2, role: 'member' }];
-      
+
       await Chat.create({
         chatID,
         type: 'private',
         name: `Test Chat`,
         created_at: new Date(),
       });
-      
+
       await ChatMember.create({ chatID, members });
-      
+
       res.json({ message: 'Chat created', chatID });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -441,7 +436,7 @@ export default function chatRoutes(io: Server) {
         created_at: new Date(),
       });
       await ChatMember.create({ chatID, members });
-      
+
       const contact = await Contacts.findOne({
         $or: [
           { userID: userID1, contactID: userID2 },
@@ -465,29 +460,24 @@ export default function chatRoutes(io: Server) {
     try {
       const { chatID } = req.body;
       const userID = req.userID!;
-      
+
       // Lấy thông tin member để check historyDeletedAt
       const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID }).lean();
       const currentMember = memberDoc?.members.find((m) => m.userID === userID);
       const historyDeletedAt = currentMember?.historyDeletedAt;
-      
+
       // Lấy messages, filter theo historyDeletedAt nếu có
-      const query: any = { chatID, deletedFor: { $ne: userID } };
+      const query: any = { chatID };
       if (historyDeletedAt) {
         query.timestamp = { $gt: historyDeletedAt.toISOString() };
       }
-      
+
       const msgs = await Message.find(query).sort({ timestamp: 1 }).lean();
       const senderIDs = [...new Set(msgs.map((m) => m.senderID))];
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = msgs.map((msg) => {
         const s = senders.find((u) => u.userID === msg.senderID);
-        // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
-        const cleanedMsg = { ...msg };
-        if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
-          delete cleanedMsg.pinnedInfo;
-        }
-        return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+        return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
       });
       res.json(enriched);
     } catch (e: any) {
@@ -499,13 +489,13 @@ export default function chatRoutes(io: Server) {
   router.post('/upload', authMiddleware, upload.array('files'), async (req: AuthRequest, res: Response) => {
     try {
       const files = req.files as Express.Multer.File[];
-      console.log('Upload request:', { 
-        fileCount: files?.length, 
-        files: files?.map(f => ({ name: f.originalname, size: f.size, type: f.mimetype })) 
+      console.log('Upload request:', {
+        fileCount: files?.length,
+        files: files?.map(f => ({ name: f.originalname, size: f.size, type: f.mimetype }))
       });
-      
+
       if (!files?.length) return res.status(400).json({ error: 'No files' }) as any;
-      
+
       const urls = await Promise.all(files.map(async (f) => {
         try {
           console.log(`Uploading file: ${f.originalname} (${f.mimetype})`);
@@ -517,7 +507,7 @@ export default function chatRoutes(io: Server) {
           throw new Error(`Failed to upload ${f.originalname}: ${err.message}`);
         }
       }));
-      
+
       res.json({ urls });
     } catch (e: any) {
       console.error('Upload error:', e);
@@ -535,7 +525,7 @@ export default function chatRoutes(io: Server) {
       const memberDoc = await ChatMember.findOne({ chatID }).lean();
       const members = memberDoc?.members || [];
       if (!members.find((m) => m.userID === userID)) return res.status(403).json({ message: 'Forbidden' });
-      const messages = await Message.find({ 
+      const messages = await Message.find({
         chatID,
         deletedFor: { $ne: userID } // ⭐ Filter deleted messages
       }).sort({ timestamp: 1 }).lean();
@@ -543,40 +533,9 @@ export default function chatRoutes(io: Server) {
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = messages.map((msg) => {
         const s = senders.find((u) => u.userID === msg.senderID);
-        // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
-        const cleanedMsg = { ...msg };
-        if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
-          delete cleanedMsg.pinnedInfo;
-        }
-        return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+        return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
       });
       res.json({ ...chatDoc, members, lastMessage: enriched });
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
-    }
-  });
-
-  // Lấy danh sách thành viên trong chat
-  router.get('/chat/:chatID/members', authMiddleware, async (req: AuthRequest, res: Response) => {
-    try {
-      const { chatID } = req.params;
-      const userID = req.userID!;
-      
-      // Kiểm tra user có trong chat không
-      const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
-      if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
-      
-      // Lấy thông tin chi tiết của các thành viên
-      const memberIDs = memberDoc.members.map((m) => m.userID);
-      const users = await Users.find({ userID: { $in: memberIDs } }).lean();
-      
-      const members = users.map((u) => ({
-        userID: u.userID,
-        name: u.name,
-        anhDaiDien: u.anhDaiDien || null,
-      }));
-      
-      res.json({ members });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -618,13 +577,13 @@ export default function chatRoutes(io: Server) {
       if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
       const typeFilter = type === 'image' ? ['image'] : type === 'video' ? ['video'] : type === 'file' ? ['file'] : ['image', 'video', 'file'];
       const skip = (parseInt(page) - 1) * parseInt(limit);
-      const msgs = await Message.find({ 
-        chatID, 
+      const msgs = await Message.find({
+        chatID,
         type: { $in: typeFilter },
         deletedFor: { $ne: userID } // ⭐ Filter deleted messages
       }).sort({ timestamp: -1 }).skip(skip).limit(parseInt(limit)).lean();
-      const total = await Message.countDocuments({ 
-        chatID, 
+      const total = await Message.countDocuments({
+        chatID,
         type: { $in: typeFilter },
         deletedFor: { $ne: userID } // ⭐ Filter deleted messages
       });
@@ -641,15 +600,15 @@ export default function chatRoutes(io: Server) {
       const userID = req.userID!;
       const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
       if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
-      
+
       // Set historyDeletedAt cho member này để ẩn messages cũ
       await ChatMember.updateOne(
         { chatID, 'members.userID': userID },
         { $set: { 'members.$.historyDeletedAt': new Date() } }
       );
-      
+
       console.log(`User ${userID} deleted history for chat ${chatID}`);
-      
+
       res.json({ success: true, message: 'Đã xóa lịch sử trò chuyện' });
     } catch (e: any) {
       console.error('Delete history error:', e);
@@ -664,15 +623,15 @@ export default function chatRoutes(io: Server) {
       const userID = req.userID!;
       const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
       if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
-      
+
       // Set deletedAt cho member này để ẩn chat khỏi danh sách
       const result = await ChatMember.updateOne(
         { chatID, 'members.userID': userID },
         { $set: { 'members.$.deletedAt': new Date() } }
       );
-      
+
       console.log(`Hide chat ${chatID} for user ${userID}:`, result);
-      
+
       res.json({ success: true, deletedAt: new Date().toISOString() });
     } catch (e: any) {
       console.error('Delete chat error:', e);
@@ -703,11 +662,11 @@ export default function chatRoutes(io: Server) {
       });
 
       let friendStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'blocked' | 'blocked_by_other' = 'none';
-      
+
       // Kiểm tra xem mình có đang chặn người này không
       if (currentUser?.blockedUsers?.includes(target.userID)) {
         friendStatus = 'blocked';
-      } 
+      }
       // Kiểm tra xem người này có đang chặn mình không
       else if (target.blockedUsers?.includes(userID)) {
         friendStatus = 'blocked_by_other';
@@ -755,7 +714,7 @@ export default function chatRoutes(io: Server) {
       // Kiểm tra chặn
       const currentUser = await Users.findOne({ userID });
       const targetUser = await Users.findOne({ userID: targetUserID });
-      
+
       if (currentUser?.blockedUsers?.includes(targetUserID as string)) {
         friendStatus = 'blocked';
       } else if (targetUser?.blockedUsers?.includes(userID)) {
@@ -796,7 +755,7 @@ export default function chatRoutes(io: Server) {
 
       //  FIX: alias phải là tên của contactID (người gửi), không phải target (người nhận)
       const sender = await Users.findOne({ userID: senderID });
-      
+
       const newContact = await Contacts.create({
         contactID: senderID,
         userID: target.userID,
@@ -830,11 +789,11 @@ export default function chatRoutes(io: Server) {
     try {
       const userID = req.userID!;
       const { senderID } = req.body;
-      
+
       // Lấy thông tin sender và receiver trước
       const sender = await Users.findOne({ userID: senderID });
       const receiver = await Users.findOne({ userID });
-      
+
       // Update contact từ người nhận (userID) về người gửi (senderID)
       const contact = await Contacts.findOneAndUpdate(
         { userID, contactID: senderID, status: 'pending' },
@@ -862,29 +821,29 @@ export default function chatRoutes(io: Server) {
           { new: true }
         );
       }
-      
-      io.to(senderID).emit('friend_request_accepted', { 
-        userID, 
-        name: receiver?.name, 
+
+      io.to(senderID).emit('friend_request_accepted', {
+        userID,
+        name: receiver?.name,
         anhDaiDien: receiver?.anhDaiDien,
-        actorID: userID 
+        actorID: userID
       });
 
-      io.to(userID).emit('friend_request_accepted', { 
-        userID: senderID, 
-        name: sender?.name, 
+      io.to(userID).emit('friend_request_accepted', {
+        userID: senderID,
+        name: sender?.name,
         anhDaiDien: sender?.anhDaiDien,
-        actorID: userID 
+        actorID: userID
       });
 
       // ── TỰ ĐỘNG TẠO CHAT VÀ GỬI THÔNG BÁO HỆ THỐNG ──────────────────────────
       try {
         console.log(`[Friendship] Accepted: ${senderID} <-> ${userID}. Managing chat...`);
         // Tìm chat 1-1 đã tồn tại
-        const existingMembers = await ChatMember.find({ 
-          'members.userID': { $all: [userID, senderID] } 
+        const existingMembers = await ChatMember.find({
+          'members.userID': { $all: [userID, senderID] }
         }).lean();
-        
+
         let chat: any = null;
         if (existingMembers.length) {
           const chatIDs = existingMembers.map((m) => m.chatID);
@@ -925,14 +884,14 @@ export default function chatRoutes(io: Server) {
             messageID: `msg-sys-${Date.now()}`,
             chatID: chat.chatID,
             senderID: 'system',
-            content: isNewChat 
-              ? `${sender?.name} và ${receiver?.name} đã trở thành bạn bè. Hãy bắt đầu cuộc trò chuyện.`
-              : `${sender?.name} và ${receiver?.name} đã trở thành bạn bè.`,
+            content: isNewChat
+              ? `##FRIENDSHIP##|${senderID}|${userID}|${sender?.name}|${receiver?.name}|new`
+              : `##FRIENDSHIP##|${senderID}|${userID}|${sender?.name}|${receiver?.name}`,
             type: 'notification',
             timestamp: new Date(),
             status: 'sent',
           };
-          
+
           await Message.create(systemMsgObj);
 
           // 3. Phát tin nhắn qua socket với đầy đủ senderInfo để tránh lỗi UI
@@ -944,7 +903,7 @@ export default function chatRoutes(io: Server) {
           console.log(`[Socket] Emitting new_message (system) to users`);
           io.to(senderID).emit('new_message', fullSystemMsg);
           io.to(userID).emit('new_message', fullSystemMsg);
-          io.to(chat.chatID).emit(chat.chatID, fullSystemMsg); 
+          io.to(chat.chatID).emit(chat.chatID, fullSystemMsg);
         }
       } catch (chatError) {
         console.error('Lỗi tự động tạo chat khi kết bạn:', chatError);
@@ -967,7 +926,7 @@ export default function chatRoutes(io: Server) {
 
       io.to(senderID).emit('friend_request_rejected', { senderID, recipientID: userID });
       io.to(userID).emit('friend_request_rejected', { senderID, recipientID: userID });
-      
+
       res.json({ message: 'Đã từ chối kết bạn' });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -988,12 +947,12 @@ export default function chatRoutes(io: Server) {
       const result = await Promise.all(friends.map(async (f) => {
         const friendID = f.contactID;
         const friendUser = await Users.findOne({ userID: friendID }).select('name anhDaiDien sdt trangThai anhBia ngaysinh gioTinh').lean();
-        
-        return { 
-          userID: friendID, 
-          name: friendUser?.name, 
-          anhDaiDien: friendUser?.anhDaiDien, 
-          sdt: friendUser?.sdt, 
+
+        return {
+          userID: friendID,
+          name: friendUser?.name,
+          anhDaiDien: friendUser?.anhDaiDien,
+          sdt: friendUser?.sdt,
           trangThai: friendUser?.trangThai,
           anhBia: friendUser?.anhBia,
           ngaysinh: friendUser?.ngaysinh,
@@ -1016,16 +975,16 @@ export default function chatRoutes(io: Server) {
       const pending = await Contacts.find({ userID, status: 'pending' }).lean();
       const result = await Promise.all(pending.map(async (r) => {
         const sender = await Users.findOne({ userID: r.contactID }).select('userID name anhDaiDien sdt anhBia ngaysinh gioTinh').lean();
-        return { 
-          contactID: r.contactID, 
-          userID, 
-          name: sender?.name, 
-          avatar: sender?.anhDaiDien, 
+        return {
+          contactID: r.contactID,
+          userID,
+          name: sender?.name,
+          avatar: sender?.anhDaiDien,
           sdt: sender?.sdt,
           anhBia: sender?.anhBia,
           ngaysinh: sender?.ngaysinh,
           gioTinh: sender?.gioTinh,
-          message: r.message 
+          message: r.message
         };
       }));
       res.json(result);
@@ -1041,16 +1000,16 @@ export default function chatRoutes(io: Server) {
       const sent = await Contacts.find({ contactID: userID, status: 'pending' }).lean();
       const result = await Promise.all(sent.map(async (r) => {
         const target = await Users.findOne({ userID: r.userID }).select('userID name anhDaiDien sdt anhBia ngaysinh gioTinh').lean();
-        return { 
-          recipientID: r.userID, 
-          senderID: userID, 
-          name: target?.name, 
-          avatar: target?.anhDaiDien, 
+        return {
+          recipientID: r.userID,
+          senderID: userID,
+          name: target?.name,
+          avatar: target?.anhDaiDien,
           sdt: target?.sdt,
           anhBia: target?.anhBia,
           ngaysinh: target?.ngaysinh,
           gioTinh: target?.gioTinh,
-          message: r.message 
+          message: r.message
         };
       }));
       res.json(result);
@@ -1065,12 +1024,12 @@ export default function chatRoutes(io: Server) {
       const senderID = req.userID!;
       const { recipientID } = req.body;
       const contact = await Contacts.findOneAndDelete({ contactID: senderID, userID: recipientID, status: 'pending' });
-      
+
       if (!contact) return res.status(404).json({ message: 'Không tìm thấy lời mời để thu hồi' }) as any;
 
       io.to(recipientID).emit('friend_request_cancelled', { senderID, recipientID });
       io.to(senderID).emit('friend_request_cancelled', { senderID, recipientID });
-      
+
       res.json({ message: 'Đã thu hồi lời mời kết bạn' });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -1083,9 +1042,9 @@ export default function chatRoutes(io: Server) {
     try {
       const userID = req.userID!;
       const { friendID } = req.body;
-      
+
       console.log('🔍 Looking for contact:', { userID, friendID });
-      
+
       const contact = await Contacts.findOneAndDelete({
         $or: [
           { userID, contactID: friendID, status: 'accepted' },
@@ -1116,7 +1075,7 @@ export default function chatRoutes(io: Server) {
     try {
       const userID = req.userID!;
       const { contactID, alias } = req.body;
-      
+
       // Tìm quan hệ bạn bè. Alias trong DB hiện tại đang gán cho người nhận lời mời.
       // Để đơn giản theo schema hiện tại, ta cập nhật alias của bản ghi contact chung.
       const contact = await Contacts.findOneAndUpdate(
@@ -1141,7 +1100,7 @@ export default function chatRoutes(io: Server) {
     try {
       const userID = String(req.userID!);
       const { targetUserID } = req.body;
-      
+
       console.log(`[API] Blocking request: ${userID} -> ${targetUserID}`);
 
       if (!targetUserID || typeof targetUserID !== 'string') {

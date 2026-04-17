@@ -241,6 +241,21 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
     }
   };
 
+  // Thu hồi lời mời kết bạn
+  const handleRecall = async () => {
+    if (!selectedUser) return;
+    try {
+      await axiosInstance.post('/contacts/cancel-friend-request', {
+        recipientID: selectedUser.userID
+      });
+      setSelectedUser({ ...selectedUser, friendStatus: 'none' });
+      setRecentFound(prev => prev.map(u => u.userID === selectedUser.userID ? { ...u, friendStatus: 'none' } : u));
+      toast.success('Đã thu hồi lời mời kết bạn');
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Lỗi thu hồi lời mời');
+    }
+  };
+
   // Mở cuộc trò chuyện với người dùng
   const handleStartChat = async () => {
     if (!selectedUser) return;
@@ -468,6 +483,7 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
           }}
           onStartChat={onStartChat}
           onAddFriend={() => setStep('add_friend')}
+          onRecall={handleRecall}
         />
       )}
     </>

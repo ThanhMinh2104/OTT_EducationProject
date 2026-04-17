@@ -306,11 +306,14 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
     </div>
   );
 };
-
 const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
+  const [showReminder, setShowReminder] = useState(false);
+
+
+
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -335,7 +338,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [showSearch, setShowSearch] = useState(false);
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const msgRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [showReminder, setShowReminder] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
   // Image viewer state
@@ -375,6 +377,18 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleRecallFriendRequest = async (targetUserID: string) => {
+    try {
+      await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: targetUserID });
+      toast.success('Đã thu hồi lời mời kết bạn');
+      if (selectedUserForProfile && (selectedUserForProfile as any).userID === targetUserID) {
+        setSelectedUserForProfile({ ...(selectedUserForProfile as any), friendStatus: 'none' });
+      }
+    } catch (err) {
+      toast.error('Lỗi khi thu hồi lời mời');
+    }
+  };
 
   useEffect(() => {
     if (!selectedChat || !user) return;
@@ -2086,6 +2100,55 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 const msgKey = item.key;
 
                 if (isNotif) {
+                  const content = msg.content || '';
+                  if (content.startsWith('##FRIENDSHIP##')) {
+                    const parts = content.split('|');
+                    const id1 = parts[1];
+                    const id2 = parts[2];
+                    const name1 = parts[3];
+                    const name2 = parts[4];
+                    const isNew = parts[5] === 'new';
+
+                    const isSelf1 = id1 === user?.userID;
+                    const friendID = isSelf1 ? id2 : id1;
+                    const friendName = isSelf1 ? name2 : name1;
+
+                    return (
+                      <div key={msgKey} className="flex justify-center my-1">
+                        <span className="text-xs text-gray-500 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 shadow-sm transition-all hover:bg-white/20">
+                          Bạn và{' '}
+                          <button
+                            className="font-bold text-blue-500 hover:text-blue-600 transition-colors mx-0.5"
+                            onClick={async () => {
+                              try {
+                                const [userRes, statusRes] = await Promise.all([
+                                  fetch(`${API}/usersID`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ userID: friendID }),
+                                  }),
+                                  fetch(`${API}/contacts/friend-status/${friendID}`, {
+                                    headers: { ...authHeaders() },
+                                  }),
+                                ]);
+                                const userData = await userRes.json();
+                                const statusData = await statusRes.json();
+                                userData.friendStatus = statusData.friendStatus || 'none';
+                                setSelectedUserForProfile(userData);
+                                setShowOtherProfile(true);
+                              } catch (err) {
+                                console.error('Failed to fetch friend profile:', err);
+                              }
+                            }}
+                          >
+                            {friendName}
+                          </button>
+                          đã trở thành bạn bè.{' '}
+                          {isNew && <span className="opacity-80">Hãy bắt đầu cuộc trò chuyện.</span>}
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={msgKey} className="flex justify-center my-1">
                       <span className="text-xs text-gray-500 bg-white/70 px-3 py-1 rounded-full">
@@ -2411,15 +2474,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       Bỏ chặn để tiếp tục trò chuyện
                     </button>
                   </div>
-                </div>
-              ) : memberInfo?.friendStatus === 'blocked_by_other' ? (
-                <div className="flex items-center justify-center p-6 bg-gray-50/80 border-t border-gray-100 gap-3 animate-fade-in shadow-inner">
-                  <div className="w-10 h-10 rounded-full bg-gray-200/50 flex items-center justify-center shrink-0">
-                    <FaBan className="text-gray-400 text-lg" />
-                  </div>
-                  <p className="text-[14px] text-gray-500 m-0 italic font-semibold tracking-tight">
-                    Xin lỗi! Hiện tại bạn không thể gửi tin nhắn cho người này.
-                  </p>
                 </div>
               ) : (
                 <>
@@ -2774,6 +2828,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               setMemberInfo({ ...memberInfo, friendStatus: status });
             }
           }}
+          onRecall={() => selectedUserForProfile && handleRecallFriendRequest((selectedUserForProfile as any).userID)}
         />
       )}
 

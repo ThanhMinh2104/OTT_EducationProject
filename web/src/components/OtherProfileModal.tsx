@@ -34,6 +34,7 @@ const OtherProfileModal = ({
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const [showUnfriendConfirm, setShowUnfriendConfirm] = useState(false);
+  const [showRecallConfirm, setShowRecallConfirm] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const requestMenuRef = useRef<HTMLDivElement>(null);
@@ -155,7 +156,7 @@ const OtherProfileModal = ({
     if (user.friendStatus === 'pending_sent') {
       return (
         <button
-          onClick={onRecall}
+          onClick={() => setShowRecallConfirm(true)}
           className="flex-1 h-[42px] rounded-xl text-[14.5px] font-bold bg-red-50 text-red-600 hover:bg-red-100 active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-red-100 shadow-sm"
         >
           <FaUndo className="text-[14px]" /> Thu hồi lời mời
@@ -334,6 +335,17 @@ const OtherProfileModal = ({
         message={`Xóa ${user.name} khỏi danh sách bạn bè?`}
         onConfirm={handleUnfriend}
         onCancel={() => setShowUnfriendConfirm(false)}
+        isDanger
+      />
+      <ConfirmModal
+        show={showRecallConfirm}
+        title="Xác nhận thu hồi"
+        message={`Bạn có muốn thu hồi lời mời kết bạn gửi cho ${user.name}?`}
+        onConfirm={() => {
+          setShowRecallConfirm(false);
+          onRecall?.();
+        }}
+        onCancel={() => setShowRecallConfirm(false)}
         isDanger
       />
     </>
