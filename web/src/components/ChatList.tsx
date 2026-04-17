@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { FaSearch, FaUserPlus, FaUsers, FaAngleDown, FaEllipsisH, FaTrash } from 'react-icons/fa';
 import socket from '../utils/socket';
 import AddFriendModal from './AddFriendModal';
+import { CreateGroupModal } from './CreateGroupModal';
 import ContactsPanel from './ContactsPanel';
 import StrangerFolderItem from './StrangerFolderItem';
 import StrangerChatList from './StrangerChatList';
@@ -129,6 +130,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
   const [chats, setChats] = useState<Chat[]>([]);
   const [searchText, setSearchText] = useState('');
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
   const [typingMap, setTypingMap] = useState<
     Record<string, { userID: string; userName: string }[]>
@@ -192,6 +194,46 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       setMemberCache((prev) => ({ ...prev, [memberID]: data }));
     } catch {
       /* ignore */
+    }
+  };
+
+  // Fetch groups for user
+  const fetchGroups = async () => {
+    if (!user?.userID) return;
+    try {
+      const token = getToken();
+      const res = await fetch('http://localhost:5000/api/groups', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (res.ok) {
+        const groups = await res.json();
+        // Convert groups to chat format
+        const groupChats: Chat[] = groups.map((g: any) => ({
+          chatID: g.groupID,
+          name: g.name,
+          type: 'group',
+          avatar: g.avatar,
+          members: [],
+          lastMessage: [],
+          unreadCount: 0,
+        }));
+        setChats((prev) => {
+          // Merge groups with existing chats, avoiding duplicates
+          const existingIds = new Set(prev.map((c) => c.chatID));
+          const newGroups = groupChats.filter((g) => !existingIds.has(g.chatID));
+          return [...prev, ...newGroups].sort((a, b) => {
+            const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
+            const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
+            return new Date(bT).getTime() - new Date(aT).getTime();
+          });
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch groups:', err);
     }
   };
 
@@ -448,6 +490,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           </button>
           <button
             title="Tạo nhóm"
+            onClick={() => setShowCreateGroupModal(true)}
             className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-[17px] text-gray-600 hover:bg-gray-100 hover:text-[#0e9de8] transition-colors"
           >
             <FaUsers />
@@ -581,6 +624,17 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           onClose={() => setShowAddFriendModal(false)}
           currentUser={user}
           onStartChat={(chat: Chat) => onSelectChat(chat)}
+        />
+      )}
+
+      {showCreateGroupModal && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroupModal(false)}
+          onGroupCreated={(groupID: string) => {
+            // Reload chats from server
+            socket.emit('getChat', user?.userID);
+          }}
+          currentUser={user}
         />
       )}
 

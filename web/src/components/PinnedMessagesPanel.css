@@ -1,0 +1,82 @@
+.pinned-messages-panel {
+  width: 300px;
+  border-left: 1px solid #e0e0e0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.btn-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f0f0f0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-close:hover {
+  background: #e0e0e0;
+}
+
+.panel-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.pinned-message {
+  background: #f0f0f0;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border-left: 3px solid #0084ff;
+}
+
+.pinned-sender {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0084ff;
+  margin-bottom: 4px;
+}
+
+.pinned-content {
+  font-size: 14px;
+  color: #000;
+  margin-bottom: 8px;
+  word-wrap: break-word;
+}
+
+.pinned-time {
+  font-size: 11px;
+  color: #999;
+}
+
+.empty-pinned {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #65676b;
+  text-align: center;
+}
