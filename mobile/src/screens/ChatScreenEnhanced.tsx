@@ -14,7 +14,7 @@ import { API_URL } from '../utils/config';
 import socket from '../utils/socket';
 import StickerEmojiPicker from '../components/StickerEmojiPicker';
 import ImageGrid from '../components/ImageGrid'; // ⭐ Import ImageGrid
-import { groupMessages, isMessageGroup } from '../utils/messageGrouping'; // ⭐ Import grouping utilities
+import { groupMessages, isMessageGroup, Message as MessageGroupingMessage } from '../utils/messageGrouping'; // ⭐ Import grouping utilities
 import AudioPlayer from '../components/AudioPlayer';
 import CallScreen from './CallScreen';
 import IncomingCallModal from '../components/IncomingCallModal';
@@ -31,21 +31,8 @@ type Props = {
   onChatOpened?: () => void;
 };
 
-interface Message {
-  messageID?: string;
-  tempID?: string;
-  chatID: string;
-  senderID: string;
-  content?: string;
-  type: string;
-  timestamp: string;
-  media_url?: string[];
-  status?: string;
-  senderInfo?: { name: string; avatar?: string | null };
-  replyTo?: { messageID?: string; senderID?: string; content?: string; type?: string } | null;
-  pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
-  groupId?: string; // ⭐ ID để group các ảnh gửi cùng lúc
-}
+// ⭐ Sử dụng Message type từ messageGrouping.ts để tránh xung đột
+type Message = MessageGroupingMessage;
 
 interface Chat {
   chatID: string;
@@ -800,7 +787,25 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
 
   const scrollToMessage = (messageID?: string) => {
     if (!messageID) return;
-    const index = messages.findIndex((m) => m.messageID === messageID);
+    
+    // ⭐ Tạo mảng grouped giống như trong FlatList
+    const uniqueMessages = messages.filter((msg, idx, arr) =>
+      arr.findIndex(m =>
+        (m.messageID && m.messageID === msg.messageID) ||
+        (m.tempID && m.tempID === msg.tempID && !msg.messageID)
+      ) === idx
+    );
+    const groupedData = groupMessages(uniqueMessages);
+    
+    // ⭐ Tìm index trong mảng grouped
+    const index = groupedData.findIndex((item) => {
+      if (isMessageGroup(item)) {
+        // Kiểm tra xem messageID có trong group không
+        return item.messages.some((msg: Message) => msg.messageID === messageID);
+      }
+      return item.messageID === messageID;
+    });
+    
     if (index !== -1 && flatListRef.current) {
       flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
       setShowInfoPanel(false);
@@ -1811,7 +1816,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
       {selectedChat && (
         <ChatInfoPanel
           visible={showChatInfo}
-          chat={selectedChat}
+          chat={selectedChat as any}
           memberInfo={
             selectedChat.type === 'private'
               ? memberCache[
@@ -1820,7 +1825,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
                 ] || null
               : null
           }
-          messages={messages}
+          messages={messages as any}
           onClose={() => setShowChatInfo(false)}
           onHistoryDeleted={() => {
             setMessages([]);
