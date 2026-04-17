@@ -43,6 +43,7 @@ interface Message {
   senderInfo?: { name: string; avatar?: string | null };
   forwardedFrom?: string;
   pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
+  groupId?: string; // ⭐ ID để group các ảnh gửi cùng lúc
 }
 
 interface Chat {
@@ -341,13 +342,25 @@ const ChatScreen = ({ navigation, route }: Props) => {
 
   const handleDeleteLocal = (msg: Message) => {
     if (!msg.messageID || !user?.userID || !selectedChat) return;
-    socket.emit("delete_message_local", {
-      messageID: msg.messageID,
-      userID: user.userID,
-      chatID: selectedChat.chatID,
+    
+    // ⭐ Tìm tất cả messages trong cùng group (nếu có)
+    let messagesToDelete: Message[] = [msg];
+    if (msg.type === 'image' && msg.groupId) {
+      messagesToDelete = messages.filter(m => m.groupId === msg.groupId);
+      console.log(`📸 Deleting ${messagesToDelete.length} images from group ${msg.groupId}`);
+    }
+
+    // Gửi socket event cho từng message
+    messagesToDelete.forEach((message) => {
+      socket.emit("delete_message_local", {
+        messageID: message.messageID,
+        userID: user.userID,
+        chatID: selectedChat.chatID,
+      });
     });
+    
     setShowMenu(false);
-    Alert.alert("Thành công", "Tin nhắn đã được xóa phía bạn");
+    Alert.alert("Thành công", `Đã xóa ${messagesToDelete.length} tin nhắn phía bạn`);
   };
 
   const handleForwardMessage = (msg: Message) => {

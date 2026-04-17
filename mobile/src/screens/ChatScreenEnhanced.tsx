@@ -13,6 +13,8 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { API_URL } from '../utils/config';
 import socket from '../utils/socket';
 import StickerEmojiPicker from '../components/StickerEmojiPicker';
+import ImageGrid from '../components/ImageGrid'; // ⭐ Import ImageGrid
+import { groupMessages, isMessageGroup } from '../utils/messageGrouping'; // ⭐ Import grouping utilities
 import AudioPlayer from '../components/AudioPlayer';
 import CallScreen from './CallScreen';
 import IncomingCallModal from '../components/IncomingCallModal';
@@ -42,6 +44,7 @@ interface Message {
   senderInfo?: { name: string; avatar?: string | null };
   replyTo?: { messageID?: string; senderID?: string; content?: string; type?: string } | null;
   pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
+  groupId?: string; // ⭐ ID để group các ảnh gửi cùng lúc
 }
 
 interface Chat {
@@ -489,13 +492,29 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
           : files[0].type === 'video'
           ? 'video'
           : 'file';
-        const msg = buildMsg({
-          content: msgType === 'file' ? files[0].name || '' : '',
-          type: msgType,
-          media_url: data.urls,
-        });
-        socket.emit('send_message', msg);
-        setMessages(prev => [...prev, msg]);
+        
+        // ⭐ Tạo groupId cho batch ảnh (2+ ảnh)
+        const groupId = msgType === 'image' && data.urls.length > 1
+          ? `group_${Date.now()}_${user.userID}`
+          : undefined;
+
+        // Gửi từng ảnh/video/file riêng biệt
+        for (let i = 0; i < data.urls.length; i++) {
+          const msg = buildMsg({
+            content: msgType === 'file' ? (files[i]?.name || '') : '',
+            type: msgType,
+            media_url: [data.urls[i]],
+            groupId, // ⭐ Thêm groupId
+          });
+          socket.emit('send_message', msg);
+          setMessages(prev => [...prev, msg]);
+          
+          // Delay nhỏ giữa các lần gửi
+          if (i < data.urls.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+        
         setReplyTo(null);
       }
     } catch {
@@ -642,13 +661,39 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
 
   const handleDeleteLocal = (msg: Message) => {
     if (!msg.messageID || !user?.userID || !selectedChat) return;
-    socket.emit('delete_message_local', { messageID: msg.messageID, userID: user.userID, chatID: selectedChat.chatID });
+    
+    // ⭐ Tìm tất cả messages trong cùng group (nếu có)
+    let messagesToDelete: Message[] = [msg];
+    if (msg.type === 'image' && msg.groupId) {
+      messagesToDelete = messages.filter(m => m.groupId === msg.groupId);
+      console.log(`📸 Deleting ${messagesToDelete.length} images from group ${msg.groupId}`);
+    }
+
+    // Gửi socket event cho từng message
+    messagesToDelete.forEach((message) => {
+      socket.emit('delete_message_local', { 
+        messageID: message.messageID, 
+        userID: user.userID, 
+        chatID: selectedChat.chatID 
+      });
+    });
+    
     setShowMenu(false);
   };
 
   const handleUnsend = (msg: Message) => {
     if (!msg.messageID || msg.senderID !== user?.userID) return;
-    socket.emit('unsend_message', { messageID: msg.messageID, chatID: selectedChat!.chatID, senderID: user.userID });
+    
+    // ⭐ Backend sẽ tự động xử lý toàn bộ group nếu message thuộc group
+    // Chỉ cần gửi 1 lần cho message đầu tiên
+    console.log('🔄 Unsending message:', msg.messageID, msg.groupId ? `(group: ${msg.groupId})` : '');
+    
+    socket.emit('unsend_message', { 
+      messageID: msg.messageID, 
+      chatID: selectedChat!.chatID, 
+      senderID: user.userID 
+    });
+    
     setShowMenu(false);
   };
 
@@ -968,6 +1013,80 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
     );
   };
 
+  // ⭐ Render message group (multiple images sent together)
+  const renderMessageGroup = (group: import('../utils/messageGrouping').MessageGroup) => {
+    const isMine = group.senderID === user?.userID;
+    const firstMsg = group.messages[0] as Message; // ⭐ Cast to local Message type
+    const timeStr = new Date(group.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+    return (
+      <View style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}>
+        {/* Avatar bên trái cho tin nhắn người khác */}
+        {!isMine && (
+          <Image
+            source={{
+              uri: firstMsg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${group.senderID}`,
+            }}
+            style={styles.msgAvatar}
+          />
+        )}
+        
+        <View style={[styles.msgContent, isMine ? styles.msgContentMine : styles.msgContentOther]}>
+          {/* Tên người gửi trong nhóm */}
+          {!isMine && selectedChat?.type === 'group' && (
+            <Text style={styles.groupSenderName}>{firstMsg.senderInfo?.name || 'Unknown'}</Text>
+          )}
+          
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity
+              onLongPress={() => handleLongPress(firstMsg)}
+              delayLongPress={500}
+              activeOpacity={0.9}
+            >
+              <ImageGrid
+                messages={group.messages as any}
+                onImageClick={(url, allUrls) => {
+                  setSelectedImages(allUrls);
+                  setSelectedImageIndex(allUrls.indexOf(url));
+                  setImageViewerVisible(true);
+                }}
+              />
+            </TouchableOpacity>
+            
+            {/* Action buttons - hiện cho cả người gửi và người nhận */}
+            <View style={styles.imageGroupActions}>
+              {/* Forward button */}
+              <TouchableOpacity
+                style={styles.imageGroupActionBtn}
+                onPress={() => handleForwardMessage(firstMsg)}
+              >
+                <Ionicons name="arrow-redo-outline" size={18} color="#fff" />
+              </TouchableOpacity>
+              
+              {/* Menu button */}
+              <TouchableOpacity
+                style={styles.imageGroupActionBtn}
+                onPress={() => {
+                  setSelectedMessage(firstMsg);
+                  setShowMenu(true);
+                }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          <Text style={[styles.messageTime, isMine ? styles.timeOnMedia : styles.timeOnMediaOther]}>
+            {timeStr}
+          </Text>
+        </View>
+        
+        {/* Spacer bên phải cho tin nhắn người khác */}
+        {!isMine && <View style={{ width: 48 }} />}
+      </View>
+    );
+  };
+
   const filteredChats = chats.filter(c =>
     c.name.toLowerCase().includes(searchText.toLowerCase())
   );
@@ -1194,16 +1313,28 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
       {/* Messages */}
       <FlatList
         ref={flatListRef}
-        data={messages.filter((msg, idx, arr) =>
-          arr.findIndex(m =>
-            (m.messageID && m.messageID === msg.messageID) ||
-            (m.tempID && m.tempID === msg.tempID && !msg.messageID)
-          ) === idx
-        )}
-        keyExtractor={(item, index) =>
-          item.messageID || item.tempID || `msg-${index}`
-        }
-        renderItem={({ item }) => renderMessage(item)}
+        data={(() => {
+          // ⭐ Group messages trước khi render
+          const uniqueMessages = messages.filter((msg, idx, arr) =>
+            arr.findIndex(m =>
+              (m.messageID && m.messageID === msg.messageID) ||
+              (m.tempID && m.tempID === msg.tempID && !msg.messageID)
+            ) === idx
+          );
+          return groupMessages(uniqueMessages);
+        })()}
+        keyExtractor={(item, index) => {
+          if (isMessageGroup(item)) {
+            return item.groupId;
+          }
+          return item.messageID || item.tempID || `msg-${index}`;
+        }}
+        renderItem={({ item }) => {
+          if (isMessageGroup(item)) {
+            return renderMessageGroup(item);
+          }
+          return renderMessage(item);
+        }}
         contentContainerStyle={styles.messagesList}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
         onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
@@ -1400,9 +1531,6 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, initialChat, 
             )}
             <TouchableOpacity style={styles.menuItem} onPress={() => handleDeleteLocal(selectedMessage!)}>
               <Text style={[styles.menuItemText, { color: '#ff3b30' }]}>🗑️ Xóa phía tôi</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => handleForwardMessage(selectedMessage!)}>
-              <Text style={styles.menuItemText}>↗️ Chuyển tiếp</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -2378,6 +2506,37 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+
+  // Group sender name (for image groups in group chats)
+  groupSenderName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0068ff',
+    marginBottom: 4,
+  },
+
+  // Image group action buttons
+  imageGroupActions: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 10,
+  },
+  imageGroupActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
 });
 
