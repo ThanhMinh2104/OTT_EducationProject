@@ -5,6 +5,7 @@ import socket from '../utils/socket';
 import Sidebar from '../components/Sidebar';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
+import { GroupChatWindow } from '../components/GroupChatWindow';
 import IncomingCallModal from '../components/IncomingCallModal';
 import VideoCallModal from '../components/VideoCallModal';
 import CallNotification from '../components/CallNotification';
@@ -228,6 +229,11 @@ const HomePage = () => {
     return { userID: otherId, name: selectedChat.name, anhDaiDien: selectedChat.avatar };
   };
 
+  const handleSelectChat = (chat: Chat) => {
+    // Show in chat window (both private and group)
+    setSelectedChat(chat);
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif] bg-white">
       {/* React Hot Toast Container */}
@@ -248,18 +254,28 @@ const HomePage = () => {
       <div className="flex-1 flex flex-row overflow-hidden">
         <ChatList
           user={user}
-          onSelectChat={setSelectedChat}
+          onSelectChat={handleSelectChat}
           selectedChatId={selectedChat?.chatID ?? null}
           activeTab={activeTab}
         />
-        <ChatWindow
-          selectedChat={selectedChat}
-          user={user}
-          onStartVideoCall={(callType: 'voice' | 'video') => {
-            setActiveCallInfo({ callType });
-            setShowVideoCall(true);
-          }}
-        />
+        {selectedChat?.type === 'group' ? (
+          user && (
+            <GroupChatWindow
+              groupID={selectedChat.chatID}
+              userID={user.userID}
+              onShowGroupInfo={() => {}}
+            />
+          )
+        ) : (
+          <ChatWindow
+            selectedChat={selectedChat}
+            user={user}
+            onStartVideoCall={(callType: 'voice' | 'video') => {
+              setActiveCallInfo({ callType });
+              setShowVideoCall(true);
+            }}
+          />
+        )}
       </div>
 
       {incomingCall && (

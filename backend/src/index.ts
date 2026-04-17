@@ -22,9 +22,12 @@ import sessionRoutes from './routes/sessionRoutes';
 import adminRoutes from './routes/adminRoutes';
 import chatRoutes, { getChatsForUser } from './routes/chatRoutes';
 import reminderRoutes from './routes/reminderRoutes';
+import groupRoutes from './routes/groupRoutes';
+import groupMediaRoutes from './routes/groupMediaRoutes';
 import { registerMessageEvents } from './socket/messageEvents';
 import { registerNotificationEvents } from './socket/notificationEvents';
 import { registerCallEvents, getActiveCallsMap, clearActiveCallsMap } from './socket/index';
+import { registerGroupChatEvents } from './socket/groupChatEvents';
 
 const app = express();
 
@@ -50,6 +53,8 @@ app.use('/api', sessionRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', chatRoutes(io));
 app.use('/api/reminders', reminderRoutes);
+app.use('/api', groupRoutes);
+app.use('/api', groupMediaRoutes);
 
 // Debug route để xem active calls
 app.get('/api/debug/active-calls', (req, res) => {
@@ -113,6 +118,9 @@ io.on('connection', (socket) => {
 
   // Đăng ký call events (WebRTC)
   registerCallEvents(io, socket);
+
+  // Đăng ký group chat events
+  registerGroupChatEvents(io, socket);
 
   socket.on('updateStatus', async (user) => {
     // Chỉ broadcast tới user room của chính họ, không broadcast toàn bộ

@@ -8,6 +8,9 @@ import ChatMember from '../models/ChatMember';
 import Message from '../models/Messages';
 import Users from '../models/User';
 import Contacts from '../models/Contacts';
+import GroupMember from '../models/GroupMember';
+import Group from '../models/Group';
+import GroupMessage from '../models/GroupMessage';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -38,39 +41,27 @@ const generateChatID = async (): Promise<string> => {
   return `chat${(n + 1).toString().padStart(3, '0')}`;
 };
 
-// Helper: lấy danh sách chat đầy đủ cho user
+// Helper: lấy danh sách chat đầy đủ cho user (bao gồm 1-1 chats và group chats)
 export const getChatsForUser = async (userID: string, includeStrangers: boolean = false) => {
-  console.log(`📋 getChatsForUser called: userID=${userID}, includeStrangers=${includeStrangers}`);
-
+  // ===== FETCH 1-1 CHATS =====
   const memberDocs = await ChatMember.find({ 'members.userID': userID }).lean();
   console.log(`  → Found ${memberDocs.length} ChatMember records for ${userID}`);
 
   const chatIDs = memberDocs.map((m) => m.chatID);
-  if (!chatIDs.length) {
-    console.log(`  → No chats found for ${userID}`);
-    return [];
+
+  // Get 1-1 chats
+  const chats = chatIDs.length > 0 ? await Chat.find({ chatID: { $in: chatIDs } }).lean() : [];
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`  → Found ${chats.length} Chat records`);
   }
 
-  console.log(`  → ChatIDs:`, chatIDs);
-
-  const chats = await Chat.find({ chatID: { $in: chatIDs } }).lean();
-  console.log(`  → Found ${chats.length} Chat records`);
-
-  // Log chi tiết về deletedAt
-  memberDocs.forEach((doc) => {
-    const member = doc.members.find((m) => m.userID === userID);
-    if (member?.deletedAt) {
-      console.log(`  ⚠️ Chat ${doc.chatID} has deletedAt for user ${userID}:`, member.deletedAt);
-    }
-  });
-
-  // Chỉ lấy 20 tin nhắn gần nhất mỗi chat thay vì toàn bộ
-  const allMessages = await Message.aggregate([
+  // Chỉ lấy 50 tin nhắn gần nhất mỗi chat thay vì toàn bộ
+  const allMessages = chatIDs.length > 0 ? await Message.aggregate([
     { $match: { chatID: { $in: chatIDs }, deletedFor: { $ne: userID } } },
     { $sort: { timestamp: 1 } },
     { $group: { _id: '$chatID', messages: { $push: '$$ROOT' } } },
     { $project: { messages: { $slice: ['$messages', -50] } } }, // 50 tin nhắn gần nhất
-  ]);
+  ]) : [];
 
   const flatMessages = allMessages.flatMap((g: any) => g.messages);
   const senderIDs = [...new Set(flatMessages.map((m: any) => m.senderID))];
@@ -140,11 +131,11 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
 
       let messages = msgByChat[c.chatID] || [];
       if (historyDeletedAt) {
-        messages = messages.filter((msg) => new Date(msg.timestamp) > historyDeletedAt);
+        messages = messages.filter((msg: any) => new Date(msg.timestamp) > historyDeletedAt);
       }
 
       const unreadCount = messages.filter(
-        (msg) => msg.senderID !== userID && msg.status !== 'read'
+        (msg: any) => msg.senderID !== userID && msg.status !== 'read'
       ).length;
 
       // Stranger check — không cần thêm DB query
@@ -166,14 +157,85 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
       };
     });
 
+  // ===== FETCH GROUP CHATS =====
+  const groupMembers = await GroupMember.find({ userID, isActive: true }).lean();
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`  → Found ${groupMembers.length} GroupMember records for ${userID}`);
+  }
+
+  const groupIDs = groupMembers.map((gm) => gm.groupID);
+
+  // Get group details
+  const groups = groupIDs.length > 0 ? await Group.find({ groupID: { $in: groupIDs }, isActive: true }).lean() : [];
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`  → Found ${groups.length} Group records`);
+  }
+
+  // Get group messages (50 most recent per group)
+  const groupMessages = groupIDs.length > 0 ? await GroupMessage.aggregate([
+    { $match: { groupID: { $in: groupIDs }, deletedFor: { $ne: userID } } },
+    { $sort: { timestamp: 1 } },
+    { $group: { _id: '$groupID', messages: { $push: '$$ROOT' } } },
+    { $project: { messages: { $slice: ['$messages', -50] } } }, // 50 tin nhắn gần nhất
+  ]) : [];
+
+  const flatGroupMessages = groupMessages.flatMap((g: any) => g.messages);
+  const groupSenderIDs = [...new Set(flatGroupMessages.map((m: any) => m.senderID))];
+  const groupSenders = groupSenderIDs.length > 0 ? await Users.find({ userID: { $in: groupSenderIDs } }).lean() : [];
+
+  const enrichedGroupMessages = flatGroupMessages.map((msg: any) => {
+    const s = groupSenders.find((u) => u.userID === msg.senderID);
+    // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
+    const cleanedMsg = { ...msg };
+    if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
+      delete cleanedMsg.pinnedInfo;
+    }
+    return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+  });
+
+  const msgByGroup: Record<string, typeof enrichedGroupMessages> = {};
+  enrichedGroupMessages.forEach((m: any) => {
+    if (!msgByGroup[m.groupID]) msgByGroup[m.groupID] = [];
+    msgByGroup[m.groupID].push(m);
+  });
+
+  // Get all group members for each group
+  const allGroupMembers = groupIDs.length > 0 ? await GroupMember.find({ groupID: { $in: groupIDs } }).lean() : [];
+  const membersByGroup: Record<string, { userID: string; role: string }[]> = {};
+  allGroupMembers.forEach((gm) => {
+    if (!membersByGroup[gm.groupID]) membersByGroup[gm.groupID] = [];
+    membersByGroup[gm.groupID].push({ userID: gm.userID, role: gm.role });
+  });
+
+  // Convert groups to chat format
+  const groupChats = groups.map((g) => {
+    const messages = msgByGroup[g.groupID] || [];
+    const unreadCount = messages.filter(
+      (msg) => msg.senderID !== userID && msg.status !== 'read'
+    ).length;
+
+    return {
+      chatID: g.groupID,
+      type: 'group',
+      name: g.name,
+      avatar: g.avatar || '',
+      description: g.description || '',
+      lastMessage: messages,
+      members: membersByGroup[g.groupID] || [],
+      unreadCount,
+      isStranger: false, // Group chats are never strangers
+      createdAt: g.createdAt,
+      updatedAt: g.updatedAt,
+    };
+  });
+
+  // ===== MERGE 1-1 AND GROUP CHATS =====
+  const allChats = [...filteredChats, ...groupChats];
+
   if (includeStrangers) {
-    const result = filteredChats.filter((c) => c.isStranger);
-    console.log(`  ✅ Returning ${result.length} stranger chats`);
-    return result;
+    return allChats.filter((c) => c.isStranger);
   } else {
-    const result = filteredChats.filter((c) => !c.isStranger);
-    console.log(`  ✅ Returning ${result.length} friend chats`);
-    return result;
+    return allChats.filter((c) => !c.isStranger);
   }
 };
 
