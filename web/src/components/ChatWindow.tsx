@@ -1881,7 +1881,23 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   return (
                     <div
                       key={item.key}
-                      className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'}`}
+                      id={`msg-${firstMsg.messageID}`}
+                      ref={(el) => {
+                        // ⭐ Thêm ref cho tất cả messages trong group
+                        if (el) {
+                          (group.messages as Message[]).forEach((msg) => {
+                            if (msg.messageID) {
+                              msgRefsMap.current.set(msg.messageID, el);
+                            }
+                          });
+                        }
+                      }}
+                      className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${
+                        // ⭐ Highlight nếu bất kỳ message nào trong group được highlight
+                        (group.messages as Message[]).some((msg) => msg.messageID === highlightedMsgId) 
+                          ? 'bg-blue-200/50 rounded-xl px-1 -mx-1' 
+                          : ''
+                      }`}
                     >
                       {/* Avatar */}
                       {!isMine && (
