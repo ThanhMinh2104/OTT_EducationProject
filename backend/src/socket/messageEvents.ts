@@ -28,6 +28,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         status: 'sent',
         pinnedInfo: null,
         replyTo: data.replyTo || null,
+        groupId: data.groupId || null, // ⭐ Thêm groupId
       });
 
       const saved = await newMsg.save();
@@ -58,6 +59,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         _id: saved._id,
         timestamp: saved.timestamp,
         status: 'sent',
+        groupId: saved.groupId, // ⭐ Thêm groupId
         senderInfo: {
           name: data.senderInfo?.name || 'Người dùng',
           avatar: data.senderInfo?.avatar || null,
@@ -104,13 +106,26 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         return;
       }
 
-      // Đổi type thành unsend và xóa nội dung
-      msg.type = 'unsend';
-      msg.content = '';
-      msg.media_url = [];
-      await msg.save();
+      // ⭐ Nếu tin nhắn thuộc image group, thu hồi toàn bộ group
+      let messagesToUnsend: any[] = [msg];
+      if (msg.type === 'image' && msg.groupId) {
+        console.log('📸 Unsending entire image group:', msg.groupId);
+        messagesToUnsend = await Message.find({ 
+          groupId: msg.groupId, 
+          chatID,
+          senderID 
+        });
+      }
 
-      console.log('✅ Message unsent, notifying members...');
+      // Đổi type thành unsend và xóa nội dung cho tất cả messages
+      for (const message of messagesToUnsend) {
+        message.type = 'unsend';
+        message.content = '';
+        message.media_url = [];
+        await message.save();
+      }
+
+      console.log(`✅ ${messagesToUnsend.length} message(s) unsent, notifying members...`);
 
       // Lấy danh sách thành viên
       const chatMemberDoc = await ChatMember.findOne({ chatID });
@@ -118,12 +133,14 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
 
       console.log('📤 Emitting unsend_notification to:', memberIDs);
 
-      // Thông báo cho tất cả thành viên
-      memberIDs.forEach((id) => {
-        io.to(id).emit('unsend_notification', msg);
-        console.log(`  → Sent to user room: ${id}`);
+      // Thông báo cho tất cả thành viên về tất cả messages đã thu hồi
+      messagesToUnsend.forEach((message) => {
+        memberIDs.forEach((id) => {
+          io.to(id).emit('unsend_notification', message);
+        });
+        io.to(chatID).emit('unsend_notification', message);
       });
-      io.to(chatID).emit('unsend_notification', msg);
+      
       console.log(`  → Sent to chat room: ${chatID}`);
     } catch (e) {
       console.error('unsend_message error:', e);
@@ -265,26 +282,42 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
     chatID: string
   }) => {
     try {
-      // Thêm userID vào mảng deletedFor
-      const msg = await Message.findOneAndUpdate(
-        { messageID: data.messageID },
-        { $addToSet: { deletedFor: data.userID } }, // $addToSet: không thêm nếu đã tồn tại
-        { new: true }
-      );
-
+      const msg = await Message.findOne({ messageID: data.messageID });
+      
       if (!msg) {
         console.error('Message not found:', data.messageID);
         return;
       }
 
+      // ⭐ Nếu tin nhắn thuộc image group, xóa toàn bộ group
+      let messagesToDelete: any[] = [msg];
+      if (msg.type === 'image' && msg.groupId) {
+        console.log('📸 Deleting entire image group locally:', msg.groupId);
+        messagesToDelete = await Message.find({ 
+          groupId: msg.groupId, 
+          chatID: data.chatID 
+        });
+      }
+
+      // Thêm userID vào mảng deletedFor cho tất cả messages
+      for (const message of messagesToDelete) {
+        await Message.findOneAndUpdate(
+          { messageID: message.messageID },
+          { $addToSet: { deletedFor: data.userID } },
+          { new: true }
+        );
+      }
+
       // Chỉ gửi thông báo cho user đó (không gửi cho người khác)
-      io.to(data.userID).emit('message_deleted_local', {
-        messageID: data.messageID,
-        chatID: data.chatID,
-        userID: data.userID,
+      messagesToDelete.forEach((message) => {
+        io.to(data.userID).emit('message_deleted_local', {
+          messageID: message.messageID,
+          chatID: data.chatID,
+          userID: data.userID,
+        });
       });
 
-      console.log(`✅ User ${data.userID} deleted message ${data.messageID} locally`);
+      console.log(`✅ User ${data.userID} deleted ${messagesToDelete.length} message(s) locally`);
     } catch (e) {
       console.error('delete_message_local error:', e);
     }
@@ -322,26 +355,15 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         return;
       }
 
-      // Tạo messageID mới
-      const messageID = await generateMessageID();
-
-      // Tạo tin nhắn mới (copy từ tin nhắn gốc)
-      const newMsg = new Message({
-        messageID,
-        chatID: data.targetChatID,
-        senderID: data.senderID,
-        content: originalMsg.content,
-        type: originalMsg.type,
-        timestamp: new Date(),
-        media_url: originalMsg.media_url,
-        status: 'sent',
-        forwardedFrom: data.originalMessageID, //  Đánh dấu là tin nhắn forward
-        replyTo: null, // Không giữ replyTo khi forward
-        pinnedInfo: null, // Không giữ pinnedInfo khi forward
-      });
-
-      const saved = await newMsg.save();
-      console.log('💾 New message saved:', messageID);
+      // ⭐ Nếu tin nhắn thuộc image group, chuyển tiếp toàn bộ group
+      let messagesToForward: any[] = [originalMsg];
+      if (originalMsg.type === 'image' && originalMsg.groupId) {
+        console.log('📸 Forwarding entire image group:', originalMsg.groupId);
+        messagesToForward = await Message.find({ 
+          groupId: originalMsg.groupId, 
+          chatID: originalMsg.chatID 
+        });
+      }
 
       // Lấy danh sách thành viên của chat đích
       const chatMemberDoc = await ChatMember.findOne({ chatID: data.targetChatID });
@@ -349,44 +371,83 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
 
       console.log('👥 Target chat members:', memberIDs);
 
-      const fullMessage = {
-        messageID: saved.messageID,
-        _id: saved._id,
-        chatID: data.targetChatID,
-        senderID: data.senderID,
-        content: saved.content,
-        type: saved.type,
-        timestamp: saved.timestamp,
-        media_url: saved.media_url,
-        status: 'sent',
-        forwardedFrom: data.originalMessageID,
-        senderInfo: data.senderInfo,
-      };
+      // ⭐ Tạo groupId mới cho batch ảnh được forward
+      const newGroupId = messagesToForward.length > 1 
+        ? `group_${Date.now()}_${data.senderID}` 
+        : undefined;
 
-      // Gửi tới tất cả thành viên của chat đích
-      memberIDs.forEach((id) => {
-        io.to(id).emit('new_message', fullMessage);
-        console.log(`  📤 Emitted to user room: ${id}`);
-      });
+      const forwardedMessageIDs: string[] = [];
 
-      console.log(`✅ Message ${data.originalMessageID} forwarded to chat ${data.targetChatID} as ${messageID}`);
+      // Tạo và gửi từng tin nhắn
+      for (const originalMessage of messagesToForward) {
+        const messageID = await generateMessageID();
+
+        // Tạo tin nhắn mới (copy từ tin nhắn gốc)
+        const newMsg = new Message({
+          messageID,
+          chatID: data.targetChatID,
+          senderID: data.senderID,
+          content: originalMessage.content,
+          type: originalMessage.type,
+          timestamp: new Date(),
+          media_url: originalMessage.media_url,
+          status: 'sent',
+          forwardedFrom: originalMessage.messageID, // Đánh dấu là tin nhắn forward
+          groupId: newGroupId, // ⭐ Giữ groupId cho batch ảnh
+          replyTo: null, // Không giữ replyTo khi forward
+          pinnedInfo: null, // Không giữ pinnedInfo khi forward
+        });
+
+        const saved = await newMsg.save();
+        forwardedMessageIDs.push(saved.messageID);
+        console.log('💾 New message saved:', messageID);
+
+        const fullMessage = {
+          messageID: saved.messageID,
+          _id: saved._id,
+          chatID: data.targetChatID,
+          senderID: data.senderID,
+          content: saved.content,
+          type: saved.type,
+          timestamp: saved.timestamp,
+          media_url: saved.media_url,
+          status: 'sent',
+          forwardedFrom: originalMessage.messageID,
+          groupId: saved.groupId,
+          senderInfo: data.senderInfo,
+        };
+
+        // Gửi tới tất cả thành viên của chat đích
+        memberIDs.forEach((id) => {
+          io.to(id).emit('new_message', fullMessage);
+        });
+
+        // Delay nhỏ giữa các lần gửi
+        if (messagesToForward.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      console.log(`✅ ${messagesToForward.length} message(s) forwarded to chat ${data.targetChatID}`);
 
       // Gửi callback xác nhận thành công
       if (callback) {
         callback({ 
           success: true, 
-          messageID: saved.messageID,
+          messageIDs: forwardedMessageIDs,
           targetChatID: data.targetChatID 
         });
       }
 
       // Cập nhật trạng thái delivered sau 1 giây
       setTimeout(async () => {
-        await Message.findOneAndUpdate({ messageID: saved.messageID }, { status: 'delivered' });
-        io.to(data.targetChatID).emit(`status_update_${data.targetChatID}`, {
-          messageID: saved.messageID,
-          status: 'delivered',
-        });
+        for (const msgID of forwardedMessageIDs) {
+          await Message.findOneAndUpdate({ messageID: msgID }, { status: 'delivered' });
+          io.to(data.targetChatID).emit(`status_update_${data.targetChatID}`, {
+            messageID: msgID,
+            status: 'delivered',
+          });
+        }
       }, 1000);
     } catch (e) {
       console.error('❌ forward_message error:', e);
