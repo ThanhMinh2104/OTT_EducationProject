@@ -1638,7 +1638,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             />
           </View>
           <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowAddFriend(true)}>
-            <Ionicons name="person-add-outline" size={22} color="#fff" />
+            <Ionicons name="person-add" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
 

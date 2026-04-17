@@ -157,10 +157,23 @@ const OtherProfileModal = ({
   const renderActions = () => {
     if (localStatus === 'self') {
       return (
-        <View style={s.actionRow}>
-          <View style={[s.actionBtn, s.actionBtnGray, { flex: 1 }]}>
-            <Text style={s.actionBtnGrayText}>Đây là hồ sơ của bạn</Text>
-          </View>
+        <View style={{ width: '100%', alignItems: 'center' }}>
+          <Text style={{
+            fontSize: 14,
+            color: '#666',
+            fontStyle: 'italic',
+            marginBottom: 16,
+            textAlign: 'center'
+          }}>
+            Đây là hồ sơ của bạn
+          </Text>
+          {/* <TouchableOpacity 
+            style={[s.actionBtn, s.actionBtnGray, { width: '100%', gap: 8 }]}
+            onPress={() => Alert.alert('Thông báo', 'Tính năng chỉnh sửa thông tin đang được phát triển')}
+          >
+            <Ionicons name="pencil" size={16} color="#374151" />
+            <Text style={s.actionBtnGrayText}>Chỉnh sửa thông tin</Text>
+          </TouchableOpacity> */}
         </View>
       );
     }
@@ -170,8 +183,8 @@ const OtherProfileModal = ({
         {/* Left action */}
         {localStatus === 'accepted' && (
           <View style={{ flex: 1, position: 'relative' }}>
-            <TouchableOpacity 
-              style={[s.actionBtn, s.actionBtnGray]} 
+            <TouchableOpacity
+              style={[s.actionBtn, s.actionBtnGray]}
               onPress={() => setShowFriendMenu(!showFriendMenu)}
             >
               <Ionicons name="people" size={16} color="#374151" style={{ marginRight: 6 }} />
@@ -181,8 +194,8 @@ const OtherProfileModal = ({
 
             {showFriendMenu && (
               <View style={s.dropdownMenu}>
-                <TouchableOpacity 
-                  style={s.dropdownItem} 
+                <TouchableOpacity
+                  style={s.dropdownItem}
                   onPress={() => {
                     setShowFriendMenu(false);
                     setShowUnfriendConfirm(true);

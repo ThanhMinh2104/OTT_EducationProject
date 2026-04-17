@@ -94,8 +94,24 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
   const [isReceivedExpanded, setIsReceivedExpanded] = useState(true);
   const [isSentExpanded, setIsSentExpanded] = useState(true);
   const [activeMenuFriend, setActiveMenuFriend] = useState<Friend | null>(null);
+  const [unfriendTarget, setUnfriendTarget] = useState<Friend | null>(null);
 
   const getToken = () => AsyncStorage.getItem('token');
+
+  const handleUnfriend = async () => {
+    if (!unfriendTarget) return;
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_URL}/api/contacts/friend/${unfriendTarget.userID}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setFriends(prev => prev.filter(f => f.userID !== unfriendTarget.userID));
+      }
+    } catch { /* ignore */ }
+    finally { setUnfriendTarget(null); }
+  };
 
   const fetchFriends = async () => {
     try {
@@ -577,7 +593,7 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
               <TouchableOpacity 
                 style={[s.menuItem, { borderBottomWidth: 0 }]} 
                 onPress={() => {
-                  setSelectedProfile({ ...activeMenuFriend, friendStatus: 'accepted' });
+                  setUnfriendTarget(activeMenuFriend);
                   setActiveMenuFriend(null);
                 }}
               >
@@ -595,6 +611,16 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
           </TouchableOpacity>
         </Modal>
       )}
+
+      {/* Unfriend Confirm */}
+      <ConfirmDialog
+        visible={!!unfriendTarget}
+        title="Xóa bạn bè"
+        message={`Bạn có chắc muốn xóa ${unfriendTarget?.name} khỏi danh sách bạn bè?`}
+        danger
+        onConfirm={handleUnfriend}
+        onCancel={() => setUnfriendTarget(null)}
+      />
     </View>
   );
 };

@@ -124,6 +124,12 @@ const AddFriendModal = ({ visible, onClose, currentUser, onStartChat, initialUse
       });
       if (!res.ok) { Alert.alert('Không tìm thấy', 'Không tìm thấy người dùng với số điện thoại này'); return; }
       const data: FoundUser = await res.json();
+      
+      // Kiểm tra nếu là chính mình
+      if (currentUser && data.userID === currentUser.userID) {
+        data.friendStatus = 'self';
+      }
+      
       setRecentFound(prev => {
         const filtered = prev.filter(u => u.userID !== data.userID);
         const updated = [data, ...filtered].slice(0, 10);
