@@ -40,7 +40,7 @@ interface Message {
   senderID: string;
   content?: string;
   type: string;
-  timestamp: string;
+  timestamp: string | Date; // ⭐ Hỗ trợ cả string và Date
   media_url?: string[];
 }
 
