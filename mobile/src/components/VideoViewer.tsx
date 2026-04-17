@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -21,6 +22,7 @@ interface Props {
 }
 
 const VideoViewer = ({ visible, videoUrl, onClose }: Props) => {
+  const insets = useSafeAreaInsets();
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -64,7 +66,7 @@ const VideoViewer = ({ visible, videoUrl, onClose }: Props) => {
       <StatusBar hidden />
       <View style={styles.container}>
         {/* Close button */}
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+        <TouchableOpacity style={[styles.closeButton, { top: insets.top + 8 }]} onPress={onClose}>
           <Ionicons name="close" size={30} color="#fff" />
         </TouchableOpacity>
 

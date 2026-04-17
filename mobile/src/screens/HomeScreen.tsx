@@ -34,6 +34,7 @@ const HomeScreen = ({ navigation }: Props) => {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatToOpen, setChatToOpen] = useState<any>(null);
 
   useEffect(() => {
     (async () => {
@@ -98,11 +99,10 @@ const HomeScreen = ({ navigation }: Props) => {
   };
 
   const [pendingChat, setPendingChat] = useState<any>(null);
-  
+
   const handleStartChat = (chat: any) => {
-    // Khi ContactsPanel mở chat, chuyển sang tab chat và lưu chat cần mở
-    console.log('📥 HomeScreen: Starting chat:', chat);
-    setPendingChat(chat);
+    // Chuyển sang tab chat và mở chat với người đó
+    setChatToOpen(chat);
     setActiveTab("chat");
   };
 
@@ -114,172 +114,172 @@ const HomeScreen = ({ navigation }: Props) => {
       <SafeAreaView style={styles.container} edges={["top"]}>
         <StatusBar backgroundColor="#0068ff" barStyle="light-content" />
 
-      {/* Content area — render theo tab */}
-      <View style={styles.content}>
-        {/* Chat tab — luôn mount để giữ state, ẩn/hiện bằng display */}
-        <View style={{ flex: 1, display: activeTab === "chat" ? "flex" : "none" }}>
-          <ChatScreenInline
-            navigation={navigation as any}
-            onChatOpen={() => setIsChatOpen(true)}
-            onChatClose={() => setIsChatOpen(false)}
-            pendingChat={pendingChat}
-            onPendingChatHandled={() => setPendingChat(null)}
-          />
+        {/* Content area — render theo tab */}
+        <View style={styles.content}>
+          {/* Chat tab — luôn mount để giữ state, ẩn/hiện bằng display */}
+          <View style={{ flex: 1, display: activeTab === "chat" ? "flex" : "none" }}>
+            <ChatScreenInline
+              navigation={navigation as any}
+              onChatOpen={() => setIsChatOpen(true)}
+              onChatClose={() => setIsChatOpen(false)}
+              initialChat={chatToOpen}
+              onChatOpened={() => setChatToOpen(null)}
+            />
+          </View>
+
+          {/* Contacts tab */}
+          {activeTab === "contacts" && (
+            <View style={styles.contactsWrapper}>
+              {/* Header danh bạ */}
+              <View style={styles.contactsHeader}>
+                <Text style={styles.contactsTitle}>Danh bạ</Text>
+              </View>
+              <ContactsScreen user={user} onStartChat={handleStartChat} />
+            </View>
+          )}
+
+          {/* Profile tab */}
+          {activeTab === "profile" && (
+            <View style={styles.profileWrapper}>
+              <View style={styles.profileHeader}>
+                <Text style={styles.profileTitle}>Hồ sơ</Text>
+              </View>
+              <View style={styles.profileContent}>
+                <TouchableOpacity
+                  style={styles.profileCard}
+                  onPress={() => setShowProfileModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Image
+                    source={{
+                      uri: user?.anhDaiDien || "https://via.placeholder.com/64",
+                    }}
+                    style={styles.profileAvatar}
+                  />
+                  <View style={styles.profileInfo}>
+                    <Text style={styles.profileName}>{user?.name}</Text>
+                    <Text style={styles.profileSub}>Xem trang cá nhân</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#aaa" />
+                </TouchableOpacity>
+
+                <View style={styles.profileActions}>
+                  <TouchableOpacity
+                    style={styles.profileActionItem}
+                    onPress={() => setShowLogoutModal(true)}
+                  >
+                    <View style={[styles.profileActionIcon, { backgroundColor: "#fff0f0" }]}>
+                      <Ionicons name="log-out-outline" size={22} color="#ef4444" />
+                    </View>
+                    <Text style={[styles.profileActionText, { color: "#ef4444" }]}>
+                      Đăng xuất
+                    </Text>
+                    <Ionicons name="chevron-forward" size={18} color="#ddd" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
         </View>
 
-        {/* Contacts tab */}
-        {activeTab === "contacts" && (
-          <View style={styles.contactsWrapper}>
-            {/* Header danh bạ */}
-            <View style={styles.contactsHeader}>
-              <Text style={styles.contactsTitle}>Danh bạ</Text>
-            </View>
-            <ContactsScreen user={user} onStartChat={handleStartChat} />
+        {/* Bottom tab bar — ẩn khi đang trong chat */}
+        {!isChatOpen && (
+          <View style={styles.bottomNav}>
+            <TouchableOpacity
+              style={styles.navItem}
+              onPress={() => setActiveTab("chat")}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name={activeTab === "chat" ? "message-text" : "message-text-outline"}
+                size={24}
+                color={activeTab === "chat" ? "#0068ff" : "#888"}
+              />
+              <Text style={[styles.navLabel, activeTab === "chat" && styles.navLabelActive]}>
+                Tin nhắn
+              </Text>
+              {activeTab === "chat" && <View style={styles.navIndicator} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.navItem}
+              onPress={() => setActiveTab("contacts")}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === "contacts" ? "people" : "people-outline"}
+                size={24}
+                color={activeTab === "contacts" ? "#0068ff" : "#888"}
+              />
+              <Text style={[styles.navLabel, activeTab === "contacts" && styles.navLabelActive]}>
+                Danh bạ
+              </Text>
+              {activeTab === "contacts" && <View style={styles.navIndicator} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.navItem}
+              onPress={() => setActiveTab("profile")}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === "profile" ? "person" : "person-outline"}
+                size={24}
+                color={activeTab === "profile" ? "#0068ff" : "#888"}
+              />
+              <Text style={[styles.navLabel, activeTab === "profile" && styles.navLabelActive]}>
+                Hồ sơ
+              </Text>
+              {activeTab === "profile" && <View style={styles.navIndicator} />}
+            </TouchableOpacity>
           </View>
         )}
+        {/* Modals */}
+        <UserProfileModal
+          visible={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          user={user}
+          setUser={updateUser}
+        />
 
-        {/* Profile tab */}
-        {activeTab === "profile" && (
-          <View style={styles.profileWrapper}>
-            <View style={styles.profileHeader}>
-              <Text style={styles.profileTitle}>Hồ sơ</Text>
-            </View>
-            <View style={styles.profileContent}>
-              <TouchableOpacity
-                style={styles.profileCard}
-                onPress={() => setShowProfileModal(true)}
-                activeOpacity={0.8}
-              >
-                <Image
-                  source={{
-                    uri: user?.anhDaiDien || "https://via.placeholder.com/64",
-                  }}
-                  style={styles.profileAvatar}
-                />
-                <View style={styles.profileInfo}>
-                  <Text style={styles.profileName}>{user?.name}</Text>
-                  <Text style={styles.profileSub}>Xem trang cá nhân</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#aaa" />
-              </TouchableOpacity>
+        <AddFriendModal
+          visible={showAddFriend}
+          onClose={() => setShowAddFriend(false)}
+          currentUser={user}
+          onStartChat={() => setActiveTab("chat")}
+        />
 
-              <View style={styles.profileActions}>
+        {/* Logout confirm */}
+        <Modal
+          transparent
+          visible={showLogoutModal}
+          animationType="fade"
+          onRequestClose={() => setShowLogoutModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalBox}>
+              <View style={styles.modalIconBox}>
+                <Ionicons name="log-out-outline" size={30} color="#ef4444" />
+              </View>
+              <Text style={styles.modalTitle}>Đăng xuất</Text>
+              <Text style={styles.modalMessage}>
+                Bạn có chắc chắn muốn đăng xuất khỏi tài khoản không?
+              </Text>
+              <View style={styles.modalButtons}>
                 <TouchableOpacity
-                  style={styles.profileActionItem}
-                  onPress={() => setShowLogoutModal(true)}
+                  style={styles.btnCancel}
+                  onPress={() => setShowLogoutModal(false)}
                 >
-                  <View style={[styles.profileActionIcon, { backgroundColor: "#fff0f0" }]}>
-                    <Ionicons name="log-out-outline" size={22} color="#ef4444" />
-                  </View>
-                  <Text style={[styles.profileActionText, { color: "#ef4444" }]}>
-                    Đăng xuất
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color="#ddd" />
+                  <Text style={styles.btnCancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnConfirm} onPress={handleLogout}>
+                  <Text style={styles.btnConfirmText}>Đăng xuất</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
-        )}
-      </View>
-
-      {/* Bottom tab bar — ẩn khi đang trong chat */}
-      {!isChatOpen && (
-        <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setActiveTab("chat")}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons
-            name={activeTab === "chat" ? "message-text" : "message-text-outline"}
-            size={24}
-            color={activeTab === "chat" ? "#0068ff" : "#888"}
-          />
-          <Text style={[styles.navLabel, activeTab === "chat" && styles.navLabelActive]}>
-            Tin nhắn
-          </Text>
-          {activeTab === "chat" && <View style={styles.navIndicator} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setActiveTab("contacts")}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={activeTab === "contacts" ? "people" : "people-outline"}
-            size={24}
-            color={activeTab === "contacts" ? "#0068ff" : "#888"}
-          />
-          <Text style={[styles.navLabel, activeTab === "contacts" && styles.navLabelActive]}>
-            Danh bạ
-          </Text>
-          {activeTab === "contacts" && <View style={styles.navIndicator} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => setActiveTab("profile")}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={activeTab === "profile" ? "person" : "person-outline"}
-            size={24}
-            color={activeTab === "profile" ? "#0068ff" : "#888"}
-          />
-          <Text style={[styles.navLabel, activeTab === "profile" && styles.navLabelActive]}>
-            Hồ sơ
-          </Text>
-          {activeTab === "profile" && <View style={styles.navIndicator} />}
-        </TouchableOpacity>
-      </View>
-      )}
-      {/* Modals */}
-      <UserProfileModal
-        visible={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        user={user}
-        setUser={updateUser}
-      />
-
-      <AddFriendModal
-        visible={showAddFriend}
-        onClose={() => setShowAddFriend(false)}
-        currentUser={user}
-        onStartChat={() => setActiveTab("chat")}
-      />
-
-      {/* Logout confirm */}
-      <Modal
-        transparent
-        visible={showLogoutModal}
-        animationType="fade"
-        onRequestClose={() => setShowLogoutModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <View style={styles.modalIconBox}>
-              <Ionicons name="log-out-outline" size={30} color="#ef4444" />
-            </View>
-            <Text style={styles.modalTitle}>Đăng xuất</Text>
-            <Text style={styles.modalMessage}>
-              Bạn có chắc chắn muốn đăng xuất khỏi tài khoản không?
-            </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.btnCancel}
-                onPress={() => setShowLogoutModal(false)}
-              >
-                <Text style={styles.btnCancelText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.btnConfirm} onPress={handleLogout}>
-                <Text style={styles.btnConfirmText}>Đăng xuất</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+        </Modal>
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 };

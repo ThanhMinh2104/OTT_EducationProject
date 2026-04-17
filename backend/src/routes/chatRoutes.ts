@@ -78,7 +78,12 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
 
   const enriched = flatMessages.map((msg: any) => {
     const s = senders.find((u) => u.userID === msg.senderID);
-    return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+    // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
+    const cleanedMsg = { ...msg };
+    if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
+      delete cleanedMsg.pinnedInfo;
+    }
+    return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
   });
 
   const msgByChat: Record<string, typeof enriched> = {};
@@ -467,7 +472,7 @@ export default function chatRoutes(io: Server) {
       const historyDeletedAt = currentMember?.historyDeletedAt;
       
       // Lấy messages, filter theo historyDeletedAt nếu có
-      const query: any = { chatID };
+      const query: any = { chatID, deletedFor: { $ne: userID } };
       if (historyDeletedAt) {
         query.timestamp = { $gt: historyDeletedAt.toISOString() };
       }
@@ -477,7 +482,12 @@ export default function chatRoutes(io: Server) {
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = msgs.map((msg) => {
         const s = senders.find((u) => u.userID === msg.senderID);
-        return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+        // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
+        const cleanedMsg = { ...msg };
+        if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
+          delete cleanedMsg.pinnedInfo;
+        }
+        return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
       });
       res.json(enriched);
     } catch (e: any) {
@@ -533,9 +543,40 @@ export default function chatRoutes(io: Server) {
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = messages.map((msg) => {
         const s = senders.find((u) => u.userID === msg.senderID);
-        return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
+        // Clean pinnedInfo nếu là object rỗng hoặc không có pinnedBy
+        const cleanedMsg = { ...msg };
+        if (cleanedMsg.pinnedInfo && !cleanedMsg.pinnedInfo.pinnedBy) {
+          delete cleanedMsg.pinnedInfo;
+        }
+        return { ...cleanedMsg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
       });
       res.json({ ...chatDoc, members, lastMessage: enriched });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Lấy danh sách thành viên trong chat
+  router.get('/chat/:chatID/members', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { chatID } = req.params;
+      const userID = req.userID!;
+      
+      // Kiểm tra user có trong chat không
+      const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
+      if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
+      
+      // Lấy thông tin chi tiết của các thành viên
+      const memberIDs = memberDoc.members.map((m) => m.userID);
+      const users = await Users.find({ userID: { $in: memberIDs } }).lean();
+      
+      const members = users.map((u) => ({
+        userID: u.userID,
+        name: u.name,
+        anhDaiDien: u.anhDaiDien || null,
+      }));
+      
+      res.json({ members });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '../utils/config';
 import socket from '../utils/socket';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import OtherProfileModal from './OtherProfileModal';
 
 interface FoundUser {
@@ -28,6 +29,7 @@ interface Props {
 type Step = 'search' | 'profile' | 'add_friend';
 
 const AddFriendModal = ({ visible, onClose, currentUser, onStartChat }: Props) => {
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>('search');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -176,319 +178,346 @@ const AddFriendModal = ({ visible, onClose, currentUser, onStartChat }: Props) =
     onClose();
   };
 
+  const getFriendStatusLabel = (status: FoundUser['friendStatus']) => {
+    switch (status) {
+      case 'accepted': return { label: 'Đã là bạn', color: '#34c759' };
+      case 'pending_sent': return { label: 'Đã gửi lời mời', color: '#ff9500' };
+      case 'pending_received': return { label: 'Đã nhận lời mời', color: '#007aff' };
+      case 'self': return { label: 'Đây là bạn', color: '#999' };
+      default: return null;
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+          {step === 'profile' ? (
+            <TouchableOpacity onPress={() => setStep('search')}>
+              <Text style={styles.backBtn}>← Quay lại</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 60 }} />
+          )}
+          <Text style={styles.title}>{step === 'search' ? 'Thêm bạn' : 'Thông tin'}</Text>
+          <TouchableOpacity onPress={handleClose}>
+            <Text style={styles.closeBtn}>Đóng</Text>
+          </TouchableOpacity>
+        </View>
   // ===== SEARCH STEP =====
   const renderSearch = () => (
-    <View style={styles.sheet}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Thêm bạn</Text>
-        <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-          <Ionicons name="close" size={22} color="#555" />
-        </TouchableOpacity>
-      </View>
+        <View style={styles.sheet}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Thêm bạn</Text>
+            <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
+              <Ionicons name="close" size={22} color="#555" />
+            </TouchableOpacity>
+          </View>
 
-      {/* Search input */}
-      <View style={styles.searchRow}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Nhập số điện thoại..."
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          placeholderTextColor="#aaa"
-          onSubmitEditing={handleSearch}
-          returnKeyType="search"
-          autoFocus
-        />
-      </View>
+          {/* Search input */}
+          <View style={styles.searchRow}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Nhập số điện thoại..."
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholderTextColor="#aaa"
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+              autoFocus
+            />
+          </View>
 
-      {loading && (
-        <View style={{ alignItems: 'center', paddingVertical: 12 }}>
-          <ActivityIndicator size="small" color="#0068ff" />
+          {loading && (
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <ActivityIndicator size="small" color="#0068ff" />
+            </View>
+          )}
+
+          {/* Recent list */}
+          <ScrollView style={{ flex: 1 }}>
+            {recentFound.length > 0 && !loading && (
+              <>
+                <Text style={styles.sectionLabel}>Kết quả gần nhất</Text>
+                {recentFound.map(item => (
+                  <TouchableOpacity
+                    key={item.userID}
+                    style={styles.resultItem}
+                    onPress={() => handleUserClick(item)}
+                  >
+                    <Image
+                      source={{ uri: item.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.userID}` }}
+                      style={styles.avatar}
+                    />
+                    <View style={styles.userInfo}>
+                      <Text style={styles.userName}>{item.name}</Text>
+                      <Text style={styles.userSub}>
+                        {item.friendStatus === 'pending_sent' && <Text style={{ color: '#f97316' }}>[Đã gửi lời mời] </Text>}
+                        {item.friendStatus === 'pending_received' && <Text style={{ color: '#3b82f6' }}>[Lời mời kết bạn] </Text>}
+                        {item.friendStatus === 'accepted' && <Text style={{ color: '#22c55e' }}>[Bạn bè] </Text>}
+                        {item.sdt}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.chatBtn}
+                      onPress={async () => {
+                        try {
+                          const token = await getToken();
+                          const res = await fetch(`${API_URL}/api/chats/stranger`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ userID2: item.userID }),
+                          });
+                          const chat = await res.json();
+                          onStartChat?.(chat);
+                        } catch { Alert.alert('Lỗi', 'Không thể bắt đầu trò chuyện'); }
+                      }}
+                    >
+                      <Ionicons name="chatbubble-ellipses-outline" size={20} color="#0068ff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => {
+                        setRecentFound(prev => {
+                          const updated = prev.filter(u => u.userID !== item.userID);
+                          saveRecent(updated);
+                          return updated;
+                        });
+                      }}
+                    >
+                      <Ionicons name="close" size={16} color="#aaa" />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))}
+              </>
+            )}
+          </ScrollView>
+
+          {/* Footer buttons */}
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.btnCancel} onPress={handleClose}>
+              <Text style={styles.btnCancelText}>Hủy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnPrimary} onPress={handleSearch} disabled={loading}>
+              <Text style={styles.btnPrimaryText}>Tìm kiếm</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      )}
-
-      {/* Recent list */}
-      <ScrollView style={{ flex: 1 }}>
-        {recentFound.length > 0 && !loading && (
-          <>
-            <Text style={styles.sectionLabel}>Kết quả gần nhất</Text>
-            {recentFound.map(item => (
-              <TouchableOpacity
-                key={item.userID}
-                style={styles.resultItem}
-                onPress={() => handleUserClick(item)}
-              >
-                <Image
-                  source={{ uri: item.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.userID}` }}
-                  style={styles.avatar}
-                />
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{item.name}</Text>
-                  <Text style={styles.userSub}>
-                    {item.friendStatus === 'pending_sent' && <Text style={{ color: '#f97316' }}>[Đã gửi lời mời] </Text>}
-                    {item.friendStatus === 'pending_received' && <Text style={{ color: '#3b82f6' }}>[Lời mời kết bạn] </Text>}
-                    {item.friendStatus === 'accepted' && <Text style={{ color: '#22c55e' }}>[Bạn bè] </Text>}
-                    {item.sdt}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.chatBtn}
-                  onPress={async () => {
-                    try {
-                      const token = await getToken();
-                      const res = await fetch(`${API_URL}/api/chats/stranger`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ userID2: item.userID }),
-                      });
-                      const chat = await res.json();
-                      onStartChat?.(chat);
-                    } catch { Alert.alert('Lỗi', 'Không thể bắt đầu trò chuyện'); }
-                  }}
-                >
-                  <Ionicons name="chatbubble-ellipses-outline" size={20} color="#0068ff" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.removeBtn}
-                  onPress={() => {
-                    setRecentFound(prev => {
-                      const updated = prev.filter(u => u.userID !== item.userID);
-                      saveRecent(updated);
-                      return updated;
-                    });
-                  }}
-                >
-                  <Ionicons name="close" size={16} color="#aaa" />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-          </>
-        )}
-      </ScrollView>
-
-      {/* Footer buttons */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.btnCancel} onPress={handleClose}>
-          <Text style={styles.btnCancelText}>Hủy</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.btnPrimary} onPress={handleSearch} disabled={loading}>
-          <Text style={styles.btnPrimaryText}>Tìm kiếm</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+        );
 
   // ===== ADD FRIEND STEP (lời nhắn kèm lời mời) =====
   const renderAddFriend = () => {
     if (!selectedUser) return null;
-    return (
-      <View style={styles.sheet}>
-        <View style={styles.coverContainer}>
-          <Image
-            source={{ uri: selectedUser.anhBia || 'https://res.cloudinary.com/ddu7vms87/image/upload/v1740316684/p79itfnd9o7atd62269y.jpg' }}
-            style={styles.coverImage}
-          />
-          <View style={styles.coverHeader}>
-            <TouchableOpacity onPress={() => setStep('profile')} style={styles.backBtn}>
-              <Ionicons name="chevron-back" size={22} color="#fff" />
-              <Text style={styles.backBtnText}>Thông tin tài khoản</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleClose}>
-              <Ionicons name="close" size={22} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.profileAvatarWrap}>
+        return (
+        <View style={styles.sheet}>
+          <View style={styles.coverContainer}>
             <Image
-              source={{ uri: selectedUser.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedUser.userID}` }}
-              style={styles.profileAvatar}
+              source={{ uri: selectedUser.anhBia || 'https://res.cloudinary.com/ddu7vms87/image/upload/v1740316684/p79itfnd9o7atd62269y.jpg' }}
+              style={styles.coverImage}
             />
+            <View style={styles.coverHeader}>
+              <TouchableOpacity onPress={() => setStep('profile')} style={styles.backBtn}>
+                <Ionicons name="chevron-back" size={22} color="#fff" />
+                <Text style={styles.backBtnText}>Thông tin tài khoản</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleClose}>
+                <Ionicons name="close" size={22} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.profileAvatarWrap}>
+              <Image
+                source={{ uri: selectedUser.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedUser.userID}` }}
+                style={styles.profileAvatar}
+              />
+            </View>
+          </View>
+
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
+            <Text style={styles.profileName}>{selectedUser.name}</Text>
+            <View style={styles.messageBox}>
+              <TextInput
+                style={styles.messageInput}
+                value={message}
+                onChangeText={setMessage}
+                multiline
+                maxLength={150}
+                placeholderTextColor="#aaa"
+              />
+              <Text style={styles.charCount}>{message.length}/150 ký tự</Text>
+            </View>
+          </ScrollView>
+
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.btnCancel} onPress={() => setStep('profile')}>
+              <Text style={styles.btnCancelText}>Thông tin</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnPrimary} onPress={handleSendRequest} disabled={sending}>
+              <Text style={styles.btnPrimaryText}>{sending ? 'Đang gửi...' : 'Kết bạn'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
-          <Text style={styles.profileName}>{selectedUser.name}</Text>
-          <View style={styles.messageBox}>
-            <TextInput
-              style={styles.messageInput}
-              value={message}
-              onChangeText={setMessage}
-              multiline
-              maxLength={150}
-              placeholderTextColor="#aaa"
-            />
-            <Text style={styles.charCount}>{message.length}/150 ký tự</Text>
-          </View>
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.btnCancel} onPress={() => setStep('profile')}>
-            <Text style={styles.btnCancelText}>Thông tin</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.btnPrimary} onPress={handleSendRequest} disabled={sending}>
-            <Text style={styles.btnPrimaryText}>{sending ? 'Đang gửi...' : 'Kết bạn'}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+        );
   };
 
-  return (
-    <>
-      {/* Search modal */}
-      <Modal visible={visible && step === 'search'} animationType="slide" transparent onRequestClose={handleClose}>
-        <View style={styles.overlay}>
-          {renderSearch()}
-        </View>
-      </Modal>
+        return (
+        <>
+          {/* Search modal */}
+          <Modal visible={visible && step === 'search'} animationType="slide" transparent onRequestClose={handleClose}>
+            <View style={styles.overlay}>
+              {renderSearch()}
+            </View>
+          </Modal>
 
-      {/* Profile modal — dùng OtherProfileModal */}
-      {visible && step === 'profile' && selectedUser && (
-        <OtherProfileModal
-          visible
-          user={selectedUser}
-          currentUser={currentUser}
-          onClose={handleClose}
-          onBack={() => setStep('search')}
-          onStartChat={(chat) => { onStartChat?.(chat); handleClose(); }}
-          onAddFriend={() => {
-            setMessage(`Xin chào, mình là ${currentUser?.name || ''}. Kết bạn với mình nhé!`);
-            setStep('add_friend');
-          }}
-          onStatusChange={(status) => {
-            if (selectedUser) {
-              const updated = { ...selectedUser, friendStatus: status as any };
-              setSelectedUser(updated);
-              setRecentFound(prev => {
-                const arr = prev.map(u => u.userID === selectedUser.userID ? { ...u, friendStatus: status as any } : u);
-                saveRecent(arr);
-                return arr;
-              });
-            }
-          }}
-        />
-      )}
+          {/* Profile modal — dùng OtherProfileModal */}
+          {visible && step === 'profile' && selectedUser && (
+            <OtherProfileModal
+              visible
+              user={selectedUser}
+              currentUser={currentUser}
+              onClose={handleClose}
+              onBack={() => setStep('search')}
+              onStartChat={(chat) => { onStartChat?.(chat); handleClose(); }}
+              onAddFriend={() => {
+                setMessage(`Xin chào, mình là ${currentUser?.name || ''}. Kết bạn với mình nhé!`);
+                setStep('add_friend');
+              }}
+              onStatusChange={(status) => {
+                if (selectedUser) {
+                  const updated = { ...selectedUser, friendStatus: status as any };
+                  setSelectedUser(updated);
+                  setRecentFound(prev => {
+                    const arr = prev.map(u => u.userID === selectedUser.userID ? { ...u, friendStatus: status as any } : u);
+                    saveRecent(arr);
+                    return arr;
+                  });
+                }
+              }}
+            />
+          )}
 
-      {/* Add friend (lời nhắn) modal */}
-      <Modal visible={visible && step === 'add_friend'} animationType="slide" transparent onRequestClose={() => setStep('profile')}>
-        <View style={styles.overlay}>
-          {renderAddFriend()}
-        </View>
-      </Modal>
-    </>
-  );
+          {/* Add friend (lời nhắn) modal */}
+          <Modal visible={visible && step === 'add_friend'} animationType="slide" transparent onRequestClose={() => setStep('profile')}>
+            <View style={styles.overlay}>
+              {renderAddFriend()}
+            </View>
+          </Modal>
+        </>
+        );
 };
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+        const styles = StyleSheet.create({
+          overlay: {
+          flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
   },
-  sheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    height: '90%',
-    overflow: 'hidden',
+        sheet: {
+          backgroundColor: '#fff',
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        height: '90%',
+        overflow: 'hidden',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e7eb',
+        header: {
+          flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#e5e7eb',
   },
-  title: { fontSize: 15, fontWeight: '700', color: '#111' },
-  closeBtn: { padding: 4 },
-  searchRow: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 8,
+        title: {fontSize: 15, fontWeight: '700', color: '#111' },
+        closeBtn: {padding: 4 },
+        searchRow: {
+          paddingHorizontal: 16,
+        paddingTop: 14,
+        paddingBottom: 8,
   },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: '#111',
+        searchInput: {
+          borderWidth: 1,
+        borderColor: '#d1d5db',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 15,
+        color: '#111',
   },
-  sectionLabel: {
-    fontSize: 13,
-    color: '#6b7280',
-    fontWeight: '600',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+        sectionLabel: {
+          fontSize: 13,
+        color: '#6b7280',
+        fontWeight: '600',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
   },
-  resultItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f3f4f6',
+        resultItem: {
+          flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#f3f4f6',
   },
-  avatar: { width: 44, height: 44, borderRadius: 22, marginRight: 12, backgroundColor: '#e5e7eb' },
-  userInfo: { flex: 1 },
-  userName: { fontSize: 14.5, fontWeight: '600', color: '#111' },
-  userSub: { fontSize: 13, color: '#6b7280', marginTop: 2 },
-  chatBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
-  removeBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e7eb',
-    backgroundColor: '#f9fafb',
+        avatar: {width: 44, height: 44, borderRadius: 22, marginRight: 12, backgroundColor: '#e5e7eb' },
+        userInfo: {flex: 1 },
+        userName: {fontSize: 14.5, fontWeight: '600', color: '#111' },
+        userSub: {fontSize: 13, color: '#6b7280', marginTop: 2 },
+        chatBtn: {width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
+        removeBtn: {width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+        footer: {
+          flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: '#e5e7eb',
+        backgroundColor: '#f9fafb',
   },
-  btnCancel: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#e5e7eb',
+        btnCancel: {
+          paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 8,
+        backgroundColor: '#e5e7eb',
   },
-  btnCancelText: { fontSize: 14.5, fontWeight: '600', color: '#374151' },
-  btnPrimary: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#0068ff',
+        btnCancelText: {fontSize: 14.5, fontWeight: '600', color: '#374151' },
+        btnPrimary: {
+          paddingHorizontal: 24,
+        paddingVertical: 10,
+        borderRadius: 8,
+        backgroundColor: '#0068ff',
   },
-  btnPrimaryText: { fontSize: 14.5, fontWeight: '600', color: '#fff' },
-  // Add friend step
-  coverContainer: { position: 'relative', height: 160 },
-  coverImage: { width: '100%', height: 160 },
-  coverHeader: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+        btnPrimaryText: {fontSize: 14.5, fontWeight: '600', color: '#fff' },
+        // Add friend step
+        coverContainer: {position: 'relative', height: 160 },
+        coverImage: {width: '100%', height: 160 },
+        coverHeader: {
+          position: 'absolute',
+        top: 0, left: 0, right: 0,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  backBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  profileAvatarWrap: { position: 'absolute', bottom: -36, left: 20 },
-  profileAvatar: {
-    width: 72, height: 72, borderRadius: 36,
-    borderWidth: 3, borderColor: '#fff', backgroundColor: '#e5e7eb',
+        backBtn: {flexDirection: 'row', alignItems: 'center', gap: 4 },
+        backBtnText: {color: '#fff', fontSize: 15, fontWeight: '600' },
+        profileAvatarWrap: {position: 'absolute', bottom: -36, left: 20 },
+        profileAvatar: {
+          width: 72, height: 72, borderRadius: 36,
+        borderWidth: 3, borderColor: '#fff', backgroundColor: '#e5e7eb',
   },
-  profileName: { fontSize: 18, fontWeight: '700', color: '#111', marginTop: 44, marginBottom: 16 },
-  messageBox: {
-    borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8,
-    padding: 12, backgroundColor: '#fafafa',
+        profileName: {fontSize: 18, fontWeight: '700', color: '#111', marginTop: 44, marginBottom: 16 },
+        messageBox: {
+          borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8,
+        padding: 12, backgroundColor: '#fafafa',
   },
-  messageInput: { fontSize: 14, color: '#111', minHeight: 80, textAlignVertical: 'top' },
-  charCount: { fontSize: 12, color: '#9ca3af', textAlign: 'right', marginTop: 4 },
+        messageInput: {fontSize: 14, color: '#111', minHeight: 80, textAlignVertical: 'top' },
+        charCount: {fontSize: 12, color: '#9ca3af', textAlign: 'right', marginTop: 4 },
 });
 
-export default AddFriendModal;
+        export default AddFriendModal;

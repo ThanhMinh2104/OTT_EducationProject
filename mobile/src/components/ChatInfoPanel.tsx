@@ -17,6 +17,7 @@ import { API_URL } from '../utils/config';
 import ImageViewer from './ImageViewer';
 import VideoViewer from './VideoViewer';
 import { downloadAndOpenFile } from '../utils/fileDownload';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
@@ -89,6 +90,7 @@ const ChatInfoPanel = ({
   onClose,
   onHistoryDeleted,
 }: Props) => {
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('media');
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
@@ -250,7 +252,7 @@ const ChatInfoPanel = ({
     >
       <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.headerTitle}>Thông tin hội thoại</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Ionicons name="close" size={24} color="#555" />

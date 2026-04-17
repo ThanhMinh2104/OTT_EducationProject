@@ -22,6 +22,7 @@ import {
   FaPause,
   FaUserFriends,
   FaBan,
+  FaEllipsisV,
 } from 'react-icons/fa';
 import { BsPin, BsPinAngleFill } from 'react-icons/bs';
 import { EmojiClickData } from 'emoji-picker-react';
@@ -34,6 +35,8 @@ import StickerEmojiPicker from './StickerEmojiPicker';
 import ForwardMessageModal from './ForwardMessageModal';
 import ImageViewerModal from './ImageViewerModal';
 import OtherProfileModal from './OtherProfileModal';
+import ImageGrid from './ImageGrid'; // ⭐ Import ImageGrid
+import { groupMessages, isMessageGroup } from '../utils/messageGrouping'; // ⭐ Import grouping utilities
 import {
   loadReminderEvents,
   type ReminderEvent,
@@ -67,6 +70,7 @@ interface Message {
   senderInfo?: { name: string; avatar?: string | null };
   pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
   replyTo?: ReplyTo | null;
+  groupId?: string; // ⭐ ID để group các ảnh gửi cùng lúc
 }
 interface Chat {
   chatID: string;
@@ -922,12 +926,22 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         const data = await res.json();
         console.log('Upload success:', data);
 
+        // ⭐ Tạo groupId cho batch ảnh
+        const groupId = type === 'image' && data.urls.length > 1 
+          ? `group_${Date.now()}_${user.userID}` 
+          : undefined;
+
         // Gửi từng ảnh/video/file riêng biệt với delay nhỏ để tránh race condition
         if (type === 'image' || type === 'video') {
           // Mỗi ảnh/video là một tin nhắn riêng
           for (let i = 0; i < data.urls.length; i++) {
             const url = data.urls[i];
-            const msg = buildMsg({ content: '', type, media_url: [url] });
+            const msg = buildMsg({ 
+              content: '', 
+              type, 
+              media_url: [url],
+              groupId //  Thêm groupId cho ảnh
+            });
 
             // Thêm vào state trước
             setMessages((prev) => {
@@ -994,18 +1008,26 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       return;
     }
 
-    console.log('🔄 Unsending message:', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+    // ⭐ Tìm tất cả messages trong cùng group (nếu có)
+    let messagesToUnsend: Message[] = [msg];
+    if (msg.type === 'image' && msg.groupId) {
+      messagesToUnsend = messages.filter(m => m.groupId === msg.groupId && m.senderID === user.userID);
+      console.log(`📸 Unsending ${messagesToUnsend.length} images from group ${msg.groupId}`);
+    }
+
+    console.log('🔄 Unsending message(s):', messagesToUnsend.map(m => m.messageID));
 
     // Cập nhật UI ngay lập tức (optimistic update)
     setMessages((prev) =>
       prev.map((m) =>
-        m.messageID === msg.messageID
+        messagesToUnsend.some(unsend => unsend.messageID === m.messageID)
           ? { ...m, type: 'unsend', content: '', media_url: [] }
           : m
       )
     );
 
-    // Gửi socket event
+    // Gửi socket event cho từng message (backend sẽ tự động xử lý group)
+    // Chỉ cần gửi 1 lần cho message đầu tiên, backend sẽ xử lý toàn bộ group
     socket.emit('unsend_message', {
       messageID: msg.messageID,
       chatID: selectedChat!.chatID,
@@ -1021,7 +1043,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     if (!msg.messageID) return;
     if (msg.pinnedInfo) {
       // Unpin message
-      socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+      socket.emit('unghim_message', { 
+        messageID: msg.messageID, 
+        chatID: selectedChat!.chatID,
+        senderID: user?.userID 
+      });
     } else {
       // Check if already have 3 pinned messages
       if (pinnedMessages.length >= 3) {
@@ -1042,7 +1068,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const handleMoveToTop = (msg: Message) => {
     if (!msg.messageID) return;
     // Unpin and re-pin to move to top
-    socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+    socket.emit('unghim_message', { 
+      messageID: msg.messageID, 
+      chatID: selectedChat!.chatID,
+      senderID: user?.userID 
+    });
     setTimeout(() => {
       socket.emit('ghim_message', {
         messageID: msg.messageID,
@@ -1064,7 +1094,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   const handleUnpinFromMenu = (msg: Message) => {
     if (!msg.messageID) return;
-    socket.emit('unghim_message', { messageID: msg.messageID, chatID: selectedChat!.chatID });
+    socket.emit('unghim_message', { 
+      messageID: msg.messageID, 
+      chatID: selectedChat!.chatID,
+      senderID: user?.userID 
+    });
     setPinnedMenuId(null);
     toast.success('Đã bỏ ghim');
   };
@@ -1078,15 +1112,24 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const handleDeleteLocal = (msg: Message) => {
     if (!msg.messageID || !user?.userID) return;
 
-    // Xóa tin nhắn khỏi UI ngay lập tức (optimistic update)
-    setMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
-    setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
+    // ⭐ Tìm tất cả messages trong cùng group (nếu có)
+    let messagesToDelete: Message[] = [msg];
+    if (msg.type === 'image' && msg.groupId) {
+      messagesToDelete = messages.filter(m => m.groupId === msg.groupId);
+      console.log(`📸 Deleting ${messagesToDelete.length} images from group ${msg.groupId}`);
+    }
 
-    // Gửi socket event để lưu vào database
-    socket.emit('delete_message_local', {
-      messageID: msg.messageID,
-      userID: user.userID,
-      chatID: selectedChat!.chatID,
+    // Xóa tin nhắn khỏi UI ngay lập tức (optimistic update)
+    setMessages((prev) => prev.filter((m) => !messagesToDelete.some(del => del.messageID === m.messageID)));
+    setPinnedMessages((prev) => prev.filter((m) => !messagesToDelete.some(del => del.messageID === m.messageID)));
+
+    // Gửi socket event để lưu vào database cho từng message
+    messagesToDelete.forEach((message) => {
+      socket.emit('delete_message_local', {
+        messageID: message.messageID,
+        userID: user.userID,
+        chatID: selectedChat!.chatID,
+      });
     });
 
     setActionMsgId(null);
@@ -1404,22 +1447,39 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   type TimelineItem =
     | { kind: 'message'; data: Message; key: string; ts: number }
+    | { kind: 'messageGroup'; data: import('../utils/messageGrouping').MessageGroup; key: string; ts: number }
     | { kind: 'reminder'; data: (typeof reminderEvents)[0]; key: string; ts: number };
 
+  // ⭐ Group consecutive image messages
+  const groupedMessages = groupMessages(messages as any);
+
   const timeline: TimelineItem[] = [
-    ...messages.map((m) => ({
-      kind: 'message' as const,
-      data: m,
-      key: `msg_${m.messageID || m.tempID || m._id || Math.random().toString()}`,
-      ts: new Date(m.timestamp).getTime(),
-    })),
+    ...groupedMessages.map((item) => {
+      if (isMessageGroup(item)) {
+        // Message group
+        return {
+          kind: 'messageGroup' as const,
+          data: item,
+          key: `group_${item.groupId}`,
+          ts: item.timestamp.getTime(),
+        };
+      } else {
+        // Single message
+        return {
+          kind: 'message' as const,
+          data: item as Message,
+          key: `msg_${item.messageID || item.tempID || item._id || Math.random().toString()}`,
+          ts: new Date(item.timestamp).getTime(),
+        };
+      }
+    }),
     ...reminderEvents.map((e) => ({
       kind: 'reminder' as const,
       data: e,
       key: `reminder_${e.eventID}`,
       ts: new Date(e.createdAt).getTime(),
     })),
-  ].sort((a, b) => a.ts - b.ts);
+  ].sort((a, b) => a.ts - b.ts) as TimelineItem[];
 
   return (
     <>
@@ -1831,6 +1891,193 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   );
                 }
 
+                // ── Message Group (Multiple Images) ────────────────────────
+                if (item.kind === 'messageGroup') {
+                  const group = item.data;
+                  const isMine = group.senderID === user?.userID;
+                  const firstMsg = group.messages[0];
+                  
+                  return (
+                    <div
+                      key={item.key}
+                      className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'}`}
+                    >
+                      {/* Avatar */}
+                      {!isMine && (
+                        <img
+                          src={
+                            firstMsg.senderInfo?.avatar ||
+                            'https://api.dicebear.com/7.x/avataaars/svg?seed=' + group.senderID
+                          }
+                          alt="av"
+                          className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                          onClick={async () => {
+                            try {
+                              const [userRes, statusRes] = await Promise.all([
+                                fetch(`${API}/usersID`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ userID: group.senderID }),
+                                }),
+                                fetch(`${API}/contacts/friend-status/${group.senderID}`, {
+                                  headers: { ...authHeaders() },
+                                }),
+                              ]);
+                              const userData = await userRes.json();
+                              const statusData = await statusRes.json();
+                              userData.friendStatus = statusData.friendStatus || 'none';
+                              setSelectedUserForProfile(userData);
+                              setShowOtherProfile(true);
+                            } catch (err) {
+                              console.error('Failed to fetch user:', err);
+                            }
+                          }}
+                        />
+                      )}
+
+                      <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
+                        {/* Sender name (group chat) */}
+                        {!isMine && selectedChat.type === 'group' && (
+                          <span className="text-[11px] text-gray-500 mb-0.5 ml-1">
+                            {firstMsg.senderInfo?.name || 'Unknown'}
+                          </span>
+                        )}
+
+                        {/* Image Grid */}
+                        <div 
+                          className="relative group"
+                        >
+                          <ImageGrid
+                            messages={group.messages as any}
+                            onImageClick={(url, allUrls) => {
+                              const imageIndex = chatImages.findIndex((img) => img.url === url);
+                              if (imageIndex !== -1) {
+                                setImageViewerIndex(imageIndex);
+                                setShowImageViewer(true);
+                              }
+                            }}
+                          />
+
+                          {/* Action buttons - hiện cho cả người gửi và người nhận */}
+                          <div className="absolute bottom-2 left-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                            {/* Forward button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setForwardingMessage(firstMsg as any);
+                              }}
+                              className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center shadow-lg transition-colors"
+                              title="Chuyển tiếp"
+                            >
+                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                              </svg>
+                            </button>
+                            
+                            {/* Menu button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const windowHeight = window.innerHeight;
+                                const spaceBelow = windowHeight - rect.bottom;
+                                const spaceAbove = rect.top;
+
+                                if (spaceBelow > 200 || spaceBelow > spaceAbove) {
+                                  setMenuPosition('bottom');
+                                } else {
+                                  setMenuPosition('top');
+                                }
+
+                                setActionMsgId(item.key);
+                              }}
+                              className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center shadow-lg transition-colors"
+                              title="Tùy chọn"
+                            >
+                              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                              </svg>
+                            </button>
+                          </div>
+
+                          {/* Timestamp */}
+                          <span className="text-[10px] text-gray-400 mt-1 block">
+                            {new Date(group.timestamp).toLocaleTimeString('vi-VN', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+
+                          {/* Context Menu for Image Group */}
+                          {actionMsgId === item.key && (
+                            <div
+                              className={`absolute z-20 bg-white rounded-xl shadow-xl border border-gray-100 py-1 min-w-[160px] ${isMine ? 'right-0' : 'left-0'} ${menuPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                onClick={() => {
+                                  setReplyTo(firstMsg as any);
+                                  setActionMsgId(null);
+                                  inputRef.current?.focus();
+                                }}
+                              >
+                                <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M7.707 3.293a1 1 0 010 1.414L5.414 7H11a7 7 0 017 7v2a1 1 0 11-2 0v-2a5 5 0 00-5-5H5.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"/>
+                                </svg>
+                                Trả lời
+                              </button>
+                              <button
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                onClick={() => {
+                                  handlePin(firstMsg as any);
+                                  setActionMsgId(null);
+                                }}
+                              >
+                                <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6z"/>
+                                </svg>
+                                {firstMsg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
+                              </button>
+
+                              {/* Xóa phía tôi - có thể xóa tin nhắn của bất kỳ ai */}
+                              <button
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 transition-colors"
+                                onClick={() => {
+                                  handleDeleteLocal(firstMsg as any);
+                                  setActionMsgId(null);
+                                }}
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/>
+                                </svg>
+                                Xóa phía tôi
+                              </button>
+
+                              {/* Thu hồi - chỉ có thể thu hồi tin nhắn của mình */}
+                              {isMine && (
+                                <button
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
+                                  onClick={() => {
+                                    handleUnsend(firstMsg as any);
+                                    setActionMsgId(null);
+                                  }}
+                                >
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/>
+                                  </svg>
+                                  Thu hồi
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 // ── Message ─────────────────────────────────────────────────
                 const msg = item.data;
                 const isMine = msg.senderID === user?.userID;
@@ -1851,6 +2098,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 return (
                   <div
                     key={msgKey}
+                    id={`msg-${msg.messageID}`}
                     ref={(el) => {
                       if (el && msg.messageID) msgRefsMap.current.set(msg.messageID, el);
                     }}

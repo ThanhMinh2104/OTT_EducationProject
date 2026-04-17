@@ -11,6 +11,7 @@ import {
   Text,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -22,6 +23,7 @@ interface Props {
 }
 
 const ImageViewer = ({ visible, images, initialIndex = 0, onClose }: Props) => {
+  const insets = useSafeAreaInsets();
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
   return (
@@ -34,13 +36,13 @@ const ImageViewer = ({ visible, images, initialIndex = 0, onClose }: Props) => {
       <StatusBar hidden />
       <View style={styles.container}>
         {/* Close button */}
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+        <TouchableOpacity style={[styles.closeButton, { top: insets.top + 8 }]} onPress={onClose}>
           <Ionicons name="close" size={30} color="#fff" />
         </TouchableOpacity>
 
         {/* Image counter */}
         {images.length > 1 && (
-          <View style={styles.counter}>
+          <View style={[styles.counter, { top: insets.top + 8 }]}>
             <Text style={styles.counterText}>
               {currentIndex + 1} / {images.length}
             </Text>
