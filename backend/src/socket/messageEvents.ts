@@ -2,6 +2,12 @@ import { Server, Socket } from 'socket.io';
 import Message from '../models/Messages';
 import ChatMember from '../models/ChatMember';
 import Users from '../models/User';
+import { 
+  processBotAction, 
+  getChatHistory, 
+  isBotMention, 
+  createBotMessage 
+} from '../services/botService';
 
 // Helper: tạo messageID tự động
 const generateMessageID = async (): Promise<string> => {
@@ -102,6 +108,85 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
           });
         }
       }, 1000);
+
+      // ==================== BOT INTEGRATION ====================
+      // Kiểm tra xem có gọi bot không
+      if (data.content && isBotMention(data.content)) {
+        console.log('🤖 Bot mentioned, processing...');
+        
+        // Emit typing indicator
+        memberIDs.forEach((id) => {
+          io.to(id).emit('typing', { 
+            chatID: data.chatID, 
+            userID: 'bot', 
+            isTyping: true 
+          });
+        });
+
+        try {
+          // Lấy lịch sử chat
+          const chatHistory = await getChatHistory(data.chatID, 50);
+          
+          // Xác định loại chat
+          let chatType = 'individual';
+          if (memberIDs.length > 2) {
+            chatType = 'group';
+          }
+          // TODO: Thêm logic xác định "stranger" nếu cần
+
+          // Xử lý với bot
+          const botResponse = await processBotAction(
+            chatType,
+            chatHistory,
+            data.content
+          );
+
+          // Tạo và lưu tin nhắn bot
+          const botMsg = await createBotMessage(
+            data.chatID,
+            botResponse.content,
+            botResponse.intent
+          );
+
+          // Lấy thông tin bot user (nếu có)
+          const botUser = await Users.findOne({ userID: 'bot' });
+
+          // Gửi tin nhắn bot tới tất cả thành viên
+          const botMessageData = {
+            messageID: botMsg.messageID,
+            _id: botMsg._id,
+            chatID: data.chatID,
+            senderID: 'bot',
+            content: botMsg.content,
+            type: 'text',
+            timestamp: botMsg.timestamp,
+            status: 'sent',
+            metadata: { intent: botResponse.intent },
+            senderInfo: {
+              name: botUser?.name || 'AI Bot',
+              avatar: botUser?.anhDaiDien || null,
+            },
+          };
+
+          memberIDs.forEach((id) => {
+            io.to(id).emit('new_message', botMessageData);
+          });
+          io.to(data.chatID).emit(data.chatID, botMessageData);
+
+          console.log('✅ Bot response sent:', botResponse.intent);
+        } catch (error) {
+          console.error('❌ Bot processing failed:', error);
+        } finally {
+          // Tắt typing indicator
+          memberIDs.forEach((id) => {
+            io.to(id).emit('typing', { 
+              chatID: data.chatID, 
+              userID: 'bot', 
+              isTyping: false 
+            });
+          });
+        }
+      }
     } catch (e) {
       console.error('send_message error:', e);
     }

@@ -4,6 +4,11 @@ import GroupMember from '../models/GroupMember';
 import MessageReaction from '../models/MessageReaction';
 import Users from '../models/User';
 import { v4 as uuidv4 } from 'uuid';
+import { 
+  processBotAction, 
+  getChatHistory, 
+  isBotMention 
+} from '../services/botService';
 
 const generateMessageID = (): string => {
   return `gmsg_${uuidv4()}`;
@@ -125,6 +130,116 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
           status: 'delivered',
         });
       }, 1000);
+
+      // ==================== BOT INTEGRATION FOR GROUP ====================
+      // Kiểm tra xem có gọi bot không
+      if (content && isBotMention(content)) {
+        console.log('🤖 Bot mentioned in group, processing...');
+        
+        // Lấy danh sách thành viên
+        const members = await GroupMember.find({ groupID, isActive: true });
+        const memberIDs = members.map(m => m.userID);
+
+        // Emit typing indicator
+        io.to(groupID).emit('group_typing_start', { 
+          groupID, 
+          userID: 'bot',
+          userName: 'AI Bot'
+        });
+
+        try {
+          // Lấy lịch sử chat group
+          const messages = await GroupMessage.find({ groupID })
+            .sort({ timestamp: -1 })
+            .limit(50);
+
+          messages.reverse();
+
+          const formattedHistory: string[] = [];
+          for (const msg of messages) {
+            // Bỏ qua tin nhắn notification
+            if (msg.type === 'notification') continue;
+            
+            let senderName = 'Người dùng';
+            if (msg.senderID !== 'system' && msg.senderID !== 'bot') {
+              const user = await Users.findOne({ userID: msg.senderID });
+              senderName = user?.name || 'Người dùng';
+            } else if (msg.senderID === 'bot') {
+              senderName = 'AI Bot';
+            }
+
+            let msgContent = msg.content;
+            if (!msgContent || msgContent.trim() === '') {
+              const mediaTypes: Record<string, string> = {
+                image: '[Hình ảnh]',
+                video: '[Video]',
+                audio: '[Tin nhắn thoại]',
+                file: '[File]',
+                sticker: '[Sticker]',
+                gif: '[GIF]',
+              };
+              msgContent = mediaTypes[msg.type] || '[Media]';
+            }
+
+            formattedHistory.push(`${senderName}: ${msgContent}`);
+          }
+
+          const chatHistory = formattedHistory.join('\n') || 'Chưa có tin nhắn nào trong nhóm này.';
+
+          // Xử lý với bot
+          const botResponse = await processBotAction(
+            'group',
+            chatHistory,
+            content
+          );
+
+          // Tạo tin nhắn bot
+          const botMessageID = generateMessageID();
+          const botMsg = new GroupMessage({
+            messageID: botMessageID,
+            groupID,
+            senderID: 'bot',
+            content: botResponse.content,
+            type: 'text',
+            timestamp: new Date(),
+            media_url: [],
+            status: 'sent',
+          });
+
+          await botMsg.save();
+
+          // Lấy thông tin bot user
+          const botUser = await Users.findOne({ userID: 'bot' });
+
+          // Gửi tin nhắn bot tới group
+          const botMessageData = {
+            messageID: botMsg.messageID,
+            groupID,
+            senderID: 'bot',
+            content: botMsg.content,
+            type: 'text',
+            timestamp: botMsg.timestamp,
+            status: 'sent',
+            metadata: { intent: botResponse.intent },
+            senderInfo: {
+              name: botUser?.name || 'AI Bot',
+              avatar: botUser?.anhDaiDien || null,
+            },
+          };
+
+          io.to(groupID).emit('new_group_message', botMessageData);
+
+          console.log('✅ Bot response sent to group:', botResponse.intent);
+        } catch (error) {
+          console.error('❌ Bot processing failed in group:', error);
+        } finally {
+          // Tắt typing indicator
+          io.to(groupID).emit('group_typing_stop', { 
+            groupID, 
+            userID: 'bot'
+          });
+        }
+      }
     } catch (error: any) {
       console.error('Error sending group message:', error);
       socket.emit('error_notification', {
