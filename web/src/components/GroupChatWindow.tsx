@@ -460,12 +460,57 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     }
   }, []);
 
+  const handleUnsendNotification = useCallback((data: any) => {
+    console.log('📩 Received unsend_group_notification:', data);
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.messageID === data.messageID
+          ? { ...msg, type: 'notification', content: 'Tin nhắn đã bị thu hồi', media_url: [] }
+          : msg
+      )
+    );
+    // Xóa khỏi pinned messages nếu có
+    setPinnedMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
+  }, []);
+
+  const handleMessageDeletedLocal = useCallback((data: { messageID: string; userID: string }) => {
+    // Chỉ xóa message khỏi UI của user hiện tại
+    if (data.userID === userID) {
+      setMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
+      setPinnedMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
+    }
+  }, [userID]);
+
   const handleReactionUpdated = useCallback((data: { messageID: string; reactions: Array<{ userID: string; emoji: string }> }) => {
     setMessages((prev) =>
       prev.map((msg) =>
         msg.messageID === data.messageID ? { ...msg, reactions: data.reactions } : msg
       )
     );
+  }, []);
+
+  const handlePinNotification = useCallback((data: any) => {
+    console.log('📌 Pin notification received:', data);
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.messageID === data.messageID ? { ...msg, pinnedInfo: data.pinnedInfo } : msg
+      )
+    );
+    setPinnedMessages((prev) => {
+      const exists = prev.find((m) => m.messageID === data.messageID);
+      if (exists) return prev;
+      return [...prev, data];
+    });
+  }, []);
+
+  const handleUnpinNotification = useCallback((data: any) => {
+    console.log('📌 Unpin notification received:', data);
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.messageID === data.messageID ? { ...msg, pinnedInfo: null } : msg
+      )
+    );
+    setPinnedMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
   }, []);
 
   useEffect(() => {
@@ -500,7 +545,11 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     socket.on('group_typing_start', handleTypingStart);
     socket.on('group_typing_stop', handleTypingStop);
     socket.on('message_deleted', handleMessageDeleted);
+    socket.on('unsend_group_notification', handleUnsendNotification);
+    socket.on('message_deleted_local', handleMessageDeletedLocal);
     socket.on('reaction_updated', handleReactionUpdated);
+    socket.on('ghim_group_notification', handlePinNotification);
+    socket.on('unghim_group_notification', handleUnpinNotification);
 
     return () => {
       socket.off('connect', handleConnect);
@@ -510,10 +559,14 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       socket.off('group_typing_start', handleTypingStart);
       socket.off('group_typing_stop', handleTypingStop);
       socket.off('message_deleted', handleMessageDeleted);
+      socket.off('unsend_group_notification', handleUnsendNotification);
+      socket.off('message_deleted_local', handleMessageDeletedLocal);
       socket.off('reaction_updated', handleReactionUpdated);
+      socket.off('ghim_group_notification', handlePinNotification);
+      socket.off('unghim_group_notification', handleUnpinNotification);
       socket.emit('leave_group', { groupID, userID });
     };
-  }, [groupID, userID, fetchGroupData, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleReactionUpdated]);
+  }, [groupID, userID, fetchGroupData, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -762,14 +815,103 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
   const handlePin = (msg: Message) => {
     if (!msg.messageID) return;
-    if (pinnedMessages.length >= 3 && !pinnedMessages.find(m => m.messageID === msg.messageID)) {
-      toast.error('Chỉ có thể ghim tối đa 3 tin nhắn');
-      setActionMsgId(null);
+    
+    if (msg.pinnedInfo) {
+      // Unpin message
+      console.log('📌 Unpinning message:', msg.messageID);
+      socket.emit('unghim_group_message', { 
+        messageID: msg.messageID, 
+        groupID,
+        senderID: userID
+      });
+    } else {
+      // Check if already have 3 pinned messages
+      if (pinnedMessages.length >= 3) {
+        toast.error('Chỉ có thể ghim tối đa 3 tin nhắn');
+        setActionMsgId(null);
+        return;
+      }
+      
+      // Pin message
+      console.log('📌 Pinning message:', msg.messageID);
+      socket.emit('ghim_group_message', {
+        messageID: msg.messageID,
+        groupID,
+        senderID: userID
+      });
+    }
+    
+    setActionMsgId(null);
+  };
+
+  const handleUnsend = (msg: Message) => {
+    console.log('🎯 handleUnsend called:', {
+      messageID: msg.messageID,
+      senderID: msg.senderID,
+      userID: userID,
+      match: msg.senderID === userID
+    });
+
+    if (!msg.messageID || msg.senderID !== userID) {
+      console.log('❌ Cannot unsend: validation failed');
+      toast.error('Bạn chỉ có thể thu hồi tin nhắn của mình');
       return;
     }
-    // TODO: Implement pin/unpin via socket
-    toast('Tính năng ghim tin nhắn đang phát triển');
+
+    // Tìm tất cả messages trong cùng group (nếu có)
+    let messagesToUnsend: Message[] = [msg];
+    if (msg.type === 'image' && msg.groupId) {
+      messagesToUnsend = messages.filter(m => m.groupId === msg.groupId && m.senderID === userID);
+      console.log(`📸 Unsending ${messagesToUnsend.length} images from group ${msg.groupId}`);
+    }
+
+    console.log('🔄 Unsending message(s):', messagesToUnsend.map(m => m.messageID));
+
+    // Cập nhật UI ngay lập tức (optimistic update)
+    setMessages((prev) =>
+      prev.map((m) =>
+        messagesToUnsend.some(unsend => unsend.messageID === m.messageID)
+          ? { ...m, type: 'notification', content: 'Tin nhắn đã bị thu hồi', media_url: [] }
+          : m
+      )
+    );
+
+    // Gửi socket event cho message đầu tiên
+    socket.emit('unsend_group_message', {
+      messageID: msg.messageID,
+      groupID,
+      senderID: userID,
+    });
+
+    console.log('📤 Emitted unsend_group_message event');
     setActionMsgId(null);
+  };
+
+  const handleDeleteLocal = (msg: Message) => {
+    if (!msg.messageID || !userID) return;
+
+    // Tìm tất cả messages trong cùng group (nếu có)
+    let messagesToDelete: Message[] = [msg];
+    if (msg.type === 'image' && msg.groupId) {
+      messagesToDelete = messages.filter(m => m.groupId === msg.groupId);
+      console.log(`📸 Deleting ${messagesToDelete.length} images from group ${msg.groupId}`);
+    }
+
+    // Xóa tin nhắn khỏi UI ngay lập tức (optimistic update)
+    setMessages((prev) => prev.filter((m) => !messagesToDelete.some(del => del.messageID === m.messageID)));
+    setPinnedMessages((prev) => prev.filter((m) => !messagesToDelete.some(del => del.messageID === m.messageID)));
+
+    // Gửi socket event để lưu vào database cho từng message
+    messagesToDelete.forEach((message) => {
+      socket.emit('delete_group_message_local', {
+        messageID: message.messageID,
+        userID: userID,
+        groupID,
+      });
+    });
+
+    setActionMsgId(null);
+    toast.success('Đã xóa tin nhắn');
   };
 
   const handleCopy = (msg: Message) => {
@@ -915,6 +1057,19 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const canEditGroupInfo = isOwner || isAdmin || 
     (groupInfo?.settings?.memberPermissions?.changeNameAvatar ?? true);
 
+  // Kiểm tra quyền gửi tin nhắn
+  const canSendMessages = isOwner || isAdmin || 
+    (groupInfo?.settings?.memberPermissions?.sendMessages ?? true);
+
+  console.log('🔐 Send message permission check:', {
+    userID,
+    role: currentMember?.role,
+    isOwner,
+    isAdmin,
+    sendMessagesPermission: groupInfo?.settings?.memberPermissions?.sendMessages,
+    canSendMessages
+  });
+
   return (
     <div
       className="flex-1 flex flex-col h-screen bg-gray-100"
@@ -1040,6 +1195,117 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             </div>
           </div>
 
+          {/* Pinned Messages Bar */}
+          {pinnedMessages.length > 0 && (
+            <div className="relative bg-white border-b border-gray-200 flex-shrink-0">
+              {/* Main pinned message display */}
+              <div
+                className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => {
+                  const lastPinned = pinnedMessages[pinnedMessages.length - 1];
+                  if (lastPinned?.messageID) {
+                    setHighlightedMsgId(lastPinned.messageID);
+                    msgRefsMap.current.get(lastPinned.messageID)?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'center'
+                    });
+                    setTimeout(() => setHighlightedMsgId(null), 2500);
+                  }
+                }}
+              >
+                <BsPinAngleFill className="text-[#0068ff] text-lg shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
+                    {pinnedMessages[pinnedMessages.length - 1]?.senderInfo?.name || 'Tin nhắn'}
+                  </div>
+                  <div className="text-[12px] text-gray-500 truncate">
+                    {pinnedMessages[pinnedMessages.length - 1]?.content || '[Media]'}
+                  </div>
+                </div>
+                {pinnedMessages.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPinnedList(!showPinnedList);
+                    }}
+                    className="px-3 py-1 bg-gray-50 hover:bg-gray-100 rounded-lg text-[12px] text-gray-700 font-medium transition-colors flex items-center gap-1"
+                  >
+                    +{pinnedMessages.length - 1} ghim
+                    <svg
+                      className={`w-3 h-3 transition-transform ${showPinnedList ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
+              {/* Dropdown list of all pinned messages */}
+              {showPinnedList && pinnedMessages.length > 1 && (
+                <div className="absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-10 max-h-[300px] overflow-y-auto">
+                  <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                    <span className="text-[13px] font-semibold text-gray-700">
+                      Danh sách ghim ({pinnedMessages.length})
+                    </span>
+                    <button
+                      onClick={() => setShowPinnedList(false)}
+                      className="text-gray-400 hover:text-gray-700"
+                    >
+                      <FaTimes />
+                    </button>
+                  </div>
+                  {pinnedMessages.slice().reverse().map((msg) => (
+                    <div
+                      key={msg.messageID}
+                      className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      onClick={() => {
+                        if (msg.messageID) {
+                          setHighlightedMsgId(msg.messageID);
+                          msgRefsMap.current.get(msg.messageID)?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                          });
+                          setTimeout(() => setHighlightedMsgId(null), 2500);
+                          setShowPinnedList(false);
+                        }
+                      }}
+                    >
+                      <img
+                        src={msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`}
+                        alt="avatar"
+                        className="w-8 h-8 rounded-full object-cover shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
+                          {msg.senderInfo?.name}
+                        </div>
+                        <div className="text-[12px] text-gray-600 truncate">
+                          {msg.content || '[Media]'}
+                        </div>
+                        <div className="text-[11px] text-gray-400 mt-0.5">
+                          {formatTime(msg.timestamp)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePin(msg);
+                        }}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                        title="Bỏ ghim"
+                      >
+                        <FaTimes className="text-sm" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Messages Area */}
           <div className="flex-1 overflow-y-auto px-4 py-3 bg-gray-50">
             {messages.length === 0 ? (
@@ -1060,7 +1326,25 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                   const firstMsg = group.messages[0];
 
                   return (
-                    <div key={group.groupId} className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                    <div 
+                      key={group.groupId} 
+                      ref={(el) => {
+                        if (el) {
+                          // Set ref cho tất cả messages trong group
+                          (group.messages as any).forEach((msg: Message) => {
+                            if (msg.messageID) {
+                              msgRefsMap.current.set(msg.messageID, el);
+                            }
+                          });
+                        }
+                      }}
+                      className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${
+                        // Highlight nếu bất kỳ message nào trong group được highlight
+                        (group.messages as any).some((msg: Message) => msg.messageID === highlightedMsgId) 
+                          ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1' 
+                          : ''
+                      }`}
+                    >
                       {!isMine && (
                         <div className="relative flex-shrink-0 mr-2">
                           <img
@@ -1089,6 +1373,85 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                               }
                             }}
                           />
+
+                          {/* Action buttons for image group */}
+                          <div
+                            className={`absolute ${
+                              isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
+                            } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
+                          >
+                            <button
+                              onClick={() => handleAddReaction(firstMsg.messageID || '', '👍')}
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
+                              title="Thích"
+                            >
+                              <FaThumbsUp className="text-xs" />
+                            </button>
+                            <button
+                              onClick={() => setReplyTo(firstMsg as any)}
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
+                              title="Trả lời"
+                            >
+                              <FaReply className="text-xs" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActionMsgId(actionMsgId === firstMsg.messageID ? null : (firstMsg.messageID || null));
+                              }}
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
+                              title="Thêm"
+                            >
+                              <FaEllipsisV className="text-xs" />
+                            </button>
+                          </div>
+
+                          {/* Context Menu for Image Group */}
+                          {actionMsgId === firstMsg.messageID && (
+                            <div
+                              className={`absolute z-20 bg-white rounded-xl shadow-xl border border-gray-100 py-1 min-w-[160px] ${isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'} top-0`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => handleForwardMessage(firstMsg as any)}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                <FaForward className="text-xs" />
+                                Chuyển tiếp
+                              </button>
+                              <button
+                                onClick={() => handlePin(firstMsg as any)}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                <BsPin className="text-xs" />
+                                {firstMsg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
+                              </button>
+                              {isMine && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      handleDeleteLocal(firstMsg as any);
+                                      setActionMsgId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 transition-colors"
+                                  >
+                                    <FaTrash className="text-xs" />
+                                    Xóa phía tôi
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      handleUnsend(firstMsg as any);
+                                      setActionMsgId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
+                                  >
+                                    <FaTrash className="text-xs" />
+                                    Thu hồi
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <span className="text-[11px] text-gray-400 mt-1 px-1">
@@ -1105,7 +1468,17 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 const msgKey = msg.messageID || `temp-${Date.now()}`;
 
                 return (
-                  <div key={msgKey} className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                  <div 
+                    key={msgKey} 
+                    ref={(el) => {
+                      if (el && msg.messageID) {
+                        msgRefsMap.current.set(msg.messageID, el);
+                      }
+                    }}
+                    className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${
+                      highlightedMsgId === msg.messageID ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1' : ''
+                    }`}
+                  >
                     {!isMine && (
                       <div className="relative flex-shrink-0 mr-2">
                         <img
@@ -1123,29 +1496,67 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                         </span>
                       )}
 
-                      <div
-                        className={`relative group ${
-                          msg.type === 'notification'
-                            ? 'bg-transparent'
-                            : msg.type === 'sticker' || msg.type === 'gif'
-                              ? ''
-                              : isMine
-                                ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
-                                : 'bg-white text-gray-800 border border-gray-100'
-                        } ${
-                          msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif'
-                            ? 'p-0 rounded-2xl overflow-hidden'
-                            : msg.type === 'file'
-                              ? 'rounded-2xl'
-                              : 'px-4 py-2.5 rounded-2xl'
-                        } ${msg.type !== 'notification' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'shadow-sm' : ''} ${isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-br-sm' : ''} ${!isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-bl-sm' : ''}`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <div className="relative group">
+                        <div
+                          className={`${
+                            msg.type === 'notification'
+                              ? 'bg-transparent'
+                              : msg.type === 'sticker' || msg.type === 'gif'
+                                ? ''
+                                : isMine
+                                  ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
+                                  : 'bg-white text-gray-800 border border-gray-100'
+                          } ${
+                            msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif'
+                              ? 'p-0 rounded-2xl overflow-hidden'
+                              : msg.type === 'file'
+                                ? 'rounded-2xl'
+                                : 'px-4 py-2.5 rounded-2xl'
+                          } ${msg.type !== 'notification' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'shadow-sm' : ''} ${isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-br-sm' : ''} ${!isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-bl-sm' : ''}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                         {msg.replyTo && (
-                          <div className={`text-xs mb-2 pb-2 border-b ${isMine ? 'border-blue-400/30' : 'border-gray-200'}`}>
-                            <span className={isMine ? 'text-blue-100' : 'text-gray-500'}>
-                              Trả lời: {msg.replyTo.content}
+                          <div 
+                            className={`text-xs mb-2 pb-2 border-b cursor-pointer hover:bg-gray-50/50 -mx-2 px-2 py-1 rounded transition-colors ${isMine ? 'border-blue-400/30' : 'border-gray-200'}`}
+                            onClick={() => {
+                              if (msg.replyTo?.messageID) {
+                                setHighlightedMsgId(msg.replyTo.messageID);
+                                msgRefsMap.current.get(msg.replyTo.messageID)?.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'center',
+                                });
+                                setTimeout(() => setHighlightedMsgId(null), 2500);
+                              }
+                            }}
+                          >
+                            <span className={`font-semibold ${isMine ? 'text-blue-600' : 'text-gray-700'}`}>
+                              Trả lời {msg.replyTo.senderID === userID ? 'chính mình' : 'tin nhắn'}
                             </span>
+                            <div className={`mt-0.5 ${isMine ? 'text-gray-600' : 'text-gray-500'}`}>
+                              {msg.replyTo.type === 'text' || msg.replyTo.type === 'emoji' ? (
+                                <span className="line-clamp-1">{msg.replyTo.content}</span>
+                              ) : msg.replyTo.type === 'image' ? (
+                                <span className="flex items-center gap-1">
+                                  <FaImage className="text-[10px]" /> Hình ảnh
+                                </span>
+                              ) : msg.replyTo.type === 'video' ? (
+                                <span className="flex items-center gap-1">
+                                  <FaVideo className="text-[10px]" /> Video
+                                </span>
+                              ) : msg.replyTo.type === 'audio' ? (
+                                <span className="flex items-center gap-1">
+                                  <FaMicrophone className="text-[10px]" /> Tin nhắn thoại
+                                </span>
+                              ) : msg.replyTo.type === 'file' ? (
+                                <span className="flex items-center gap-1">
+                                  <FaPaperclip className="text-[10px]" /> {msg.replyTo.content || 'File'}
+                                </span>
+                              ) : msg.replyTo.type === 'sticker' ? (
+                                <span>Sticker</span>
+                              ) : (
+                                <span>{msg.replyTo.content}</span>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -1264,21 +1675,31 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                   className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                                 >
                                   <BsPin className="text-xs" />
-                                  Ghim tin nhắn
+                                  {msg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
                                 </button>
-                                {isMine && (
-                                  <button
-                                    onClick={() => handleDeleteMessage(msg.messageID)}
-                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
-                                  >
-                                    <FaTrash className="text-xs" />
-                                    Xóa tin nhắn
-                                  </button>
+                                {isMine && msg.type !== 'notification' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleDeleteLocal(msg)}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 transition-colors"
+                                    >
+                                      <FaTrash className="text-xs" />
+                                      Xóa phía tôi
+                                    </button>
+                                    <button
+                                      onClick={() => handleUnsend(msg)}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
+                                    >
+                                      <FaTrash className="text-xs" />
+                                      Thu hồi
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             )}
                           </>
                         )}
+                        </div>
                       </div>
 
                       <span className={`text-[11px] text-gray-400 mt-1 px-1`}>
@@ -1367,98 +1788,112 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
           {/* Input Area */}
           <div className="flex-shrink-0">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={(e) => {
-                const files = e.currentTarget.files;
-                if (files) setFiles(Array.from(files));
-              }}
-              multiple
-              className="hidden"
-            />
-            <input
-              type="file"
-              ref={imageInputRef}
-              accept="image/*,video/*"
-              onChange={(e) => {
-                const files = e.currentTarget.files;
-                if (files) {
-                  const fileArray = Array.from(files);
-                  setFiles(fileArray);
-                  setTimeout(() => {
-                    if (fileArray.length > 0) {
-                      sendFilesDirectly(fileArray);
+            {!canSendMessages ? (
+              // Hiển thị thông báo khi không có quyền gửi tin nhắn
+              <div className="flex items-center justify-center gap-2 px-4 py-4 bg-gray-50 border-t border-gray-200">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <p className="text-sm text-gray-500 m-0 italic">
+                  Chỉ trưởng nhóm và phó nhóm mới có thể gửi tin nhắn
+                </p>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={(e) => {
+                    const files = e.currentTarget.files;
+                    if (files) setFiles(Array.from(files));
+                  }}
+                  multiple
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={imageInputRef}
+                  accept="image/*,video/*"
+                  onChange={(e) => {
+                    const files = e.currentTarget.files;
+                    if (files) {
+                      const fileArray = Array.from(files);
+                      setFiles(fileArray);
+                      setTimeout(() => {
+                        if (fileArray.length > 0) {
+                          sendFilesDirectly(fileArray);
+                        }
+                      }, 100);
                     }
-                  }, 100);
-                }
-              }}
-              multiple
-              className="hidden"
-            />
-            <input
-              type="file"
-              ref={videoInputRef}
-              accept="video/*"
-              onChange={(e) => {
-                const files = e.currentTarget.files;
-                if (files) sendFilesDirectly(Array.from(files));
-              }}
-              className="hidden"
-            />
+                  }}
+                  multiple
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={videoInputRef}
+                  accept="video/*"
+                  onChange={(e) => {
+                    const files = e.currentTarget.files;
+                    if (files) sendFilesDirectly(Array.from(files));
+                  }}
+                  className="hidden"
+                />
 
-            {/* Toolbar icons */}
-            <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-t border-gray-100 bg-white">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowEmoji((v) => !v);
-                }}
-                title="Emoji"
-                className={`w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors ${showEmoji ? 'text-[#0068ff] bg-blue-50' : 'text-gray-500 hover:text-[#0068ff] hover:bg-gray-100'}`}
-              >
-                <FaSmile />
-              </button>
-              <button
-                onClick={() => imageInputRef.current?.click()}
-                title="Gửi ảnh"
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
-              >
-                <FaImage />
-              </button>
+                {/* Toolbar icons */}
+                <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-t border-gray-100 bg-white">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowEmoji((v) => !v);
+                    }}
+                    title="Emoji"
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors ${showEmoji ? 'text-[#0068ff] bg-blue-50' : 'text-gray-500 hover:text-[#0068ff] hover:bg-gray-100'}`}
+                  >
+                    <FaSmile />
+                  </button>
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    title="Gửi ảnh"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
+                  >
+                    <FaImage />
+                  </button>
 
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                title="Gửi file"
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
-              >
-                <FaPaperclip />
-              </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Gửi file"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
+                  >
+                    <FaPaperclip />
+                  </button>
 
-              {!isRecording && !audioBlob && (
-                <button
-                  onClick={startRecording}
-                  title="Ghi âm"
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
-                >
-                  <FaMicrophone />
-                </button>
-              )}
+                  {!isRecording && !audioBlob && (
+                    <button
+                      onClick={startRecording}
+                      title="Ghi âm"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-base text-gray-500 hover:text-[#0068ff] hover:bg-gray-100 transition-colors"
+                    >
+                      <FaMicrophone />
+                    </button>
+                  )}
 
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toast('Tính năng nhắc hẹn đang phát triển');
-                }}
-                title="Nhắc hẹn"
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors text-gray-500 hover:text-[#0068ff] hover:bg-gray-100"
-              >
-                <FaBell />
-              </button>
-            </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toast('Tính năng nhắc hẹn đang phát triển');
+                    }}
+                    title="Nhắc hẹn"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors text-gray-500 hover:text-[#0068ff] hover:bg-gray-100"
+                  >
+                    <FaBell />
+                  </button>
+                </div>
+              </>
+            )}
 
             {/* Emoji picker modal */}
-            {showEmoji && (
+            {showEmoji && canSendMessages && (
               <StickerEmojiPicker
                 onEmojiClick={sendEmoji}
                 onStickerClick={sendSticker}
@@ -1468,7 +1903,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             )}
 
             {/* Recording bar — waveform animation */}
-            {isRecording && (
+            {isRecording && canSendMessages && (
               <div className="flex items-center gap-3 px-4 py-2 bg-red-50 border-t border-red-100">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
                 {/* Waveform bars */}
@@ -1505,7 +1940,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             )}
 
             {/* Audio preview */}
-            {audioBlob && !isRecording && (
+            {audioBlob && !isRecording && canSendMessages && (
               <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border-t border-blue-100">
                 <audio src={URL.createObjectURL(audioBlob)} controls className="h-8 flex-1" />
                 <button
@@ -1526,31 +1961,33 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             )}
 
             {/* Text input */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-white">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputText}
-                onChange={(e) => handleInputChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                placeholder="Nhập tin nhắn..."
-                className="flex-1 px-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#0068ff]/20 transition-all"
-              />
+            {canSendMessages && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-white">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Nhập tin nhắn..."
+                  className="flex-1 px-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#0068ff]/20 transition-all"
+                />
 
-              <button
-                onClick={handleSendMessage}
-                disabled={!inputText.trim() || isUploading}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-[#0068ff] text-white hover:bg-[#0077c2] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Gửi"
-              >
-                <FaPaperPlane className="text-sm" />
-              </button>
-            </div>
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!inputText.trim() || isUploading}
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-[#0068ff] text-white hover:bg-[#0077c2] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Gửi"
+                >
+                  <FaPaperPlane className="text-sm" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

@@ -350,6 +350,8 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
   // ==================== 7.  CHUYỂN TIẾP TIN NHẮN (MỚI) ====================
   socket.on('forward_message', async (data: {
     originalMessageID: string;
+    originalChatID?: string;
+    originalGroupID?: string;
     targetChatID: string;
     senderID: string;
     senderInfo: {
@@ -360,12 +362,25 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
     try {
       console.log('📨 Forward message request received:', {
         originalMessageID: data.originalMessageID,
+        originalChatID: data.originalChatID,
+        originalGroupID: data.originalGroupID,
         targetChatID: data.targetChatID,
         senderID: data.senderID,
       });
 
-      // Lấy tin nhắn gốc
-      const originalMsg = await Message.findOne({ messageID: data.originalMessageID });
+      // Lấy tin nhắn gốc (từ chat đơn hoặc group chat)
+      let originalMsg: any;
+      if (data.originalGroupID) {
+        // Import GroupMessage model
+        const GroupMessage = (await import('../models/GroupMessage')).default;
+        originalMsg = await GroupMessage.findOne({ 
+          messageID: data.originalMessageID, 
+          groupID: data.originalGroupID 
+        });
+      } else {
+        originalMsg = await Message.findOne({ messageID: data.originalMessageID });
+      }
+
       if (!originalMsg) {
         console.error('❌ Original message not found:', data.originalMessageID);
         if (callback) callback({ success: false, error: 'Message not found' });
@@ -373,9 +388,9 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       }
 
       // Không cho phép forward tin nhắn đã thu hồi
-      if (originalMsg.type === 'unsend') {
-        console.error('❌ Cannot forward unsent message');
-        if (callback) callback({ success: false, error: 'Cannot forward unsent message' });
+      if (originalMsg.type === 'unsend' || originalMsg.type === 'notification') {
+        console.error('❌ Cannot forward unsent/notification message');
+        if (callback) callback({ success: false, error: 'Cannot forward this message type' });
         return;
       }
 
@@ -383,10 +398,18 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       let messagesToForward: any[] = [originalMsg];
       if (originalMsg.type === 'image' && originalMsg.groupId) {
         console.log('📸 Forwarding entire image group:', originalMsg.groupId);
-        messagesToForward = await Message.find({ 
-          groupId: originalMsg.groupId, 
-          chatID: originalMsg.chatID 
-        });
+        if (data.originalGroupID) {
+          const GroupMessage = (await import('../models/GroupMessage')).default;
+          messagesToForward = await GroupMessage.find({ 
+            groupId: originalMsg.groupId, 
+            groupID: data.originalGroupID 
+          });
+        } else {
+          messagesToForward = await Message.find({ 
+            groupId: originalMsg.groupId, 
+            chatID: originalMsg.chatID 
+          });
+        }
       }
 
       // Lấy danh sách thành viên của chat đích

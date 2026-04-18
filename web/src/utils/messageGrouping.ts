@@ -4,17 +4,19 @@ export interface Message {
   messageID?: string;
   tempID?: string;
   _id?: string;
-  chatID: string;
+  chatID?: string; // Optional for single chat
+  groupID?: string; // Optional for group chat
   senderID: string;
   type: string;
   timestamp: string | Date;
   media_url?: string[];
-  groupId?: string;
+  groupId?: string; // For grouping images sent together
   content?: string;
   status?: string;
   senderInfo?: { name: string; avatar?: string | null };
   pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
   replyTo?: any;
+  reactions?: Array<{ userID: string; emoji: string }>;
   [key: string]: any;
 }
 
