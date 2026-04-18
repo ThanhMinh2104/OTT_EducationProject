@@ -9,6 +9,7 @@ import { BsPin, BsPinFill } from 'react-icons/bs';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
+import { TransferOwnershipModal } from './TransferOwnershipModal';
 import './GroupInfoPanel.css';
 
 interface GroupMember {
@@ -50,6 +51,7 @@ interface Props {
   groupInfo: GroupInfo;
   currentUserID: string;
   messages: Message[];
+  members?: GroupMember[]; // Thêm prop members với user info đầy đủ
   onClose: () => void;
   onAddMembers: () => void;
   onManageGroup: () => void;
@@ -142,6 +144,7 @@ const GroupInfoPanel = ({
   groupInfo,
   currentUserID,
   messages,
+  members, // Nhận prop members
   onClose,
   onAddMembers,
   onManageGroup,
@@ -157,6 +160,7 @@ const GroupInfoPanel = ({
   const [isPinned, setIsPinned] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
 
   const currentMember = groupInfo.members.find(m => m.userID === currentUserID);
   const isOwner = currentMember?.role === 'owner';
@@ -482,7 +486,15 @@ const GroupInfoPanel = ({
         {/* Actions - Rời nhóm / Giải tán nhóm */}
         <div className="px-4 py-3 border-t border-gray-700 shrink-0 space-y-2">
           <button
-            onClick={() => setShowLeaveConfirm(true)}
+            onClick={() => {
+              // Nếu là owner, hiện modal chọn trưởng nhóm mới
+              if (isOwner) {
+                setShowTransferModal(true);
+              } else {
+                // Nếu không phải owner, hiện confirm rời nhóm bình thường
+                setShowLeaveConfirm(true);
+              }
+            }}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 transition-colors text-[13px] font-medium"
           >
             <FaSignOutAlt className="text-xs" />
@@ -523,6 +535,31 @@ const GroupInfoPanel = ({
         isDanger
         confirmText="Rời nhóm"
       />
+
+      {/* Transfer ownership modal (for owner) */}
+      {showTransferModal && (
+        <TransferOwnershipModal
+          members={members || groupInfo.members} // Ưu tiên dùng members prop, fallback về groupInfo.members
+          currentOwnerID={currentUserID}
+          onClose={() => setShowTransferModal(false)}
+          onTransfer={async (newOwnerID) => {
+            try {
+              // Chuyển quyền owner
+              await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${newOwnerID}/role`, {
+                role: 'owner',
+              });
+              
+              toast.success('Đã chuyển quyền trưởng nhóm');
+              setShowTransferModal(false);
+              
+              // Sau khi chuyển quyền, rời nhóm
+              onLeaveGroup();
+            } catch (error: any) {
+              toast.error(error.response?.data?.message || 'Lỗi chuyển quyền');
+            }
+          }}
+        />
+      )}
 
       {/* Delete group confirm modal */}
       {isOwner && (
