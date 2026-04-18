@@ -4,7 +4,7 @@ import cloudinary from '../config/cloudinary';
 const FILE_TYPE_MATCH: Record<string, string[]> = {
   image: ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp'],
   video: ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/ogg'],
-  audio: ['audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac'],
+  audio: ['audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/m4a', 'audio/x-m4a'],
   document: [
     'application/pdf',
     'application/msword',
@@ -72,7 +72,7 @@ export async function uploadToCloudinary(file: Express.Multer.File): Promise<str
         folder: 'AnhChat', 
         public_id: publicId, 
         resource_type: resourceType,
-        format: fileType === 'audio' ? 'mp3' : undefined, // Convert audio to mp3
+        // Không convert format, giữ nguyên m4a
         access_mode: 'public', // Đảm bảo file có thể truy cập public
         type: 'upload' // Upload type
       },

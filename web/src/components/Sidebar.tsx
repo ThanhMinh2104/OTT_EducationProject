@@ -237,7 +237,7 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
 
             {/* Badge thông báo số lượng lời mời kết bạn */}
             {requestCount > 0 && (
-              <div className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-[#0e9de8] shadow-sm animate-pulse">
+              <div className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-gray-900 text-[10px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-[#0e9de8] shadow-sm animate-pulse">
                 {requestCount > 99 ? '99+' : requestCount}
               </div>
             )}
@@ -324,7 +324,7 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                 Hủy
               </button>
               <button
-                className="flex-1 py-2.5 rounded-xl bg-red-500 text-sm font-medium text-white hover:bg-red-600 transition-colors"
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-sm font-medium text-gray-900 hover:bg-red-600 transition-colors"
                 onClick={handleLogout}
               >
                 Đăng xuất
@@ -449,7 +449,7 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                             setShowSettingsModal(false);
                             openProfile();
                           }}
-                          className="w-full py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                          className="w-full py-2 px-4 bg-blue-500 text-gray-900 rounded-lg hover:bg-blue-600 transition-colors font-medium"
                         >
                           Chỉnh sửa hồ sơ
                         </button>
@@ -486,7 +486,7 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                       {sessions.length > 1 && (
                         <button
                           onClick={handleLogoutAllOthers}
-                          className="px-4 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
+                          className="px-4 py-2 bg-red-500 text-gray-900 text-sm rounded-lg hover:bg-red-600 transition-colors"
                         >
                           Đăng xuất tất cả thiết bị khác
                         </button>
@@ -540,7 +540,7 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                               {!session.isCurrent && (
                                 <button
                                   onClick={() => handleLogoutDevice(session.sessionId)}
-                                  className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
+                                  className="px-3 py-1.5 bg-red-500 text-gray-900 text-sm rounded-lg hover:bg-red-600 transition-colors"
                                 >
                                   Đăng xuất
                                 </button>
@@ -639,7 +639,7 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                     </div>
                     <button
                       onClick={handleDeactivateAccount}
-                      className="w-full py-3 px-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-semibold"
+                      className="w-full py-3 px-4 bg-red-600 text-gray-900 rounded-xl hover:bg-red-700 transition-colors font-semibold"
                     >
                       Vô hiệu hóa tài khoản của tôi
                     </button>

@@ -67,7 +67,7 @@ const Toast = ({ toast, onDismiss, onClickChat }: {
 
   return (
     <div
-      className={`relative w-[340px] bg-white dark:bg-gray-800 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.15)] border border-gray-100 dark:border-gray-700 overflow-hidden cursor-pointer transition-all duration-300 ${
+      className={`relative w-[340px] bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.15)] border border-gray-100 overflow-hidden cursor-pointer transition-all duration-300 ${
         visible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
       }`}
       onClick={handleClick}
@@ -84,7 +84,7 @@ const Toast = ({ toast, onDismiss, onClickChat }: {
           <img
             src={toast.senderAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${toast.senderName}`}
             alt={toast.senderName}
-            className="w-10 h-10 rounded-full object-cover border-2 border-blue-100 dark:border-blue-800"
+            className="w-10 h-10 rounded-full object-cover border-2 border-blue-100"
           />
           {/* App icon badge */}
           <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-[#0e9de8] rounded-full flex items-center justify-center">
@@ -95,7 +95,7 @@ const Toast = ({ toast, onDismiss, onClickChat }: {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-0.5">
-            <p className="text-[13.5px] font-semibold text-gray-900 dark:text-gray-100 truncate">
+            <p className="text-[13.5px] font-semibold text-gray-900 truncate">
               {toast.senderName}
               {toast.isGroup && toast.chatName && (
                 <span className="text-gray-400 font-normal"> · {toast.chatName}</span>
@@ -103,7 +103,7 @@ const Toast = ({ toast, onDismiss, onClickChat }: {
             </p>
             <span className="text-[11px] text-gray-400 shrink-0">Vừa xong</span>
           </div>
-          <p className="text-[13px] text-gray-500 dark:text-gray-400 truncate leading-snug">
+          <p className="text-[13px] text-gray-500 truncate leading-snug">
             {toast.message}
           </p>
         </div>
@@ -111,7 +111,7 @@ const Toast = ({ toast, onDismiss, onClickChat }: {
         {/* Close button */}
         <button
           onClick={(e) => { e.stopPropagation(); dismiss(); }}
-          className="shrink-0 w-5 h-5 flex items-center justify-center text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 transition-colors mt-0.5"
+          className="shrink-0 w-5 h-5 flex items-center justify-center text-gray-300 hover:text-gray-500 transition-colors mt-0.5"
         >
           <FaTimes className="text-[10px]" />
         </button>

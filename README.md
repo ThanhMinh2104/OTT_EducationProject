@@ -235,6 +235,38 @@ OTT_EducationProject/
 
 ---
 
+## 🐛 Debug & Troubleshooting
+
+### Debug Endpoints (Development only)
+
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| `POST` | `/api/debug/fix-all-alias` | Fix tất cả alias sai trong database |
+| `POST` | `/api/debug/fix-alias` | Fix alias của user hiện tại |
+| `POST` | `/api/debug/delete-my-contacts` | Xóa tất cả contacts của user |
+| `POST` | `/api/debug/create-test-chat` | Tạo chat test |
+
+### Hướng dẫn Fix lỗi
+
+- **Fix lỗi Alias trong Contacts**: Xem [FIX_ALIAS_GUIDE.md](./FIX_ALIAS_GUIDE.md)
+- **Tối ưu hiệu suất**: Xem [PERFORMANCE_OPTIMIZATION.md](./PERFORMANCE_OPTIMIZATION.md)
+- **Hướng dẫn commit**: Xem [COMMIT_GUIDE.md](./COMMIT_GUIDE.md)
+
+### Scripts hữu ích
+
+```bash
+# Windows PowerShell - Fix alias
+.\test_fix_alias.ps1 YOUR_TOKEN_HERE
+
+# Linux/Mac - Fix alias
+bash test_fix_alias.sh YOUR_TOKEN_HERE
+
+# MongoDB Script (trong MongoDB Compass)
+# Mở file: fix_alias.mongodb.js
+```
+
+---
+
 ## 👥 Thành viên nhóm
 
 | STT | Họ tên | MSSV | Vai trò |

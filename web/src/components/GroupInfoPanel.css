@@ -1,0 +1,136 @@
+/* GroupInfoPanel Dark Theme Styles */
+
+.group-info-panel {
+  background: linear-gradient(180deg, #2a2f35 0%, #1f2428 100%);
+}
+
+.group-info-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.group-info-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.group-info-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.group-info-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Action button hover effects */
+.group-action-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.group-action-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  transform: translate(-50%, -50%);
+  transition: width 0.3s, height 0.3s;
+}
+
+.group-action-btn:hover::before {
+  width: 100%;
+  height: 100%;
+}
+
+/* Smooth transitions */
+.group-section-collapse {
+  transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+
+/* Link copy animation */
+@keyframes linkCopied {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.link-copied {
+  animation: linkCopied 0.3s ease-in-out;
+}
+
+/* Member avatar hover effect */
+.member-avatar {
+  transition: transform 0.2s ease-in-out;
+}
+
+.member-avatar:hover {
+  transform: scale(1.05);
+}
+
+/* Tab indicator animation */
+.tab-indicator {
+  position: relative;
+}
+
+.tab-indicator::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transition: transform 0.3s ease-in-out;
+}
+
+.tab-indicator.active::after {
+  transform: scaleX(1);
+}
+
+/* Media grid hover effect */
+.media-item {
+  position: relative;
+  overflow: hidden;
+}
+
+.media-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.3) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.media-item:hover::before {
+  opacity: 1;
+}
+
+/* Scrollbar for content areas */
+.content-scroll::-webkit-scrollbar {
+  width: 3px;
+}
+
+.content-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+}
+
+.content-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.content-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

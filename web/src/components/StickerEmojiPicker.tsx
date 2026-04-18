@@ -108,7 +108,7 @@ const StickerEmojiPicker = ({ onEmojiClick, onStickerClick, onGifClick, onClose 
             <button
               onClick={() => setActiveTab('sticker')}
               className={`py-3 text-sm font-medium transition-colors relative ${
-                activeTab === 'sticker' ? 'text-[#4a9eff]' : 'text-gray-400 hover:text-gray-200'
+                activeTab === 'sticker' ? 'text-[#4a9eff]' : 'text-gray-400 hover:text-gray-700'
               }`}
             >
               STICKER
@@ -119,7 +119,7 @@ const StickerEmojiPicker = ({ onEmojiClick, onStickerClick, onGifClick, onClose 
             <button
               onClick={() => setActiveTab('emoji')}
               className={`py-3 text-sm font-medium transition-colors relative ${
-                activeTab === 'emoji' ? 'text-[#4a9eff]' : 'text-gray-400 hover:text-gray-200'
+                activeTab === 'emoji' ? 'text-[#4a9eff]' : 'text-gray-400 hover:text-gray-700'
               }`}
             >
               EMOJI
@@ -130,7 +130,7 @@ const StickerEmojiPicker = ({ onEmojiClick, onStickerClick, onGifClick, onClose 
             <button
               onClick={() => setActiveTab('gif')}
               className={`py-3 text-sm font-medium transition-colors relative ${
-                activeTab === 'gif' ? 'text-[#4a9eff]' : 'text-gray-400 hover:text-gray-200'
+                activeTab === 'gif' ? 'text-[#4a9eff]' : 'text-gray-400 hover:text-gray-700'
               }`}
             >
               GIF
@@ -141,7 +141,7 @@ const StickerEmojiPicker = ({ onEmojiClick, onStickerClick, onGifClick, onClose 
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-gray-900 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -159,7 +159,7 @@ const StickerEmojiPicker = ({ onEmojiClick, onStickerClick, onGifClick, onClose 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={activeTab === 'sticker' ? 'Tìm kiếm sticker' : 'Tìm kiếm GIF'}
-                className="w-full pl-10 pr-4 py-2 bg-[#2a3a4a] text-white rounded-full text-sm outline-none placeholder:text-gray-500"
+                className="w-full pl-10 pr-4 py-2 bg-[#2a3a4a] text-gray-900 rounded-full text-sm outline-none placeholder:text-gray-500"
               />
             </div>
           </div>
@@ -169,7 +169,7 @@ const StickerEmojiPicker = ({ onEmojiClick, onStickerClick, onGifClick, onClose 
         <div className="flex-1 p-4 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded">
           {activeTab === 'sticker' && (
             <div>
-              <h3 className="text-white text-sm font-medium mb-3">Gần đây</h3>
+              <h3 className="text-gray-900 text-sm font-medium mb-3">Gần đây</h3>
               <div className="grid grid-cols-4 gap-3">
                 {SAMPLE_STICKERS.map((url, i) => (
                   <button
@@ -192,7 +192,7 @@ const StickerEmojiPicker = ({ onEmojiClick, onStickerClick, onGifClick, onClose 
 
           {activeTab === 'gif' && (
             <div>
-              <h3 className="text-white text-sm font-medium mb-3">
+              <h3 className="text-gray-900 text-sm font-medium mb-3">
                 {searchQuery ? `Kết quả cho "${searchQuery}"` : 'Xu hướng'}
               </h3>
               {isLoadingGifs ? (

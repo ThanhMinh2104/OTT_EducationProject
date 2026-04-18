@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import socket from '../utils/socket';
 import Sidebar from '../components/Sidebar';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
+import { GroupChatWindow } from '../components/GroupChatWindow';
 import IncomingCallModal from '../components/IncomingCallModal';
 import VideoCallModal from '../components/VideoCallModal';
 import CallNotification from '../components/CallNotification';
-import ContactsPanel from '../components/ContactsPanel';
+import { showZaloToast } from '../components/ZaloToast';
 import { getToken } from '../utils/auth';
 import axiosInstance from '../utils/axios';
-
-// Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 
 interface User {
   userID: string;
@@ -28,6 +28,7 @@ interface Member {
   userID: string;
   role: string;
 }
+
 interface Message {
   messageID?: string;
   tempID?: string;
@@ -40,6 +41,7 @@ interface Message {
   status?: string;
   senderInfo?: { name: string; avatar?: string | null };
 }
+
 interface Chat {
   chatID: string;
   name: string;
@@ -94,6 +96,48 @@ const HomePage = () => {
       sessionStorage.setItem('user', JSON.stringify(data));
     });
 
+    // Listen for new messages to show Zalo-style toast notifications
+    socket.on('new_message', (msg: Message) => {
+      // Don't show notification for own messages
+      if (msg.senderID === user.userID) {
+        return;
+      }
+
+      // Get message preview
+      const getMessagePreview = (message: Message): string => {
+        if (message.type === 'text') return message.content || '';
+        if (message.type === 'image') return '📷 Hình ảnh';
+        if (message.type === 'video') return '🎥 Video';
+        if (message.type === 'audio') return '🎵 Tin nhắn thoại';
+        if (message.type === 'file') return '📎 ' + (message.content || 'File');
+        if (message.type === 'sticker') return '😊 Sticker';
+        if (message.type === 'gif') return '🎬 GIF';
+        return 'Tin nhắn mới';
+      };
+
+      const messagePreview = getMessagePreview(msg);
+      const senderName = msg.senderInfo?.name || 'Người dùng';
+      const senderAvatar = msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderName}`;
+
+      // Show Zalo-style toast notification
+      showZaloToast(
+        senderAvatar,
+        senderName,
+        messagePreview,
+        msg.chatID,
+        (chatID: string) => {
+          // On click, navigate to chat
+          axiosInstance
+            .get(`/chats/${chatID}`)
+            .then((res) => {
+              setSelectedChat(res.data);
+              setActiveTab('chats');
+            })
+            .catch(() => {});
+        }
+      );
+    });
+
     socket.on(
       'call-made',
       (data: {
@@ -117,7 +161,6 @@ const HomePage = () => {
     });
 
     socket.on('call-cancelled', () => {
-      // Người gọi đã hủy cuộc gọi trước khi người nhận trả lời
       setIncomingCall(null);
     });
 
@@ -133,6 +176,7 @@ const HomePage = () => {
 
     return () => {
       socket.off('update_user');
+      socket.off('new_message');
       socket.off('call-made');
       socket.off('call-rejected');
       socket.off('call-missed');
@@ -141,10 +185,6 @@ const HomePage = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.userID]);
-
-  const handleStartChat = (chat: Chat) => {
-    setSelectedChat(chat);
-  };
 
   const handleAcceptCall = () => {
     if (!incomingCall) return;
@@ -182,7 +222,6 @@ const HomePage = () => {
     setIncomingCall(null);
   };
 
-  // Lấy memberInfo từ selectedChat để truyền vào VideoCallModal khi gọi đi
   const getMemberInfo = () => {
     if (!selectedChat || !user) return null;
     const otherId = selectedChat.members.find((m) => m.userID !== user.userID)?.userID;
@@ -190,25 +229,53 @@ const HomePage = () => {
     return { userID: otherId, name: selectedChat.name, anhDaiDien: selectedChat.avatar };
   };
 
+  const handleSelectChat = (chat: Chat) => {
+    // Show in chat window (both private and group)
+    setSelectedChat(chat);
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif] bg-white dark:bg-gray-900">
+    <div className="flex h-screen w-screen overflow-hidden font-['Segoe_UI',sans-serif] bg-white">
+      {/* React Hot Toast Container */}
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: 'transparent',
+            boxShadow: 'none',
+            padding: 0,
+          },
+        }}
+      />
+
       <Sidebar user={user} setUser={setUser} activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <div className="flex-1 flex flex-row overflow-hidden">
         <ChatList
           user={user}
-          onSelectChat={setSelectedChat}
+          onSelectChat={handleSelectChat}
           selectedChatId={selectedChat?.chatID ?? null}
           activeTab={activeTab}
         />
-        <ChatWindow
-          selectedChat={selectedChat}
-          user={user}
-          onStartVideoCall={(callType: 'voice' | 'video') => {
-            setActiveCallInfo({ callType });
-            setShowVideoCall(true);
-          }}
-        />
+        {selectedChat?.type === 'group' ? (
+          user && (
+            <GroupChatWindow
+              groupID={selectedChat.chatID}
+              userID={user.userID}
+              onShowGroupInfo={() => {}}
+            />
+          )
+        ) : (
+          <ChatWindow
+            selectedChat={selectedChat}
+            user={user}
+            onStartVideoCall={(callType: 'voice' | 'video') => {
+              setActiveCallInfo({ callType });
+              setShowVideoCall(true);
+            }}
+          />
+        )}
       </div>
 
       {incomingCall && (

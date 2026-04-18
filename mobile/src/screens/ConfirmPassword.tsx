@@ -20,6 +20,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { API_URL } from '../utils/config';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type ConfirmPasswordProps = {
   navigation: StackNavigationProp<RootStackParamList, 'ConfirmPassword'>;
@@ -30,6 +31,7 @@ type ConfirmPasswordProps = {
 const isValidPassword = (p: string) => /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(p);
 
 const ConfirmPasswordScreen = ({ navigation, route }: ConfirmPasswordProps) => {
+  const insets = useSafeAreaInsets();
   const { sdt } = route.params;
 
   const [matKhauMoi, setMatKhauMoi] = useState('');
@@ -136,7 +138,7 @@ const ConfirmPasswordScreen = ({ navigation, route }: ConfirmPasswordProps) => {
             colors={['#60aef8', '#3b90f4', '#2572e9']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.headerGradient}
+            style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
           >
             <View style={styles.circle1} />
             <View style={styles.circle2} />
@@ -284,7 +286,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingTop: 20,
     paddingBottom: 60,
     paddingHorizontal: 24,
     alignItems: 'center',

@@ -18,6 +18,7 @@ export interface IUser extends Document {
   anhBia?: string;
   gioTinh?: 'Nam' | 'Nữ' | 'Khác';
   dongYDieuKhoan: boolean; // Đồng ý điều khoản khi đăng ký
+  blockedUsers: string[]; // Danh sách userID bị chặn
 }
 
 const UserSchema = new Schema<IUser>(
@@ -39,6 +40,7 @@ const UserSchema = new Schema<IUser>(
     anhBia: { type: String },
     gioTinh: { type: String, enum: ['Nam', 'Nữ', 'Khác'] },
     dongYDieuKhoan: { type: Boolean, default: false },
+    blockedUsers: { type: [String], default: [] },
   },
   { versionKey: false }
 );

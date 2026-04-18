@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import axiosInstance from '../utils/axios';
 
 const socket: Socket = io('http://localhost:5000');
+const API = 'http://localhost:5000/api';
 
 interface Message {
   messageID?: string;
@@ -17,11 +18,23 @@ interface Message {
   forwardedFrom?: string;
 }
 
+interface Member {
+  userID: string;
+  role: string;
+}
+
 interface Chat {
   chatID: string;
   name: string;
   avatar?: string;
   type: 'private' | 'group';
+  members: Member[];
+}
+
+interface MemberInfo {
+  userID: string;
+  name: string;
+  anhDaiDien?: string;
 }
 
 interface User {
@@ -37,18 +50,38 @@ interface Props {
 
 const ForwardMessageModal = ({ message, onClose, user }: Props) => {
   const [chats, setChats] = useState<Chat[]>([]);
+  const [memberCache, setMemberCache] = useState<Record<string, MemberInfo>>({});
   const [selectedChatID, setSelectedChatID] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
-    // Fetch list of chats
     const fetchChats = async () => {
       try {
         setIsLoading(true);
         const response = await axiosInstance.post('/chats/userID');
-        const data = Array.isArray(response.data) ? response.data : [];
+        const data: Chat[] = Array.isArray(response.data) ? response.data : [];
         setChats(data);
+
+        // Fetch tên thật cho các chat private
+        const privateChats = data.filter((c) => c.type === 'private');
+        await Promise.all(
+          privateChats.map(async (c) => {
+            const otherId = c.members.find((m) => m.userID !== user?.userID)?.userID;
+            if (!otherId) return;
+            try {
+              const res = await fetch(`${API}/usersID`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userID: otherId }),
+              });
+              const info: MemberInfo = await res.json();
+              setMemberCache((prev) => ({ ...prev, [otherId]: info }));
+            } catch {
+              /* ignore */
+            }
+          })
+        );
       } catch (error) {
         console.error('Error fetching chats:', error);
         setChats([]);
@@ -58,7 +91,23 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
     };
 
     fetchChats();
-  }, []);
+  }, [user?.userID]);
+
+  const getDisplayName = (chat: Chat): string => {
+    if (chat.type === 'private') {
+      const otherId = chat.members.find((m) => m.userID !== user?.userID)?.userID;
+      if (otherId && memberCache[otherId]) return memberCache[otherId].name;
+    }
+    return chat.name;
+  };
+
+  const getDisplayAvatar = (chat: Chat): string => {
+    if (chat.type === 'private') {
+      const otherId = chat.members.find((m) => m.userID !== user?.userID)?.userID;
+      if (otherId && memberCache[otherId]?.anhDaiDien) return memberCache[otherId].anhDaiDien!;
+    }
+    return chat.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.chatID}`;
+  };
 
   const handleForward = async () => {
     if (!selectedChatID || !user?.userID || !message.messageID) return;
@@ -74,7 +123,6 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
           avatar: null,
         },
       });
-
       onClose();
     } catch (error) {
       console.error('Error forwarding message:', error);
@@ -83,30 +131,25 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
     }
   };
 
-  const selectedChat = chats.find((c) => c.chatID === selectedChatID);
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Chuyển tiếp tin nhắn</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">Chuyển tiếp tin nhắn</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <FaTimes className="text-lg" />
           </button>
         </div>
 
         {/* Message Preview */}
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Tin nhắn gốc:</p>
-          <div className="bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
-            <p className="text-sm text-gray-800 dark:text-gray-100 break-words">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+          <p className="text-xs text-gray-500 mb-2">Tin nhắn gốc:</p>
+          <div className="bg-white rounded-lg p-3 border border-gray-200">
+            <p className="text-sm text-gray-800 break-words">
               {message.content || '[Media]'}
             </p>
             {message.media_url && message.media_url.length > 0 && (
@@ -131,20 +174,18 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
                   onClick={() => setSelectedChatID(chat.chatID)}
                   className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
                     selectedChatID === chat.chatID
-                      ? 'bg-blue-50 dark:bg-blue-900/30 border border-[#0e9de8]'
-                      : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      ? 'bg-blue-50 border border-[#0e9de8]'
+                      : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
                   }`}
                 >
                   <img
-                    src={chat.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + chat.chatID}
-                    alt={chat.name}
+                    src={getDisplayAvatar(chat)}
+                    alt={getDisplayName(chat)}
                     className="w-10 h-10 rounded-full object-cover"
                   />
                   <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {chat.name}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-sm font-medium text-gray-900">{getDisplayName(chat)}</p>
+                    <p className="text-xs text-gray-500">
                       {chat.type === 'private' ? 'Tin nhắn riêng' : 'Nhóm'}
                     </p>
                   </div>
@@ -160,17 +201,17 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+        <div className="flex items-center gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium text-sm"
+            className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors font-medium text-sm"
           >
             Hủy
           </button>
           <button
             onClick={handleForward}
             disabled={!selectedChatID || isSending}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#0e9de8] text-white rounded-lg hover:bg-[#0077c2] transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#0e9de8] text-gray-900 rounded-lg hover:bg-[#0077c2] transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
           >
             <FaPaperPlane className="text-xs" />
             {isSending ? 'Đang gửi...' : 'Chuyển tiếp'}

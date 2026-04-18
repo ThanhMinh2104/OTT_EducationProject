@@ -1,6 +1,16 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Bắt lỗi toàn cục để tránh sập Server đột ngột
+process.on('uncaughtException', (err) => {
+  console.error('🔥 CRITICAL ERROR (uncaughtException):', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 CRITICAL ERROR (unhandledRejection):', reason);
+});
+
+
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
@@ -11,9 +21,13 @@ import userRoutes from './routes/userRoutes';
 import sessionRoutes from './routes/sessionRoutes';
 import adminRoutes from './routes/adminRoutes';
 import chatRoutes, { getChatsForUser } from './routes/chatRoutes';
+import reminderRoutes from './routes/reminderRoutes';
+import groupRoutes from './routes/groupRoutes';
+import groupMediaRoutes from './routes/groupMediaRoutes';
 import { registerMessageEvents } from './socket/messageEvents';
 import { registerNotificationEvents } from './socket/notificationEvents';
-import { registerCallEvents } from './socket/index';
+import { registerCallEvents, getActiveCallsMap, clearActiveCallsMap } from './socket/index';
+import { registerGroupChatEvents } from './socket/groupChatEvents';
 
 const app = express();
 
@@ -38,25 +52,59 @@ app.use('/api', userRoutes);
 app.use('/api', sessionRoutes);
 app.use('/api', adminRoutes);
 app.use('/api', chatRoutes(io));
+app.use('/api/reminders', reminderRoutes);
+app.use('/api', groupRoutes);
+app.use('/api', groupMediaRoutes);
+
+// Debug route để xem active calls
+app.get('/api/debug/active-calls', (req, res) => {
+  const calls = Array.from(getActiveCallsMap().entries()).map(([userID, info]) => ({
+    userID,
+    with: info.with,
+    duration: Math.floor((Date.now() - info.startTime) / 1000),
+  }));
+  res.json({ activeCalls: calls, count: calls.length / 2 });
+});
+
+// Route để clear active calls (chỉ dùng khi debug)
+app.post('/api/debug/clear-active-calls', (req, res) => {
+  clearActiveCallsMap();
+  res.json({ message: 'Active calls cleared' });
+});
 
 io.on('connection', (socket) => {
-  console.log('🟢 Client connected:', socket.id);
+  // Chỉ log error, không log mỗi connection
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🟢 Client connected:', socket.id);
+  }
 
   socket.on('join_user', (userID: string) => {
     socket.join(userID);
-    console.log(`🧍 ${socket.id} joined user room: ${userID}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🧍 ${socket.id} joined user room: ${userID}`);
+    }
   });
 
   socket.on('join_chat', (chatID: string) => {
     socket.join(chatID);
-    console.log(`💬 ${socket.id} joined chat room: ${chatID}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`💬 ${socket.id} joined chat room: ${chatID}`);
+    }
   });
 
   // Lấy danh sách chat của user
   socket.on('getChat', async (userID: string) => {
     try {
-      const chats = await getChatsForUser(userID);
-      socket.emit('ChatByUserID', chats);
+      // Lấy TẤT CẢ chat (bao gồm cả người lạ) để frontend tự phân loại
+      const allChats = await getChatsForUser(userID, false); // Chỉ lấy bạn bè
+      const strangerChats = await getChatsForUser(userID, true); // Chỉ lấy người lạ
+      const combined = [...allChats, ...strangerChats];
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📋 getChat for ${userID}: ${allChats.length} friend chats + ${strangerChats.length} stranger chats = ${combined.length} total`);
+      }
+      // Emit tới user room, không phải chỉ socket hiện tại
+      io.to(userID).emit('ChatByUserID', combined);
     } catch (e) {
       console.error('getChat error:', e);
     }
@@ -71,16 +119,26 @@ io.on('connection', (socket) => {
   // Đăng ký call events (WebRTC)
   registerCallEvents(io, socket);
 
+  // Đăng ký group chat events
+  registerGroupChatEvents(io, socket);
+
   socket.on('updateStatus', async (user) => {
-    io.emit('userStatusUpdated', user);
+    // Chỉ broadcast tới user room của chính họ, không broadcast toàn bộ
+    io.to(user.userID).emit('userStatusUpdated', user);
+    socket.broadcast.emit('userStatusUpdated', user);
   });
 
-  socket.on('updateUser', (user) => {
-    io.emit('userUpdated', user);
+  socket.on('updateUser', (user: any) => {
+    console.log('🔄 Socket: updateUser received (index.ts):', user);
+    if (user && user.userID) {
+      io.emit('userUpdated', user);
+    }
   });
 
   socket.on('disconnect', () => {
-    console.log('🔴 Client disconnected:', socket.id);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔴 Client disconnected:', socket.id);
+    }
   });
 });
 

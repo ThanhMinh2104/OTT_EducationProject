@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Audio } from 'expo-av';
+import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 
 interface Props {
   audioUrl: string;
@@ -8,73 +8,61 @@ interface Props {
 }
 
 const AudioPlayer = ({ audioUrl, isMine }: Props) => {
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [position, setPosition] = useState(0);
+  const player = useAudioPlayer(audioUrl);
+  const status = useAudioPlayerStatus(player);
 
+  // Set audio mode khi component mount
   useEffect(() => {
-    return () => {
-      if (sound) {
-        sound.unloadAsync();
+    const setupAudio = async () => {
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true, // Phát cả khi silent mode (iOS)
+          allowsRecording: false,
+        });
+        console.log('✅ Audio mode set for playback');
+      } catch (err) {
+        console.error('❌ Error setting audio mode:', err);
       }
     };
-  }, [sound]);
+    setupAudio();
+  }, []);
 
-  const loadAndPlay = async () => {
+  // Debug audio status
+  useEffect(() => {
+    console.log('🎵 Audio status:', {
+      url: audioUrl,
+      playing: player.playing,
+      currentTime: status.currentTime,
+      duration: status.duration,
+      isLoaded: status.isLoaded,
+    });
+  }, [player.playing, status.duration]);
+
+  const togglePlayPause = () => {
     try {
-      if (sound) {
-        const status = await sound.getStatusAsync();
-        if (status.isLoaded) {
-          if (isPlaying) {
-            await sound.pauseAsync();
-            setIsPlaying(false);
-          } else {
-            await sound.playAsync();
-            setIsPlaying(true);
-          }
-          return;
-        }
+      console.log('🎵 Toggle play/pause, currently:', player.playing ? 'playing' : 'paused');
+      if (player.playing) {
+        player.pause();
+      } else {
+        player.play();
       }
-
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
-        { shouldPlay: true },
-        onPlaybackStatusUpdate
-      );
-
-      setSound(newSound);
-      setIsPlaying(true);
-    } catch (error) {
-      console.error('Error playing audio:', error);
+    } catch (err) {
+      console.error('❌ Error toggling playback:', err);
     }
   };
 
-  const onPlaybackStatusUpdate = (status: any) => {
-    if (status.isLoaded) {
-      setDuration(status.durationMillis || 0);
-      setPosition(status.positionMillis || 0);
-      
-      if (status.didJustFinish) {
-        setIsPlaying(false);
-        setPosition(0);
-      }
-    }
-  };
-
-  const formatTime = (millis: number) => {
-    const seconds = Math.floor(millis / 1000);
+  const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progress = duration > 0 ? (position / duration) * 100 : 0;
+  const progress = status.duration > 0 ? (status.currentTime / status.duration) * 100 : 0;
 
   return (
     <View style={[styles.container, isMine ? styles.containerMine : styles.containerOther]}>
-      <TouchableOpacity onPress={loadAndPlay} style={styles.playButton}>
-        <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶️'}</Text>
+      <TouchableOpacity onPress={togglePlayPause} style={styles.playButton}>
+        <Text style={styles.playIcon}>{player.playing ? '⏸' : '▶️'}</Text>
       </TouchableOpacity>
 
       {/* Waveform bars */}
@@ -95,7 +83,7 @@ const AudioPlayer = ({ audioUrl, isMine }: Props) => {
       </View>
 
       <Text style={[styles.duration, isMine && styles.durationMine]}>
-        {formatTime(duration)}
+        {formatTime(status.duration)}
       </Text>
 
       <TouchableOpacity onPress={() => {}} style={styles.downloadButton}>

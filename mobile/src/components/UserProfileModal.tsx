@@ -13,11 +13,9 @@ import {
   Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { io } from "socket.io-client";
 import { API_URL } from "../utils/config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-const socket = io(API_URL);
+import socket from "../utils/socket";
 
 const isValidPhone = (p: string) =>
   /^(0[35789][0-9]{8}|(\+84)[35789][0-9]{8})$/.test(p);

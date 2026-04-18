@@ -8,6 +8,8 @@ import HomePage from './pages/HomePage';
 import ForgotPassword from './pages/ForgotPassword';
 import VerifyCode from './pages/VerifyCode';
 import ConfirmPassword from './pages/ConfirmPassword';
+import { GroupChatPage } from './pages/GroupChatPage';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 function App() {
   return (
@@ -19,12 +21,29 @@ function App() {
         <Route path="/login" element={<LoginPassword />} />
         <Route path="/signup" element={<SignUpScreen />} />
         <Route path="/signup-info" element={<SignUpInfoScreen />} />
-        {/* Add more routes here */}
-        <Route path="/home" element={<HomePage />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/verify-code" element={<VerifyCode />} />
         <Route path="/confirm-password" element={<ConfirmPassword />} />
         <Route path="/verify-otp" element={<VerifyOTPDK />} />
+        
+        {/* Protected routes */}
+        <Route 
+          path="/home" 
+          element={
+            <ProtectedRoute>
+              <HomePage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/group-chat/:groupID" 
+          element={
+            <ProtectedRoute>
+              <GroupChatPage />
+            </ProtectedRoute>
+          } 
+        />
+        
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
