@@ -180,11 +180,6 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [otherProfile, setOtherProfile] = useState<OtherUser | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
 
-  // Debug: Track showCreateGroup state changes
-  useEffect(() => {
-    console.log('🔴 showCreateGroup state changed to:', showCreateGroup);
-  }, [showCreateGroup]);
-
   // Xử lý pendingChat từ HomeScreen (khi tạo chat mới từ ContactsScreen)
   useEffect(() => {
     if (pendingChat) {
@@ -1644,14 +1639,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               placeholderTextColor="rgba(255,255,255,0.7)"
             />
           </View>
-          <TouchableOpacity style={styles.headerIconBtn} onPress={() => {
-            console.log('🔵 Create group button pressed');
-            console.log('🔵 Current showCreateGroup state:', showCreateGroup);
-            setShowCreateGroup(prev => {
-              console.log('🟣 setState callback - prev:', prev, '-> new: true');
-              return true;
-            });
-          }}>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowCreateGroup(true)}>
             <Ionicons name="people" size={24} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowAddFriend(true)}>
@@ -2715,19 +2703,6 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           onCancelRequest={handleCancelFriendRequest}
         />
       )}
-
-      <CreateGroupModal
-        visible={showCreateGroup}
-        onClose={() => setShowCreateGroup(false)}
-        onGroupCreated={(groupID) => {
-          setShowCreateGroup(false);
-          // Reload chats
-          if (user) {
-            socket.emit('getChat', user.userID);
-          }
-        }}
-        currentUser={user}
-      />
     </View>
   );
 };

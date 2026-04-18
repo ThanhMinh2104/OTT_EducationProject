@@ -6,11 +6,13 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
-  FlatList,
   StyleSheet,
   Alert,
   ActivityIndicator,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -37,8 +39,6 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   onGroupCreated,
   currentUser,
 }) => {
-  console.log('🟡 CreateGroupModal component render - visible prop:', visible);
-  
   const [groupName, setGroupName] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
@@ -48,7 +48,6 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   const [avatarUri, setAvatarUri] = useState<string>('');
 
   useEffect(() => {
-    console.log('🟢 CreateGroupModal useEffect - visible changed to:', visible);
     if (visible) {
       fetchContacts();
     }
@@ -199,6 +198,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     );
   };
 
+  const screenHeight = Dimensions.get('window').height;
+
   return (
     <Modal
       visible={visible}
@@ -206,9 +207,11 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       animationType="fade"
       onRequestClose={handleClose}
     >
-      {console.log('🟡 CreateGroupModal rendering, visible:', visible)}
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={[styles.modalContainer, { maxHeight: screenHeight * 0.85 }]}>
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Tạo nhóm mới</Text>
@@ -218,7 +221,13 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
           </View>
 
           {/* Body */}
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={styles.bodyContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled={true}
+          >
             {/* Avatar Section */}
             <View style={styles.avatarSection}>
               <View style={styles.avatarContainer}>
@@ -304,12 +313,35 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                   <Text style={styles.emptyText}>Không tìm thấy thành viên</Text>
                 </View>
               ) : (
-                <FlatList
-                  data={filteredContacts}
-                  renderItem={renderContact}
-                  keyExtractor={(item) => item.userID}
-                  scrollEnabled={false}
-                />
+                filteredContacts.map((item) => {
+                  const isSelected = selectedMembers.has(item.userID);
+                  return (
+                    <TouchableOpacity
+                      key={item.userID}
+                      style={[styles.contactItem, isSelected && styles.contactItemSelected]}
+                      onPress={() => handleToggleMember(item.userID)}
+                      activeOpacity={0.7}
+                    >
+                      <Image
+                        source={{
+                          uri: item.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.userID}`,
+                        }}
+                        style={styles.contactAvatar}
+                      />
+                      <View style={styles.contactInfo}>
+                        <Text style={styles.contactName} numberOfLines={1}>
+                          {item.alias?.trim() ? item.alias : item.name}
+                        </Text>
+                        {item.soDienThoai && (
+                          <Text style={styles.contactPhone}>{item.soDienThoai}</Text>
+                        )}
+                      </View>
+                      <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                        {isSelected && <Ionicons name="checkmark" size={16} color="#fff" />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
               )}
             </View>
 
@@ -344,7 +376,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -361,7 +393,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 16,
     width: '100%',
-    maxHeight: '85%',
     overflow: 'hidden',
   },
   header: {
@@ -387,7 +418,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   body: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  bodyContent: {
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
@@ -518,7 +552,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     borderRadius: 8,
-    maxHeight: 300,
     marginBottom: 12,
   },
   contactItem: {
