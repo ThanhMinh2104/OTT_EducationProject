@@ -61,6 +61,31 @@ router.post('/groups/create', authMiddleware, async (req: AuthRequest, res) => {
         role: 'member',
       }));
       await GroupMember.insertMany(members);
+
+      // Tạo 1 system message duy nhất cho tất cả thành viên được thêm
+      const owner = await Users.findOne({ userID });
+      const ownerName = owner?.name || 'Người dùng';
+
+      // Lấy tên tất cả thành viên được thêm
+      const memberNames = await Promise.all(
+        memberIDs.map(async (memberID: string) => {
+          const member = await Users.findOne({ userID: memberID });
+          return member?.name || 'Người dùng';
+        })
+      );
+
+      // Tạo message với danh sách tên
+      const memberList = memberNames.join(', ');
+      const systemMessage = new GroupMessage({
+        messageID: `msg_${uuidv4()}`,
+        groupID,
+        senderID: 'system',
+        content: `${ownerName} đã thêm ${memberList} vào nhóm`,
+        type: 'notification',
+        timestamp: new Date(),
+        status: 'sent',
+      });
+      await systemMessage.save();
     }
 
     res.status(201).json({
@@ -162,7 +187,7 @@ router.put('/groups/:groupID', authMiddleware, async (req: AuthRequest, res) => 
 router.post('/groups/:groupID/members', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { groupID } = req.params;
-    const { userID: newUserID } = req.body;
+    const { userID: newUserID, userIDs } = req.body; // Hỗ trợ cả 1 user và nhiều users
     const userID = req.userID;
 
     // Kiểm tra quyền
@@ -172,35 +197,69 @@ router.post('/groups/:groupID/members', authMiddleware, async (req: AuthRequest,
       return;
     }
 
-    // Kiểm tra user mới có tồn tại không
-    const newUser = await Users.findOne({ userID: newUserID });
-    if (!newUser) {
-      res.status(404).json({ message: 'Người dùng không tồn tại' });
+    // Xử lý danh sách userIDs (hỗ trợ cả single và multiple)
+    const targetUserIDs = userIDs || (newUserID ? [newUserID] : []);
+    
+    if (targetUserIDs.length === 0) {
+      res.status(400).json({ message: 'Vui lòng chọn thành viên để thêm' });
       return;
     }
 
-    // Kiểm tra user đã trong group chưa
-    const existing = await GroupMember.findOne({ groupID, userID: newUserID });
-    if (existing && existing.isActive) {
-      res.status(400).json({ message: 'Người dùng đã trong nhóm' });
-      return;
+    const addedMembers: string[] = [];
+
+    // Thêm từng thành viên
+    for (const targetUserID of targetUserIDs) {
+      // Kiểm tra user có tồn tại không
+      const newUser = await Users.findOne({ userID: targetUserID });
+      if (!newUser) {
+        continue; // Skip user không tồn tại
+      }
+
+      // Kiểm tra user đã trong group chưa
+      const existing = await GroupMember.findOne({ groupID, userID: targetUserID });
+      if (existing && existing.isActive) {
+        continue; // Skip user đã trong nhóm
+      }
+
+      // Thêm hoặc kích hoạt lại
+      if (existing) {
+        existing.isActive = true;
+        existing.leftAt = undefined;
+        await existing.save();
+      } else {
+        const newMember = new GroupMember({
+          groupID,
+          userID: targetUserID,
+          role: 'member',
+        });
+        await newMember.save();
+      }
+
+      addedMembers.push(newUser.name || 'Người dùng');
     }
 
-    // Thêm hoặc kích hoạt lại
-    if (existing) {
-      existing.isActive = true;
-      existing.leftAt = undefined;
-      await existing.save();
-    } else {
-      const newMember = new GroupMember({
+    // Tạo system message nếu có thành viên được thêm
+    if (addedMembers.length > 0) {
+      const adder = await Users.findOne({ userID });
+      const adderName = adder?.name || 'Người dùng';
+      const memberList = addedMembers.join(', ');
+
+      const systemMessage = new GroupMessage({
+        messageID: `msg_${uuidv4()}`,
         groupID,
-        userID: newUserID,
-        role: 'member',
+        senderID: 'system',
+        content: `${adderName} đã thêm ${memberList} vào nhóm`,
+        type: 'notification',
+        timestamp: new Date(),
+        status: 'sent',
       });
-      await newMember.save();
+      await systemMessage.save();
     }
 
-    res.json({ message: 'Thêm thành viên thành công' });
+    res.json({ 
+      message: 'Thêm thành viên thành công',
+      addedCount: addedMembers.length 
+    });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi thêm thành viên', error: error.message });
   }
@@ -278,11 +337,42 @@ router.put('/groups/:groupID/members/:targetUserID/role', authMiddleware, async 
       return;
     }
 
-    if (!['admin', 'member'].includes(role)) {
+    if (!['admin', 'member', 'owner'].includes(role)) {
       res.status(400).json({ message: 'Quyền không hợp lệ' });
       return;
     }
 
+    // Nếu chuyển quyền owner
+    if (role === 'owner') {
+      // Hạ quyền owner hiện tại xuống member
+      await GroupMember.findOneAndUpdate(
+        { groupID, userID },
+        { role: 'member' }
+      );
+
+      // Cập nhật ownerID trong Group
+      await Group.findOneAndUpdate(
+        { groupID },
+        { ownerID: targetUserID }
+      );
+
+      // Tạo system message
+      const oldOwner = await Users.findOne({ userID });
+      const newOwner = await Users.findOne({ userID: targetUserID });
+      
+      const systemMessage = new GroupMessage({
+        messageID: `msg_${uuidv4()}`,
+        groupID,
+        senderID: 'system',
+        content: `${oldOwner?.name || 'Người dùng'} đã chuyển quyền trưởng nhóm cho ${newOwner?.name || 'Người dùng'}`,
+        type: 'notification',
+        timestamp: new Date(),
+        status: 'sent',
+      });
+      await systemMessage.save();
+    }
+
+    // Cập nhật role cho target user
     await GroupMember.findOneAndUpdate(
       { groupID, userID: targetUserID },
       { role }

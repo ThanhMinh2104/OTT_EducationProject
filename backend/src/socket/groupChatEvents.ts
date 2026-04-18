@@ -5,11 +5,8 @@ import MessageReaction from '../models/MessageReaction';
 import Users from '../models/User';
 import { v4 as uuidv4 } from 'uuid';
 
-const generateMessageID = async (): Promise<string> => {
-  const last = await GroupMessage.findOne().sort({ messageID: -1 }).limit(1);
-  if (!last) return 'gmsg001';
-  const n = parseInt(last.messageID.replace('gmsg', ''), 10);
-  return `gmsg${(n + 1).toString().padStart(3, '0')}`;
+const generateMessageID = (): string => {
+  return `gmsg_${uuidv4()}`;
 };
 
 export const registerGroupChatEvents = (io: Server, socket: Socket) => {
@@ -63,7 +60,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
   socket.on('send_group_message', async (data: any) => {
     try {
-      const messageID = await generateMessageID();
+      const messageID = generateMessageID(); // Không cần await nữa
       const { groupID, senderID, content, type, media_url, replyTo, groupId } = data;
 
       // Kiểm tra quyền
