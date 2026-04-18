@@ -472,6 +472,50 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     }
   }, [groupID]);
 
+  // Fetch nhẹ — chỉ cập nhật group info + members, không reload messages, không set loading
+  const refreshGroupInfo = useCallback(async () => {
+    try {
+      const groupRes = await axiosInstance.get(`/groups/${groupID}`);
+      const groupData = groupRes.data;
+
+      const membersWithInfo = await Promise.all(
+        (groupData.members || []).map(async (member: any) => {
+          try {
+            const userRes = await axiosInstance.post('/usersID', { userID: member.userID });
+            return {
+              _id: member._id,
+              userID: member.userID,
+              name: userRes.data.name || member.userID,
+              avatar: userRes.data.anhDaiDien,
+              role: member.role,
+              joinedAt: member.joinedAt,
+              isActive: member.isActive,
+            };
+          } catch {
+            return { _id: member._id, userID: member.userID, name: member.userID, avatar: undefined, role: member.role, joinedAt: member.joinedAt, isActive: member.isActive };
+          }
+        })
+      );
+
+      setMembers(membersWithInfo);
+      setGroupInfo((prev) =>
+        prev ? {
+          ...prev,
+          name: groupData.name,
+          avatar: groupData.avatar,
+          description: groupData.description,
+          ownerID: groupData.ownerID,
+          members: membersWithInfo,
+          memberCount: membersWithInfo.length,
+          settings: groupData.settings,
+          blockedMembers: groupData.blockedMembers || [],
+        } : prev
+      );
+    } catch (error) {
+      console.error('Error refreshing group info:', error);
+    }
+  }, [groupID]);
+
   const handleNewMessage = useCallback((message: Message) => {
     if (message.groupID === groupID) {
       setMessages((prev) => [...prev, message]);
@@ -1487,7 +1531,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                               onClick={(e) => e.stopPropagation()}
                             >
                               <button
-                                onClick={() => handleForwardMessage(firstMsg as any)}
+                                onClick={() => handleForwardMessage(firstMsg as unknown)}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                               >
                                 <FaForward className="text-xs" />
@@ -2378,10 +2422,9 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
           currentUserID={userID}
           onClose={() => {
             setShowManagementModal(false);
-            fetchGroupData(); // Fetch lại data khi đóng modal
           }}
           onUpdate={() => {
-            fetchGroupData();
+            refreshGroupInfo();
           }}
           onDeleteGroup={async () => {
             try {

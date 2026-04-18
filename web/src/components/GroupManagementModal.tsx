@@ -327,7 +327,9 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
   const fetchBlockedMembers = async () => {
     setIsLoadingBlocked(true);
     try {
-      const blockedIDs = groupInfo.blockedMembers || [];
+      // Fetch trực tiếp từ group API để luôn có data mới nhất
+      const groupRes = await axiosInstance.get(`/groups/${groupInfo.groupID}`);
+      const blockedIDs: string[] = groupRes.data.blockedMembers || [];
       if (blockedIDs.length === 0) {
         setBlockedMembersInfo([]);
         return;

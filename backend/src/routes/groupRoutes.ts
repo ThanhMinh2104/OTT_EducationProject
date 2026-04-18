@@ -562,9 +562,17 @@ router.get('/groups/:groupID/messages', authMiddleware, async (req: AuthRequest,
 
     const skip = (Number(page) - 1) * Number(limit);
 
+    // Nếu allowNewMembersReadHistory = false → chỉ lấy tin nhắn từ sau khi user join
+    const group = await Group.findOne({ groupID });
+    const timeFilter: Record<string, unknown> = {};
+    if (!group?.settings?.allowNewMembersReadHistory) {
+      timeFilter.timestamp = { $gte: member.joinedAt };
+    }
+
     const messages = await GroupMessage.find({
       groupID,
       deletedFor: { $ne: userID },
+      ...timeFilter,
     })
       .sort({ timestamp: -1 })
       .skip(skip)
@@ -587,6 +595,7 @@ router.get('/groups/:groupID/messages', authMiddleware, async (req: AuthRequest,
     const total = await GroupMessage.countDocuments({
       groupID,
       deletedFor: { $ne: userID },
+      ...timeFilter,
     });
 
     res.json({
