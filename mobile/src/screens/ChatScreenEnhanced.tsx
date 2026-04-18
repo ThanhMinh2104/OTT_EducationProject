@@ -26,6 +26,7 @@ import ChatInfoPanel from '../components/ChatInfoPanel';
 import AddFriendModal from '../components/AddFriendModal';
 import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
 import { Swipeable } from 'react-native-gesture-handler';
+import { CreateGroupModal } from '../components/CreateGroupModal';
 
 import { StackScreenProps } from '@react-navigation/stack';
 
@@ -177,6 +178,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [loading, setLoading] = useState(false);
   const [addFriendTarget, setAddFriendTarget] = useState<any>(null);
   const [otherProfile, setOtherProfile] = useState<OtherUser | null>(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+
+  // Debug: Track showCreateGroup state changes
+  useEffect(() => {
+    console.log('🔴 showCreateGroup state changed to:', showCreateGroup);
+  }, [showCreateGroup]);
 
   // Xử lý pendingChat từ HomeScreen (khi tạo chat mới từ ContactsScreen)
   useEffect(() => {
@@ -1637,6 +1644,16 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               placeholderTextColor="rgba(255,255,255,0.7)"
             />
           </View>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => {
+            console.log('🔵 Create group button pressed');
+            console.log('🔵 Current showCreateGroup state:', showCreateGroup);
+            setShowCreateGroup(prev => {
+              console.log('🟣 setState callback - prev:', prev, '-> new: true');
+              return true;
+            });
+          }}>
+            <Ionicons name="people" size={24} color="#fff" />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowAddFriend(true)}>
             <Ionicons name="person-add" size={24} color="#fff" />
           </TouchableOpacity>
@@ -1810,6 +1827,31 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             />
           </View>
         </Modal>
+
+        {/* Add Friend Modal */}
+        <AddFriendModal
+          visible={showAddFriend}
+          onClose={() => setShowAddFriend(false)}
+          targetUser={addFriendTarget}
+          onSuccess={() => {
+            setShowAddFriend(false);
+            setAddFriendTarget(null);
+          }}
+        />
+
+        {/* Create Group Modal */}
+        <CreateGroupModal
+          visible={showCreateGroup}
+          onClose={() => setShowCreateGroup(false)}
+          onGroupCreated={(groupID) => {
+            setShowCreateGroup(false);
+            // Reload chats
+            if (user) {
+              socket.emit('getChat', user.userID);
+            }
+          }}
+          currentUser={user}
+        />
       </View>
     );
   }
@@ -2673,6 +2715,19 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           onCancelRequest={handleCancelFriendRequest}
         />
       )}
+
+      <CreateGroupModal
+        visible={showCreateGroup}
+        onClose={() => setShowCreateGroup(false)}
+        onGroupCreated={(groupID) => {
+          setShowCreateGroup(false);
+          // Reload chats
+          if (user) {
+            socket.emit('getChat', user.userID);
+          }
+        }}
+        currentUser={user}
+      />
     </View>
   );
 };
