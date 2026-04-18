@@ -350,33 +350,35 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         memberCount: groupData.members?.length || 0,
       });
 
-      // Fetch user info for each member
-      const membersWithInfo = await Promise.all(
-        (groupData.members || []).map(async (member: any) => {
-          try {
-            const userRes = await axiosInstance.post('/usersID', { userID: member.userID });
-            return {
-              _id: member._id,
-              userID: member.userID,
-              name: userRes.data.name || member.userID,
-              avatar: userRes.data.anhDaiDien,
-              role: member.role,
-              joinedAt: member.joinedAt,
-              isActive: member.isActive,
-            };
-          } catch {
-            return {
-              _id: member._id,
-              userID: member.userID,
-              name: member.userID,
-              avatar: undefined,
-              role: member.role,
-              joinedAt: member.joinedAt,
-              isActive: member.isActive,
-            };
-          }
-        })
-      );
+      // Batch fetch user info for all members at once
+      const memberUserIDs = (groupData.members || []).map((m: any) => m.userID);
+      let usersMap: Map<string, any> = new Map();
+      
+      if (memberUserIDs.length > 0) {
+        try {
+          // Gọi API batch để lấy tất cả users cùng lúc
+          const usersRes = await axiosInstance.post('/users/batch', { userIDs: memberUserIDs });
+          usersRes.data.forEach((user: any) => {
+            usersMap.set(user.userID, user);
+          });
+        } catch (err) {
+          console.error('Error fetching batch users:', err);
+        }
+      }
+
+      // Map members với user info
+      const membersWithInfo = (groupData.members || []).map((member: any) => {
+        const userInfo = usersMap.get(member.userID);
+        return {
+          _id: member._id,
+          userID: member.userID,
+          name: userInfo?.name || member.userID,
+          avatar: userInfo?.anhDaiDien,
+          role: member.role,
+          joinedAt: member.joinedAt,
+          isActive: member.isActive,
+        };
+      });
 
       setMembers(membersWithInfo);
       setMessages(messagesRes.data.messages || []);
@@ -994,6 +996,17 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 const isMine = msg.senderID === userID;
                 const msgKey = msg.messageID || `temp-${Date.now()}`;
 
+                // Render notification message (system message)
+                if (msg.type === 'notification') {
+                  return (
+                    <div key={msgKey} className="flex justify-center my-3">
+                      <div className="bg-gray-200 dark:bg-gray-700 px-4 py-2 rounded-full max-w-[80%]">
+                        <span className="text-xs text-gray-600 dark:text-gray-300">{msg.content}</span>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={msgKey} className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'}`}>
                     {!isMine && (
@@ -1039,9 +1052,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                           </div>
                         )}
 
-                        {msg.type === 'notification' ? (
-                          <span className="text-xs text-gray-500 italic">{msg.content}</span>
-                        ) : msg.type === 'image' && msg.media_url?.length ? (
+                        {msg.type === 'image' && msg.media_url?.length ? (
                           <img
                             src={msg.media_url[0]}
                             alt="img"
@@ -1450,6 +1461,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             groupInfo={groupInfo}
             currentUserID={userID}
             messages={messages as any}
+            members={members} // Truyền state members với user info đầy đủ
             onClose={() => setShowGroupInfoPanel(false)}
             onAddMembers={() => {
               setShowAddMembersModal(true);

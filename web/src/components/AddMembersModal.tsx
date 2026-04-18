@@ -82,10 +82,10 @@ export const AddMembersModal: React.FC<AddMembersModalProps> = ({
     }
 
     try {
-      // Thêm từng thành viên một
-      for (const userID of selectedMembers) {
-        await axiosInstance.post(`/groups/${groupID}/members`, { userID });
-      }
+      // Gửi tất cả userIDs cùng lúc
+      await axiosInstance.post(`/groups/${groupID}/members`, { 
+        userIDs: Array.from(selectedMembers) 
+      });
       onSuccess();
       onClose();
     } catch (error: any) {
