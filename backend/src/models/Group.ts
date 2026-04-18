@@ -21,6 +21,7 @@ export interface IGroup extends Document {
   description?: string;
   ownerID: string;
   settings: IGroupSettings;
+  blockedMembers: string[]; // danh sách userID bị chặn
   createdAt: Date;
   updatedAt: Date;
   isActive: boolean;
@@ -46,6 +47,7 @@ const GroupSchema = new Schema<IGroup>(
         sendMessages: { type: Boolean, default: true },
       },
     },
+    blockedMembers: { type: [String], default: [] },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
     isActive: { type: Boolean, default: true },

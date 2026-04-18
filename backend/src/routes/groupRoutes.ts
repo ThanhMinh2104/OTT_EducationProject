@@ -4,6 +4,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import Group from '../models/Group';
 import GroupMember from '../models/GroupMember';
 import GroupMessage from '../models/GroupMessage';
+import GroupJoinRequest from '../models/GroupJoinRequest';
 import Users from '../models/User';
 
 const router = Router();
@@ -175,6 +176,33 @@ router.put('/groups/:groupID/settings', authMiddleware, async (req: AuthRequest,
 
     console.log('✅ Settings saved successfully');
 
+    // Nếu bật/tắt requireApproval → gửi notification vào chat
+    const wasRequireApproval = currentGroup.settings?.requireApproval;
+    const nowRequireApproval = mergedSettings.requireApproval;
+    if (wasRequireApproval !== nowRequireApproval) {
+      const changer = await Users.findOne({ userID });
+      const content = nowRequireApproval
+        ? `Hình thức tham gia nhóm được thay đổi thành "Cần phê duyệt"`
+        : `Hình thức tham gia nhóm được thay đổi thành "Không cần phê duyệt"`;
+      const notifID = `gmsg_${uuidv4()}`;
+      const notif = new GroupMessage({
+        messageID: notifID,
+        groupID,
+        senderID: userID,
+        content,
+        type: 'notification',
+        timestamp: new Date(),
+      });
+      await notif.save();
+      const io = req.app.get('io');
+      if (io) {
+        io.to(groupID).emit('new_group_message', {
+          ...notif.toObject(),
+          senderInfo: { name: changer?.name || '' },
+        });
+      }
+    }
+
     res.json({ message: 'Cập nhật cài đặt thành công', settings: group!.settings });
   } catch (error: any) {
     console.error('❌ Error updating settings:', error);
@@ -290,9 +318,9 @@ router.post('/groups/:groupID/members', authMiddleware, async (req: AuthRequest,
     const { userID: newUserID } = req.body;
     const userID = req.userID;
 
-    // Kiểm tra quyền
+    // Kiểm tra quyền - ai cũng có thể thêm thành viên
     const member = await GroupMember.findOne({ groupID, userID });
-    if (!member || !['owner', 'admin'].includes(member.role)) {
+    if (!member || !member.isActive) {
       res.status(403).json({ message: 'Bạn không có quyền thêm thành viên' });
       return;
     }
@@ -304,10 +332,86 @@ router.post('/groups/:groupID/members', authMiddleware, async (req: AuthRequest,
       return;
     }
 
+    // Kiểm tra user có bị chặn không
+    const group = await Group.findOne({ groupID });
+    if (group?.blockedMembers.includes(newUserID)) {
+      // Chỉ owner/admin mới được thêm lại người bị chặn (và tự động bỏ chặn)
+      if (!['owner', 'admin'].includes(member.role)) {
+        res.status(403).json({
+          message: 'Người này đã bị trưởng/phó nhóm chặn tham gia nhóm',
+          errorCode: 'USER_BLOCKED',
+        });
+        return;
+      }
+      // owner/admin thêm lại → tự động bỏ chặn
+      await Group.findOneAndUpdate(
+        { groupID },
+        { $pull: { blockedMembers: newUserID }, updatedAt: new Date() }
+      );
+    }
+
     // Kiểm tra user đã trong group chưa
     const existing = await GroupMember.findOne({ groupID, userID: newUserID });
     if (existing && existing.isActive) {
       res.status(400).json({ message: 'Người dùng đã trong nhóm' });
+      return;
+    }
+
+    // Nếu requireApproval=true và người thêm là member thường → tạo join request
+    const isAdminOrOwner = ['owner', 'admin'].includes(member.role);
+    if (!isAdminOrOwner && group?.settings?.requireApproval) {
+      // Kiểm tra đã có pending request chưa
+      const existingRequest = await GroupJoinRequest.findOne({ groupID, userID: newUserID, status: 'pending' });
+      if (existingRequest) {
+        res.status(400).json({ message: 'Đã có yêu cầu tham gia đang chờ duyệt' });
+        return;
+      }
+      const requestID = `gjr_${uuidv4()}`;
+      await GroupJoinRequest.create({ requestID, groupID, userID: newUserID, requestedBy: userID });
+
+      // Lấy tên người mời và người được mời
+      const inviter = await Users.findOne({ userID });
+      const invitee = await Users.findOne({ userID: newUserID });
+      const inviterName = inviter?.name || 'Thành viên';
+      const inviteeName = invitee?.name || 'Người dùng';
+
+      // Lưu private notification chỉ owner/admin thấy
+      const allMembers = await GroupMember.find({ groupID, isActive: true }).select('userID role');
+      const adminOwnerIDs = allMembers.filter(m => ['owner', 'admin'].includes(m.role)).map(m => m.userID);
+      const deletedFor = allMembers.map(m => m.userID).filter(id => !adminOwnerIDs.includes(id));
+
+      const notifID = `gmsg_${uuidv4()}`;
+      const notif = new GroupMessage({
+        messageID: notifID,
+        groupID,
+        senderID: userID,
+        // Format đặc biệt để frontend parse: JSON chứa requestID
+        content: JSON.stringify({
+          type: 'join_request_notification',
+          requestID,
+          inviteeName,
+          inviterName,
+        }),
+        type: 'notification',
+        deletedFor,
+        timestamp: new Date(),
+      });
+      await notif.save();
+
+      // Notify socket
+      const io = req.app.get('io');
+      if (io) {
+        io.to(groupID).emit('new_join_request', { groupID, requestID, userID: newUserID, requestedBy: userID });
+        // Emit notification tới groupID room, frontend tự filter theo role
+        io.to(groupID).emit('new_join_request_notification', {
+          groupID,
+          message: {
+            ...notif.toObject(),
+            senderInfo: { name: inviterName },
+          },
+        });
+      }
+      res.json({ message: 'Đã gửi yêu cầu tham gia nhóm, chờ phê duyệt', requireApproval: true });
       return;
     }
 
@@ -578,6 +682,302 @@ router.get('/groups/:groupID/search', authMiddleware, async (req: AuthRequest, r
     res.json(messages);
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi tìm kiếm', error: error.message });
+  }
+});
+
+// 15. Lấy settings nhóm
+router.get('/groups/:groupID/settings', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không có quyền truy cập nhóm này' });
+      return;
+    }
+
+    const group = await Group.findOne({ groupID, isActive: true });
+    if (!group) {
+      res.status(404).json({ message: 'Nhóm không tồn tại' });
+      return;
+    }
+
+    res.json({ settings: group.settings });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi lấy cài đặt nhóm', error: error.message });
+  }
+});
+
+// 16. Chặn thành viên khỏi nhóm
+router.post('/groups/:groupID/block/:targetUserID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const groupID = req.params.groupID as string;
+    const targetUserID = req.params.targetUserID as string;
+    const userID = req.userID;
+
+    // Chỉ owner/admin mới được chặn
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member || !['owner', 'admin'].includes(member.role)) {
+      res.status(403).json({ message: 'Chỉ trưởng nhóm và phó nhóm mới có quyền chặn thành viên' });
+      return;
+    }
+
+    // Không cho chặn owner
+    const targetMember = await GroupMember.findOne({ groupID, userID: targetUserID });
+    if (targetMember?.role === 'owner') {
+      res.status(400).json({ message: 'Không thể chặn trưởng nhóm' });
+      return;
+    }
+
+    // Admin không được chặn admin khác
+    if (member.role === 'admin' && targetMember?.role === 'admin') {
+      res.status(403).json({ message: 'Phó nhóm không thể chặn phó nhóm khác' });
+      return;
+    }
+
+    const group = await Group.findOne({ groupID });
+    if (!group) {
+      res.status(404).json({ message: 'Nhóm không tồn tại' });
+      return;
+    }
+
+    if (group.blockedMembers.includes(targetUserID)) {
+      res.status(400).json({ message: 'Thành viên này đã bị chặn' });
+      return;
+    }
+
+    // Kick khỏi nhóm và thêm vào blockedMembers
+    await GroupMember.findOneAndUpdate(
+      { groupID, userID: targetUserID },
+      { isActive: false, leftAt: new Date() }
+    );
+
+    await Group.findOneAndUpdate(
+      { groupID },
+      { $push: { blockedMembers: targetUserID }, updatedAt: new Date() }
+    );
+
+    // Broadcast socket notification
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('member_blocked', { groupID, userID: targetUserID });
+    }
+
+    res.json({ message: 'Đã chặn thành viên khỏi nhóm' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi chặn thành viên', error: error.message });
+  }
+});
+
+// 17. Bỏ chặn thành viên
+router.post('/groups/:groupID/unblock/:targetUserID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const groupID = req.params.groupID as string;
+    const targetUserID = req.params.targetUserID as string;
+    const userID = req.userID;
+
+    // Chỉ owner/admin mới được bỏ chặn
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member || !['owner', 'admin'].includes(member.role)) {
+      res.status(403).json({ message: 'Chỉ trưởng nhóm và phó nhóm mới có quyền bỏ chặn' });
+      return;
+    }
+
+    const group = await Group.findOne({ groupID });
+    if (!group) {
+      res.status(404).json({ message: 'Nhóm không tồn tại' });
+      return;
+    }
+
+    if (!group.blockedMembers.includes(targetUserID)) {
+      res.status(400).json({ message: 'Thành viên này không bị chặn' });
+      return;
+    }
+
+    await Group.findOneAndUpdate(
+      { groupID },
+      { $pull: { blockedMembers: targetUserID }, updatedAt: new Date() }
+    );
+
+    res.json({ message: 'Đã bỏ chặn thành viên' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi bỏ chặn thành viên', error: error.message });
+  }
+});
+
+// 18. Lấy danh sách join requests (chỉ owner/admin)
+router.get('/groups/:groupID/join-requests', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member || !['owner', 'admin'].includes(member.role)) {
+      res.status(403).json({ message: 'Không có quyền xem yêu cầu tham gia' });
+      return;
+    }
+
+    const requests = await GroupJoinRequest.find({ groupID, status: 'pending' });
+
+    // Enrich với user info
+    const enriched = await Promise.all(
+      requests.map(async (r) => {
+        const [user, requester] = await Promise.all([
+          Users.findOne({ userID: r.userID }),
+          Users.findOne({ userID: r.requestedBy }),
+        ]);
+        return {
+          requestID: r.requestID,
+          userID: r.userID,
+          name: user?.name || r.userID,
+          avatar: user?.anhDaiDien,
+          requestedBy: r.requestedBy,
+          requestedByName: requester?.name || r.requestedBy,
+          createdAt: r.createdAt,
+        };
+      })
+    );
+
+    res.json(enriched);
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi lấy yêu cầu tham gia', error: error.message });
+  }
+});
+
+// 19. Đồng ý yêu cầu tham gia
+router.post('/groups/:groupID/join-requests/:requestID/approve', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, requestID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member || !['owner', 'admin'].includes(member.role)) {
+      res.status(403).json({ message: 'Không có quyền phê duyệt' });
+      return;
+    }
+
+    const request = await GroupJoinRequest.findOne({ requestID, groupID, status: 'pending' });
+    if (!request) {
+      res.status(404).json({ message: 'Yêu cầu không tồn tại' });
+      return;
+    }
+
+    // Thêm vào nhóm
+    const existing = await GroupMember.findOne({ groupID, userID: request.userID });
+    if (existing) {
+      existing.isActive = true;
+      existing.leftAt = undefined;
+      await existing.save();
+    } else {
+      await GroupMember.create({ groupID, userID: request.userID, role: 'member' });
+    }
+
+    await GroupJoinRequest.findOneAndUpdate({ requestID }, { status: 'approved' });
+
+    // Notification vào chat
+    const approver = await Users.findOne({ userID });
+    const newUser = await Users.findOne({ userID: request.userID });
+    const notifID = `gmsg_${uuidv4()}`;
+    const notif = new GroupMessage({
+      messageID: notifID,
+      groupID,
+      senderID: userID,
+      content: `${approver?.name || 'Quản trị viên'} đã thêm ${newUser?.name || 'thành viên'} vào nhóm`,
+      type: 'notification',
+      timestamp: new Date(),
+    });
+    await notif.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('new_group_message', { ...notif.toObject(), senderInfo: { name: approver?.name || '' } });
+      io.to(groupID).emit('join_request_resolved', { requestID, groupID, status: 'approved' });
+    }
+
+    res.json({ message: 'Đã đồng ý yêu cầu tham gia' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi phê duyệt', error: error.message });
+  }
+});
+
+// 20. Từ chối yêu cầu tham gia
+router.post('/groups/:groupID/join-requests/:requestID/reject', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, requestID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member || !['owner', 'admin'].includes(member.role)) {
+      res.status(403).json({ message: 'Không có quyền từ chối' });
+      return;
+    }
+
+    const request = await GroupJoinRequest.findOne({ requestID, groupID, status: 'pending' });
+    if (!request) {
+      res.status(404).json({ message: 'Yêu cầu không tồn tại' });
+      return;
+    }
+
+    await GroupJoinRequest.findOneAndUpdate({ requestID }, { status: 'rejected' });
+
+    // Lưu notification vào chat
+    const rejecter = await Users.findOne({ userID });
+    const invitee = await Users.findOne({ userID: request.userID });
+    const notifID = `gmsg_${uuidv4()}`;
+    const notif = new GroupMessage({
+      messageID: notifID,
+      groupID,
+      senderID: userID,
+      content: `${rejecter?.name || 'Quản trị viên'} đã từ chối yêu cầu tham gia của ${invitee?.name || 'thành viên'}`,
+      type: 'notification',
+      timestamp: new Date(),
+    });
+    await notif.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('join_request_resolved', { requestID, groupID, status: 'rejected' });
+      io.to(groupID).emit('new_group_message', {
+        ...notif.toObject(),
+        senderInfo: { name: rejecter?.name || '' },
+      });
+    }
+
+    res.json({ message: 'Đã từ chối yêu cầu tham gia' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi từ chối', error: error.message });
+  }
+});
+
+// 21. Lưu private notification (chỉ người gửi thấy)
+router.post('/groups/:groupID/private-notification', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const { content } = req.body;
+    const userID = req.userID;
+
+    // Lấy tất cả thành viên trong nhóm
+    const allMembers = await GroupMember.find({ groupID, isActive: true }).select('userID');
+    // deletedFor = tất cả trừ người gửi
+    const deletedFor = allMembers.map((m) => m.userID).filter((id) => id !== userID);
+
+    const messageID = `gmsg_${uuidv4()}`;
+    const msg = new GroupMessage({
+      messageID,
+      groupID,
+      senderID: userID,
+      content,
+      type: 'notification',
+      media_url: [],
+      deletedFor,
+      timestamp: new Date(),
+    });
+    await msg.save();
+
+    res.json({ message: 'OK', messageID });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi lưu thông báo', error: error.message });
   }
 });
 
