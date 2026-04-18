@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   FaTimes, FaUserShield, FaTrash, FaSearch, FaCrown, FaUserPlus,
-  FaEdit, FaImage, FaCheck, FaEllipsisV, FaInfoCircle, FaCopy, FaShare,
+  FaEdit, FaEllipsisV, FaInfoCircle, FaCopy, FaShare,
   FaUsers,
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
@@ -18,6 +18,12 @@ interface GroupMember {
   isActive: boolean;
 }
 
+interface BlockedMemberInfo {
+  userID: string;
+  name: string;
+  avatar?: string;
+}
+
 interface GroupInfo {
   groupID: string;
   name: string;
@@ -26,6 +32,7 @@ interface GroupInfo {
   ownerID: string;
   members: GroupMember[];
   memberCount: number;
+  blockedMembers?: string[];
   settings?: {
     requireApproval: boolean;
     highlightAdminMessages: boolean;
@@ -72,7 +79,15 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
   const [newGroupName, setNewGroupName] = useState(groupInfo.name);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [newDescription, setNewDescription] = useState(groupInfo.description || '');
-  
+
+  // Block panel states
+  const [showBlockPanel, setShowBlockPanel] = useState(false);
+  const [showAddBlockModal, setShowAddBlockModal] = useState(false);
+  const [blockedMembersInfo, setBlockedMembersInfo] = useState<BlockedMemberInfo[]>([]);
+  const [selectedToBlock, setSelectedToBlock] = useState<string[]>([]);
+  const [blockSearchQuery, setBlockSearchQuery] = useState('');
+  const [isLoadingBlocked, setIsLoadingBlocked] = useState(false);
+
   // Group settings
   const [settings, setSettings] = useState<GroupSettings>({
     requireApproval: false,
@@ -308,6 +323,66 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
     }
   };
 
+  // Fetch blocked members info khi mở block panel
+  const fetchBlockedMembers = async () => {
+    setIsLoadingBlocked(true);
+    try {
+      const blockedIDs = groupInfo.blockedMembers || [];
+      if (blockedIDs.length === 0) {
+        setBlockedMembersInfo([]);
+        return;
+      }
+      const results = await Promise.all(
+        blockedIDs.map(async (uid) => {
+          try {
+            const res = await axiosInstance.post('/usersID', { userID: uid });
+            return { userID: uid, name: res.data.name || uid, avatar: res.data.anhDaiDien };
+          } catch {
+            return { userID: uid, name: uid, avatar: undefined };
+          }
+        })
+      );
+      setBlockedMembersInfo(results);
+    } finally {
+      setIsLoadingBlocked(false);
+    }
+  };
+
+  const handleOpenBlockPanel = () => {
+    setShowBlockPanel(true);
+    fetchBlockedMembers();
+  };
+
+  const handleBlockMembers = async () => {
+    if (!selectedToBlock.length) return;
+    try {
+      await Promise.all(
+        selectedToBlock.map((uid) =>
+          axiosInstance.post(`/groups/${groupInfo.groupID}/block/${uid}`)
+        )
+      );
+      toast.success(`Đã chặn ${selectedToBlock.length} thành viên`);
+      setSelectedToBlock([]);
+      setBlockSearchQuery('');
+      setShowAddBlockModal(false); // quay lại danh sách chặn
+      onUpdate();
+      fetchBlockedMembers();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Lỗi khi chặn thành viên');
+    }
+  };
+
+  const handleUnblock = async (uid: string, name: string) => {
+    try {
+      await axiosInstance.post(`/groups/${groupInfo.groupID}/unblock/${uid}`);
+      toast.success(`Đã bỏ chặn ${name}`);
+      setBlockedMembersInfo((prev) => prev.filter((m) => m.userID !== uid));
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Lỗi khi bỏ chặn');
+    }
+  };
+
   return (
     <>
       <div
@@ -320,18 +395,170 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
         >
           {/* Header */}
           <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-700">
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
-            >
-              <FaTimes />
-            </button>
-            <h2 className="text-lg font-bold text-white flex-1">Quản lý nhóm</h2>
+            {showAddBlockModal ? (
+              <button
+                onClick={() => { setShowAddBlockModal(false); setSelectedToBlock([]); setBlockSearchQuery(''); }}
+                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <FaTimes />
+              </button>
+            ) : showBlockPanel ? (
+              <button
+                onClick={() => setShowBlockPanel(false)}
+                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <FaTimes />
+              </button>
+            ) : (
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <FaTimes />
+              </button>
+            )}
+            <h2 className="text-lg font-bold text-white flex-1">
+              {showAddBlockModal ? 'Thêm vào danh sách chặn' : showBlockPanel ? 'Chặn khỏi nhóm' : 'Quản lý nhóm'}
+            </h2>
           </div>
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto">
-            {tab === 'settings' && (
+            {/* Add Block View (inline, không phải modal) */}
+            {showAddBlockModal && (
+              <div className="flex flex-col h-full text-white">
+                {/* Search */}
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                    <input
+                      type="text"
+                      value={blockSearchQuery}
+                      onChange={(e) => setBlockSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm thành viên"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Member list */}
+                <div className="flex-1 overflow-y-auto px-4 py-2">
+                  {groupInfo.members
+                    .filter((m) => {
+                      if (m.userID === currentUserID) return false;
+                      if (m.role === 'owner') return false;
+                      if (groupInfo.blockedMembers?.includes(m.userID)) return false;
+                      if (blockSearchQuery && !m.name?.toLowerCase().includes(blockSearchQuery.toLowerCase())) return false;
+                      return true;
+                    })
+                    .map((m) => (
+                      <label
+                        key={m.userID}
+                        className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-gray-700/50 rounded-xl px-2 -mx-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedToBlock.includes(m.userID)}
+                          onChange={() =>
+                            setSelectedToBlock((prev) =>
+                              prev.includes(m.userID)
+                                ? prev.filter((id) => id !== m.userID)
+                                : [...prev, m.userID]
+                            )
+                          }
+                          className="w-4 h-4 accent-blue-500 shrink-0"
+                        />
+                        <img
+                          src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                          alt={m.name}
+                          className="w-10 h-10 rounded-full object-cover shrink-0"
+                        />
+                        <span className="text-sm text-white font-medium">{m.name || m.userID}</span>
+                      </label>
+                    ))}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-700">
+                  <button
+                    onClick={() => { setShowAddBlockModal(false); setSelectedToBlock([]); setBlockSearchQuery(''); }}
+                    className="px-4 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-700 transition-colors font-medium"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={handleBlockMembers}
+                    disabled={!selectedToBlock.length}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-blue-500 hover:bg-blue-600 text-white"
+                  >
+                    Chặn thành viên
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Block Panel */}
+            {!showAddBlockModal && showBlockPanel && (
+              <div className="text-white">
+                {/* Mô tả */}
+                <div className="px-4 py-4 border-b border-gray-700">
+                  <p className="text-sm text-gray-400 leading-relaxed">
+                    Những người đã bị chặn không thể tham gia lại nhóm, trừ khi được trưởng, phó nhóm bỏ chặn hoặc thêm lại vào nhóm.
+                  </p>
+                </div>
+
+                {/* Nút thêm vào danh sách chặn */}
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <button
+                    onClick={() => { setShowAddBlockModal(true); setSelectedToBlock([]); setBlockSearchQuery(''); }}
+                    className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-semibold text-sm hover:bg-red-500/20 transition-colors"
+                  >
+                    Thêm vào danh sách chặn
+                  </button>
+                </div>
+
+                {/* Danh sách bị chặn */}
+                <div className="px-4 py-3">
+                  {isLoadingBlocked ? (
+                    <div className="flex justify-center py-8">
+                      <div className="w-6 h-6 border-2 border-gray-500 border-t-white rounded-full animate-spin" />
+                    </div>
+                  ) : blockedMembersInfo.length === 0 ? (
+                    <div className="flex flex-col items-center py-10 gap-3">
+                      <div className="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center">
+                        <FaUsers className="text-gray-500 text-2xl" />
+                      </div>
+                      <p className="text-sm text-gray-500">Chưa có thành viên nào bị chặn</p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-400 font-semibold mb-3">
+                        Thành viên bị chặn ({blockedMembersInfo.length})
+                      </p>
+                      <div className="space-y-2">
+                        {blockedMembersInfo.map((m) => (
+                          <div key={m.userID} className="flex items-center gap-3 py-2">
+                            <img
+                              src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                              alt={m.name}
+                              className="w-10 h-10 rounded-full object-cover shrink-0"
+                            />
+                            <span className="flex-1 text-sm text-white font-medium truncate">{m.name}</span>
+                            <button
+                              onClick={() => handleUnblock(m.userID, m.name)}
+                              className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-white transition-colors shrink-0"
+                            >
+                              Bỏ chặn
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            {!showBlockPanel && tab === 'settings' && (
               <div className="text-white">
                 {/* Thông báo chỉ dành cho quản trị viên */}
                 {!isOwner && !isAdmin && (
@@ -529,7 +756,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 {/* Chặn khỏi nhóm */}
                 {(isOwner || isAdmin) && (
                   <button
-                    onClick={() => toast('Tính năng đang phát triển')}
+                    onClick={handleOpenBlockPanel}
                     className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-700/50 transition-colors border-b border-gray-700"
                   >
                     <FaUsers className="text-white text-lg" />
@@ -550,7 +777,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
               </div>
             )}
 
-            {tab === 'members' && (
+            {!showBlockPanel && tab === 'members' && (
               <div className="p-4 space-y-4">
                 {/* Search */}
                 <div className="relative">

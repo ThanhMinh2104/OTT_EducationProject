@@ -25,6 +25,8 @@ import {
   FaEllipsisV,
   FaForward,
   FaCopy,
+  FaCrown,
+  FaUserShield,
 } from 'react-icons/fa';
 import { BsPin, BsPinAngleFill } from 'react-icons/bs';
 import { EmojiClickData } from 'emoji-picker-react';
@@ -92,6 +94,7 @@ interface GroupInfo {
   ownerID: string;
   members: GroupMember[];
   memberCount: number;
+  blockedMembers?: string[];
   settings?: {
     requireApproval: boolean;
     highlightAdminMessages: boolean;
@@ -126,6 +129,25 @@ const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+};
+
+// ==================== Role Badge Component ====================
+const RoleBadge = ({ role }: { role: 'owner' | 'admin' | 'member' }) => {
+  if (role === 'owner') {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] bg-yellow-500/20 text-yellow-600 px-1.5 py-0.5 rounded-full font-medium ml-1 shrink-0">
+        <FaCrown className="text-[8px]" /> Trưởng nhóm
+      </span>
+    );
+  }
+  if (role === 'admin') {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] bg-blue-500/20 text-blue-600 px-1.5 py-0.5 rounded-full font-medium ml-1 shrink-0">
+        <FaUserShield className="text-[8px]" /> Phó nhóm
+      </span>
+    );
+  }
+  return null;
 };
 
 // ==================== File Icon Component ====================
@@ -335,6 +357,10 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [showGroupInfoPanel, setShowGroupInfoPanel] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [showEditGroupInfoModal, setShowEditGroupInfoModal] = useState(false);
+
+  interface JoinRequest { requestID: string; userID: string; name: string; avatar?: string; requestedByName: string; }
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [pendingApprovalModal, setPendingApprovalModal] = useState<{ requestID: string; inviteeName: string; inviterName: string } | null>(null);
   const [socketConnected, setSocketConnected] = useState(socket.connected);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -346,6 +372,11 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Helper: lấy role của sender từ members list
+  const getSenderRole = (senderID: string): 'owner' | 'admin' | 'member' => {
+    return members.find(m => m.userID === senderID)?.role || 'member';
+  };
 
   const fetchGroupData = useCallback(async () => {
     try {
@@ -371,7 +402,8 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         ownerID: groupData.ownerID,
         members: groupData.members || [],
         memberCount: groupData.members?.length || 0,
-        settings: groupData.settings, // ✅ THÊM SETTINGS VÀO ĐÂY!
+        settings: groupData.settings,
+        blockedMembers: groupData.blockedMembers || [],
       });
 
       // Fetch user info for each member
@@ -403,6 +435,11 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       );
 
       setMembers(membersWithInfo);
+
+      // Cập nhật groupInfo.members với tên/avatar thật
+      setGroupInfo((prev) =>
+        prev ? { ...prev, members: membersWithInfo } : prev
+      );
       setMessages(messagesRes.data.messages || []);
       
       // Load pinned messages
@@ -423,6 +460,15 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       console.error('Error fetching group data:', error);
     } finally {
       setLoading(false);
+    }
+  }, [groupID]);
+
+  const fetchJoinRequests = useCallback(async () => {
+    try {
+      const res = await axiosInstance.get(`/groups/${groupID}/join-requests`);
+      setJoinRequests(res.data);
+    } catch {
+      // không phải owner/admin thì bỏ qua
     }
   }, [groupID]);
 
@@ -550,6 +596,18 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     socket.on('reaction_updated', handleReactionUpdated);
     socket.on('ghim_group_notification', handlePinNotification);
     socket.on('unghim_group_notification', handleUnpinNotification);
+    socket.on('new_join_request', () => fetchJoinRequests());
+    socket.on('join_request_resolved', (data: { requestID: string }) => {
+      setJoinRequests((prev) => prev.filter((r) => r.requestID !== data.requestID));
+    });
+    socket.on('new_join_request_notification', (data: { groupID: string; message: Message }) => {
+      if (data.groupID !== groupID) return;
+      // Chỉ owner/admin mới thêm vào messages
+      const currentRole = groupInfo?.members?.find(m => m.userID === userID)?.role;
+      if (currentRole === 'owner' || currentRole === 'admin') {
+        setMessages((prev) => [...prev, data.message]);
+      }
+    });
 
     return () => {
       socket.off('connect', handleConnect);
@@ -564,9 +622,12 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       socket.off('reaction_updated', handleReactionUpdated);
       socket.off('ghim_group_notification', handlePinNotification);
       socket.off('unghim_group_notification', handleUnpinNotification);
+      socket.off('new_join_request');
+      socket.off('join_request_resolved');
+      socket.off('new_join_request_notification');
       socket.emit('leave_group', { groupID, userID });
     };
-  }, [groupID, userID, fetchGroupData, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification]);
+  }, [groupID, userID, fetchGroupData, fetchJoinRequests, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1167,15 +1228,27 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowMembersSidebar(!showMembersSidebar);
+                  if (!showMembersSidebar) fetchJoinRequests();
                 }}
                 title="Danh sách thành viên"
-                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
+                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors relative ${
                   showMembersSidebar
                     ? 'bg-blue-50 text-[#0068ff]'
                     : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
                 }`}
               >
                 <FaUserFriends />
+                {(() => {
+                  const currentRole = members.find(m => m.userID === userID)?.role;
+                  if ((currentRole === 'owner' || currentRole === 'admin') && joinRequests.length > 0) {
+                    return (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-0.5">
+                        {joinRequests.length > 9 ? '9+' : joinRequests.length}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
               </button>
 
               <button
@@ -1357,8 +1430,9 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
                       <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
                         {!isMine && (
-                          <span className="text-xs text-gray-500 mb-1 font-semibold px-1">
+                          <span className="text-xs text-gray-500 mb-1 font-semibold px-1 flex items-center">
                             {firstMsg.senderInfo?.name}
+                            <RoleBadge role={getSenderRole(group.senderID)} />
                           </span>
                         )}
 
@@ -1420,7 +1494,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                 Chuyển tiếp
                               </button>
                               <button
-                                onClick={() => handlePin(firstMsg as any)}
+                                onClick={() => handlePin(firstMsg as unknown)}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                               >
                                 <BsPin className="text-xs" />
@@ -1430,7 +1504,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                 <>
                                   <button
                                     onClick={() => {
-                                      handleDeleteLocal(firstMsg as any);
+                                      handleDeleteLocal(firstMsg as unknown);
                                       setActionMsgId(null);
                                     }}
                                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 transition-colors"
@@ -1440,7 +1514,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                   </button>
                                   <button
                                     onClick={() => {
-                                      handleUnsend(firstMsg as any);
+                                      handleUnsend(firstMsg as unknown);
                                       setActionMsgId(null);
                                     }}
                                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
@@ -1463,7 +1537,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 }
 
                 // Render message đơn
-                const msg = item as any as Message;
+                const msg = item as unknown as Message;
                 const isMine = msg.senderID === userID;
                 const msgKey = msg.messageID || `temp-${Date.now()}`;
 
@@ -1479,6 +1553,41 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                       highlightedMsgId === msg.messageID ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1' : ''
                     }`}
                   >
+                    {/* Notification — căn giữa, không có avatar/bubble */}
+                    {msg.type === 'notification' ? (
+                      <div className="w-full flex justify-center my-1">
+                        <div className="max-w-[80%] text-center">
+                          {(() => {
+                            try {
+                              const parsed = JSON.parse(msg.content || '');
+                              if (parsed.type === 'join_request_notification') {
+                                return (
+                                  <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block">
+                                    <b>{parsed.inviteeName}</b> được <b>{parsed.inviterName}</b> mời tham gia nhóm và cần bạn phê duyệt.{' '}
+                                    <button
+                                      className="text-blue-500 underline font-medium not-italic"
+                                      onClick={() => setPendingApprovalModal({
+                                        requestID: parsed.requestID,
+                                        inviteeName: parsed.inviteeName,
+                                        inviterName: parsed.inviterName,
+                                      })}
+                                    >
+                                      Chi tiết
+                                    </button>
+                                  </span>
+                                );
+                              }
+                            } catch { /* không phải JSON */ }
+                            return (
+                              <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block">
+                                {msg.content}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ) : (
+                    <>
                     {!isMine && (
                       <div className="relative flex-shrink-0 mr-2">
                         <img
@@ -1491,8 +1600,9 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
                     <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
                       {!isMine && (
-                        <span className="text-xs text-gray-500 mb-1 font-semibold px-1">
+                        <span className="text-xs text-gray-500 mb-1 font-semibold px-1 flex items-center">
                           {msg.senderInfo?.name}
+                          <RoleBadge role={getSenderRole(msg.senderID)} />
                         </span>
                       )}
 
@@ -1505,7 +1615,17 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                 ? ''
                                 : isMine
                                   ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
-                                  : 'bg-white text-gray-800 border border-gray-100'
+                                  : (() => {
+                                      const senderRole = getSenderRole(msg.senderID);
+                                      const isAdminMsg =
+                                        groupInfo?.settings?.highlightAdminMessages &&
+                                        (senderRole === 'owner' || senderRole === 'admin');
+                                      if (isAdminMsg && senderRole === 'owner')
+                                        return 'bg-yellow-50 text-gray-800 border border-yellow-300';
+                                      if (isAdminMsg && senderRole === 'admin')
+                                        return 'bg-blue-50 text-gray-800 border border-blue-300';
+                                      return 'bg-white text-gray-800 border border-gray-100';
+                                    })()
                           } ${
                             msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif'
                               ? 'p-0 rounded-2xl overflow-hidden'
@@ -1560,9 +1680,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                           </div>
                         )}
 
-                        {msg.type === 'notification' ? (
-                          <span className="text-xs text-gray-500 italic">{msg.content}</span>
-                        ) : msg.type === 'image' && msg.media_url?.length ? (
+                        {msg.type === 'image' && msg.media_url?.length ? (
                           <img
                             src={msg.media_url[0]}
                             alt="img"
@@ -1706,6 +1824,8 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                         {formatTime(msg.timestamp)}
                       </span>
                     </div>
+                    </>
+                    )}
                   </div>
                 );
               })
@@ -1996,7 +2116,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
           <GroupInfoPanel
             groupInfo={groupInfo}
             currentUserID={userID}
-            messages={messages as any}
+            messages={messages as unknown}
             onClose={() => setShowGroupInfoPanel(false)}
             onAddMembers={() => {
               setShowAddMembersModal(true);
@@ -2011,7 +2131,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 await axiosInstance.post(`/groups/${groupID}/leave`);
                 toast.success('Đã rời khỏi nhóm');
                 window.location.href = '/home';
-              } catch (error: any) {
+              } catch (error: unknown) {
                 toast.error(error.response?.data?.message || 'Lỗi khi rời nhóm');
               }
             }}
@@ -2020,7 +2140,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 await axiosInstance.delete(`/groups/${groupID}`);
                 toast.success('Đã giải tán nhóm');
                 window.location.href = '/home';
-              } catch (error: any) {
+              } catch (error: unknown) {
                 toast.error(error.response?.data?.message || 'Lỗi khi giải tán nhóm');
               }
             }}
@@ -2057,10 +2177,64 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               </button>
             </div>
 
+            {/* Join Requests — chỉ owner/admin thấy */}
+            {joinRequests.length > 0 && (() => {
+              const currentRole = members.find(m => m.userID === userID)?.role;
+              if (currentRole !== 'owner' && currentRole !== 'admin') return null;
+              return (
+                <div className="px-3 pb-2">
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Yêu cầu tham gia nhóm ({joinRequests.length})</p>
+                  <div className="space-y-2">
+                    {joinRequests.map((req) => (
+                      <div key={req.requestID} className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <img
+                            src={req.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.userID}`}
+                            alt={req.name}
+                            className="w-9 h-9 rounded-full object-cover shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 m-0 truncate">{req.name}</p>
+                            <p className="text-xs text-gray-500 m-0">được thêm bởi {req.requestedByName}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await axiosInstance.post(`/groups/${groupID}/join-requests/${req.requestID}/reject`);
+                                setJoinRequests(prev => prev.filter(r => r.requestID !== req.requestID));
+                                toast.success(`Đã từ chối ${req.name}`);
+                              } catch { toast.error('Lỗi khi từ chối'); }
+                            }}
+                            className="flex-1 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm text-gray-700 font-medium transition-colors"
+                          >
+                            Từ chối
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await axiosInstance.post(`/groups/${groupID}/join-requests/${req.requestID}/approve`);
+                                setJoinRequests(prev => prev.filter(r => r.requestID !== req.requestID));
+                                fetchGroupData();
+                                toast.success(`Đã đồng ý cho ${req.name} vào nhóm`);
+                              } catch { toast.error('Lỗi khi phê duyệt'); }
+                            }}
+                            className="flex-1 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-sm text-white font-semibold transition-colors"
+                          >
+                            Đồng ý
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="px-3 py-2">
               <p className="text-xs font-semibold text-gray-500 mb-1">Danh sách thành viên ({members.length})</p>
             </div>
-
             <div className="flex-1 overflow-y-auto px-2 pb-2">
               {members.map((member) => {
                 const currentUserMember = members.find(m => m.userID === userID);
@@ -2155,9 +2329,9 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       {/* Forward Message Modal */}
       {forwardingMessage && (
         <ForwardMessageModal
-          message={forwardingMessage as any}
+          message={forwardingMessage as unknown}
           onClose={() => setForwardingMessage(null)}
-          user={{ userID, name: groupInfo?.members?.find(m => m.userID === userID)?.name || 'User' } as any}
+          user={{ userID, name: groupInfo?.members?.find(m => m.userID === userID)?.name || 'User' } as unknown}
         />
       )}
 
@@ -2174,10 +2348,25 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       {showAddMembersModal && (
         <AddMembersModal
           groupID={groupID}
+          currentUserID={userID}
           onClose={() => setShowAddMembersModal(false)}
           onSuccess={() => {
             fetchGroupData();
             toast.success('Đã thêm thành viên vào nhóm');
+          }}
+          onBlockedNotification={(content) => {
+            const localMsg: Message = {
+              messageID: `local_${Date.now()}`,
+              groupID,
+              senderID: userID,
+              content,
+              type: 'notification',
+              media_url: [],
+              timestamp: new Date(),
+              status: 'sent',
+              senderInfo: { name: '' },
+            };
+            setMessages((prev) => [...prev, localMsg]);
           }}
         />
       )}
@@ -2199,7 +2388,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               await axiosInstance.delete(`/groups/${groupID}`);
               toast.success('Đã giải tán nhóm');
               window.location.href = '/home';
-            } catch (error: any) {
+            } catch (error: unknown) {
               toast.error(error.response?.data?.message || 'Lỗi khi giải tán nhóm');
             }
           }}
@@ -2218,6 +2407,78 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             toast.success('Đã cập nhật thông tin nhóm');
           }}
         />
+      )}
+
+      {/* Pending Approval Modal */}
+      {pendingApprovalModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]"
+          onClick={() => setPendingApprovalModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-800">Yêu cầu tham gia nhóm</h3>
+            </div>
+
+            {joinRequests.some(r => r.requestID === pendingApprovalModal.requestID) ? (
+              <>
+                <div className="px-5 py-4">
+                  <p className="text-sm text-gray-700">
+                    <b>{pendingApprovalModal.inviteeName}</b> được <b>{pendingApprovalModal.inviterName}</b> mời tham gia nhóm.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Bạn có muốn đồng ý cho họ vào nhóm không?</p>
+                </div>
+                <div className="flex gap-2 px-5 pb-4">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await axiosInstance.post(`/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/reject`);
+                        setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
+                        toast.success(`Đã từ chối ${pendingApprovalModal.inviteeName}`);
+                        setPendingApprovalModal(null);
+                      } catch { toast.error('Lỗi khi từ chối'); }
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-700 font-medium transition-colors"
+                  >
+                    Từ chối
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await axiosInstance.post(`/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/approve`);
+                        setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
+                        fetchGroupData();
+                        toast.success(`Đã đồng ý cho ${pendingApprovalModal.inviteeName} vào nhóm`);
+                        setPendingApprovalModal(null);
+                      } catch { toast.error('Lỗi khi phê duyệt'); }
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-sm text-white font-semibold transition-colors"
+                  >
+                    Đồng ý
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="px-5 py-6 flex flex-col items-center gap-2">
+                  <span className="text-3xl">✅</span>
+                  <p className="text-sm text-gray-500 text-center">Không còn yêu cầu tham gia nào</p>
+                </div>
+                <div className="px-5 pb-4">
+                  <button
+                    onClick={() => setPendingApprovalModal(null)}
+                    className="w-full py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-700 font-medium transition-colors"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
