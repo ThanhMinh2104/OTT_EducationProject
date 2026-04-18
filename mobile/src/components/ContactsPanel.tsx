@@ -1,25 +1,22 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  FlatList,
-  Image,
-  TextInput,
-  Alert,
-  Modal,
-  ActivityIndicator,
-} from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API_URL } from "../utils/config";
-import socket from "../utils/socket";
+  View, Text, TouchableOpacity, StyleSheet, FlatList,
+  Image, TextInput, ActivityIndicator, Modal,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import { API_URL } from '../utils/config';
+import socket from '../utils/socket';
+import OtherProfileModal, { OtherUser } from './OtherProfileModal';
 
 interface Friend {
   userID: string;
   name: string;
   sdt?: string;
   anhDaiDien?: string;
+  anhBia?: string;
+  ngaysinh?: string;
+  gioTinh?: string;
   trangThai?: string;
   alias?: string;
 }
@@ -31,6 +28,9 @@ interface FriendRequest {
   avatar?: string;
   sdt?: string;
   message?: string;
+  anhBia?: string;
+  ngaysinh?: string;
+  gioTinh?: string;
 }
 
 interface SentRequest {
@@ -39,6 +39,9 @@ interface SentRequest {
   name?: string;
   avatar?: string;
   sdt?: string;
+  anhBia?: string;
+  ngaysinh?: string;
+  gioTinh?: string;
 }
 
 interface Props {
@@ -46,38 +49,72 @@ interface Props {
   onStartChat: (chat: any) => void;
 }
 
-type Tab = "friends" | "requests";
+type Tab = 'friends' | 'requests';
+
+const ConfirmDialog = ({
+  visible, title, message, danger, onConfirm, onCancel,
+}: {
+  visible: boolean; title: string; message: string;
+  danger?: boolean; onConfirm: () => void; onCancel: () => void;
+}) => (
+  <Modal visible={visible} transparent animationType="fade">
+    <View style={cd.overlay}>
+      <View style={cd.box}>
+        <Text style={cd.title}>{title}</Text>
+        <Text style={cd.msg}>{message}</Text>
+        <View style={cd.row}>
+          <TouchableOpacity style={cd.btnCancel} onPress={onCancel}>
+            <Text style={cd.btnCancelText}>Hủy</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[cd.btnConfirm, danger && cd.btnDanger]} onPress={onConfirm}>
+            <Text style={cd.btnConfirmText}>Xác nhận</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </Modal>
+);
+
+const cd = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  box: { backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 320 },
+  title: { fontSize: 16, fontWeight: '700', color: '#111', marginBottom: 8 },
+  msg: { fontSize: 14, color: '#555', lineHeight: 20, marginBottom: 20 },
+  row: { flexDirection: 'row', gap: 10 },
+  btnCancel: { flex: 1, paddingVertical: 11, borderRadius: 10, backgroundColor: '#e5e7eb', alignItems: 'center' },
+  btnCancelText: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  btnConfirm: { flex: 1, paddingVertical: 11, borderRadius: 10, backgroundColor: '#0068ff', alignItems: 'center' },
+  btnDanger: { backgroundColor: '#ef4444' },
+  btnConfirmText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+});
 
 const ContactsPanel = ({ user, onStartChat }: Props) => {
-  const [tab, setTab] = useState<Tab>("friends");
+  const [tab, setTab] = useState<Tab>('friends');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [recallTarget, setRecallTarget] = useState<SentRequest | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<OtherUser | null>(null);
+  const [isReceivedExpanded, setIsReceivedExpanded] = useState(true);
+  const [isSentExpanded, setIsSentExpanded] = useState(true);
 
-  const getToken = async () => AsyncStorage.getItem("token");
+  const getToken = () => AsyncStorage.getItem('token');
 
   const fetchFriends = async () => {
     try {
       setLoading(true);
       const token = await getToken();
       const res = await fetch(`${API_URL}/api/contacts/friends`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({}),
       });
       const data = await res.json();
       setFriends(Array.isArray(data) ? data : []);
-    } catch {
-      Alert.alert("Loi", "Khong the tai danh sach ban be");
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
   };
 
   const fetchRequests = async () => {
@@ -88,7 +125,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       });
       const data = await res.json();
       setRequests(Array.isArray(data) ? data : []);
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   const fetchSentRequests = async () => {
@@ -99,7 +136,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       });
       const data = await res.json();
       setSentRequests(Array.isArray(data) ? data : []);
-    } catch {}
+    } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -107,57 +144,34 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
     fetchFriends();
     fetchRequests();
     fetchSentRequests();
-    socket.emit("join_user", user.userID);
+    socket.emit('join_user', user.userID);
 
-    socket.on("new_friend_request", (data: FriendRequest) => {
-      setRequests((prev) =>
-        prev.find((r) => r.contactID === data.contactID) ? prev : [data, ...prev]
-      );
-      Alert.alert("Loi moi ket ban", `${data.name} da gui loi moi ket ban`);
+    socket.on('new_friend_request', (data: FriendRequest) => {
+      setRequests(prev => prev.find(r => r.contactID === data.contactID) ? prev : [data, ...prev]);
     });
-
-    socket.on("friend_request_accepted", (data: any) => {
+    socket.on('friend_request_accepted', (data: any) => {
       fetchFriends();
-      setRequests((prev) => prev.filter((r) => r.contactID !== data.userID));
-      setSentRequests((prev) => prev.filter((r) => r.recipientID !== data.userID));
-      if (data.actorID !== user.userID) {
-        Alert.alert("Thanh cong", `${data.name} da chap nhan loi moi ket ban`);
-      }
+      setRequests(prev => prev.filter(r => r.contactID !== data.userID));
+      setSentRequests(prev => prev.filter(r => r.recipientID !== data.userID));
     });
-
-    socket.on(
-      "friend_request_cancelled",
-      (data: { senderID: string; recipientID: string }) => {
-        if (data.recipientID === user.userID)
-          setRequests((prev) => prev.filter((r) => r.contactID !== data.senderID));
-        if (data.senderID === user.userID)
-          setSentRequests((prev) =>
-            prev.filter((r) => r.recipientID !== data.recipientID)
-          );
-      }
-    );
-
-    socket.on(
-      "friend_request_rejected",
-      (data: { senderID: string; recipientID: string }) => {
-        if (data.senderID === user.userID)
-          setSentRequests((prev) =>
-            prev.filter((r) => r.recipientID !== data.recipientID)
-          );
-      }
-    );
-
-    socket.on("friend_unfriended", (data: { userID: string; friendID: string }) => {
+    socket.on('friend_request_cancelled', (data: { senderID: string; recipientID: string }) => {
+      if (data.recipientID === user.userID) setRequests(prev => prev.filter(r => r.contactID !== data.senderID));
+      if (data.senderID === user.userID) setSentRequests(prev => prev.filter(r => r.recipientID !== data.recipientID));
+    });
+    socket.on('friend_request_rejected', (data: { senderID: string; recipientID: string }) => {
+      if (data.senderID === user.userID) setSentRequests(prev => prev.filter(r => r.recipientID !== data.recipientID));
+    });
+    socket.on('friend_unfriended', (data: { userID: string; friendID: string }) => {
       const targetID = data.userID === user.userID ? data.friendID : data.userID;
-      setFriends((prev) => prev.filter((f) => f.userID !== targetID));
+      setFriends(prev => prev.filter(f => f.userID !== targetID));
     });
 
     return () => {
-      socket.off("new_friend_request");
-      socket.off("friend_request_accepted");
-      socket.off("friend_request_cancelled");
-      socket.off("friend_request_rejected");
-      socket.off("friend_unfriended");
+      socket.off('new_friend_request');
+      socket.off('friend_request_accepted');
+      socket.off('friend_request_cancelled');
+      socket.off('friend_request_rejected');
+      socket.off('friend_unfriended');
     };
   }, [user?.userID]);
 
@@ -165,36 +179,25 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
     try {
       const token = await getToken();
       await fetch(`${API_URL}/api/contacts/accept-friend-request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ senderID: req.contactID }),
       });
-      setRequests((prev) => prev.filter((r) => r.contactID !== req.contactID));
-      Alert.alert("Thanh cong", `Da ket ban voi ${req.name}`);
+      setRequests(prev => prev.filter(r => r.contactID !== req.contactID));
       fetchFriends();
-    } catch {
-      Alert.alert("Loi", "Khong the chap nhan ket ban");
-    }
+    } catch { /* ignore */ }
   };
 
   const handleReject = async (req: FriendRequest) => {
     try {
       const token = await getToken();
       await fetch(`${API_URL}/api/contacts/reject-friend-request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ senderID: req.contactID }),
       });
-      setRequests((prev) => prev.filter((r) => r.contactID !== req.contactID));
-    } catch {
-      Alert.alert("Loi", "Khong the tu choi");
-    }
+      setRequests(prev => prev.filter(r => r.contactID !== req.contactID));
+    } catch { /* ignore */ }
   };
 
   const handleCancelSent = async () => {
@@ -202,243 +205,225 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
     try {
       const token = await getToken();
       await fetch(`${API_URL}/api/contacts/cancel-friend-request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ recipientID: recallTarget.recipientID }),
       });
-      setSentRequests((prev) =>
-        prev.filter((r) => r.recipientID !== recallTarget.recipientID)
-      );
-      Alert.alert("Thanh cong", "Da thu hoi loi moi");
-    } catch {
-      Alert.alert("Loi", "Khong the thu hoi loi moi");
-    } finally {
-      setRecallTarget(null);
-    }
+      setSentRequests(prev => prev.filter(r => r.recipientID !== recallTarget.recipientID));
+    } catch { /* ignore */ }
+    finally { setRecallTarget(null); }
   };
 
   const handleStartChat = async (friend: Friend) => {
     try {
       const token = await getToken();
       const res = await fetch(`${API_URL}/api/createChat1-1`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ userID2: friend.userID }),
       });
       const data = await res.json();
       onStartChat(data);
-    } catch {
-      Alert.alert("Loi", "Khong the mo cuoc tro chuyen");
-    }
+    } catch { /* ignore */ }
   };
 
-  const filteredFriends = friends.filter(
-    (f) =>
-      (f.alias || f.name).toLowerCase().includes(search.toLowerCase()) ||
-      f.sdt?.includes(search)
-  );
+  const handleViewProfile = (item: any, status: OtherUser['friendStatus']) => {
+    setSelectedProfile({
+      userID: item.contactID || item.recipientID || item.userID,
+      name: item.name,
+      sdt: item.sdt,
+      anhDaiDien: item.avatar || item.anhDaiDien,
+      anhBia: item.anhBia,
+      ngaysinh: item.ngaysinh,
+      gioTinh: item.gioTinh,
+      trangThai: item.trangThai,
+      friendStatus: status,
+    });
+  };
 
-  const groupedFriends = filteredFriends.reduce(
-    (acc, friend) => {
-      const letter = (friend.alias || friend.name).charAt(0).toUpperCase();
-      if (!acc[letter]) acc[letter] = [];
-      acc[letter].push(friend);
-      return acc;
-    },
-    {} as Record<string, Friend[]>
-  );
-  const sortedGroups = Object.keys(groupedFriends).sort();
+  // Group friends A-Z
+  const groupedFriends = useMemo(() => {
+    const unique = Array.from(new Map(friends.map(f => [f.userID, f])).values());
+    const filtered = unique.filter(f =>
+      (f.alias?.trim() || f.name).toLowerCase().includes(search.toLowerCase()) ||
+      f.sdt?.includes(search)
+    );
+    const groups: Record<string, Friend[]> = {};
+    filtered.forEach(f => {
+      const key = (f.alias?.trim() || f.name).charAt(0).toUpperCase();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(f);
+    });
+    return Object.keys(groups).sort().map(label => ({
+      label,
+      items: groups[label].sort((a, b) => (a.alias?.trim() || a.name).localeCompare(b.alias?.trim() || b.name)),
+    }));
+  }, [friends, search]);
+
   const pendingCount = requests.length;
 
+  // Flatten data for FlatList (friends tab)
+  const friendListData = groupedFriends.flatMap(g => [
+    { type: 'section' as const, label: g.label },
+    ...g.items.map(f => ({ type: 'friend' as const, data: f })),
+  ]);
+
+  // Flatten data for FlatList (requests tab)
+  const requestListData = [
+    { type: 'section_received' as const },
+    ...(isReceivedExpanded ? requests.map(r => ({ type: 'received' as const, data: r })) : []),
+    { type: 'section_sent' as const },
+    ...(isSentExpanded ? sentRequests.map(r => ({ type: 'sent' as const, data: r })) : []),
+  ];
+
   return (
-    <View style={styles.container}>
-      <View style={styles.searchBar}>
-        <Text style={styles.searchIcon}>🔍</Text>
+    <View style={s.container}>
+      {/* Search */}
+      <View style={s.searchBar}>
+        <Ionicons name="search-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
         <TextInput
-          style={styles.searchInput}
-          placeholder="Tim kiem ban be..."
+          style={s.searchInput}
+          placeholder="Tìm bạn bè..."
           value={search}
           onChangeText={setSearch}
-          placeholderTextColor="#999"
+          placeholderTextColor="#9ca3af"
         />
       </View>
 
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, tab === "friends" && styles.tabActive]}
-          onPress={() => setTab("friends")}
-        >
-          <Text style={[styles.tabText, tab === "friends" && styles.tabTextActive]}>
-            Ban be ({friends.length})
-          </Text>
+      {/* Tabs */}
+      <View style={s.tabs}>
+        <TouchableOpacity style={[s.tab, tab === 'friends' && s.tabActive]} onPress={() => setTab('friends')}>
+          <Text style={[s.tabText, tab === 'friends' && s.tabTextActive]}>Bạn bè</Text>
+          {tab === 'friends' && <View style={s.tabIndicator} />}
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, tab === "requests" && styles.tabActive]}
-          onPress={() => setTab("requests")}
-        >
-          <Text style={[styles.tabText, tab === "requests" && styles.tabTextActive]}>
-            Loi moi
-          </Text>
+        <TouchableOpacity style={[s.tab, tab === 'requests' && s.tabActive]} onPress={() => setTab('requests')}>
+          <Text style={[s.tabText, tab === 'requests' && s.tabTextActive]}>Lời mời</Text>
           {pendingCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{pendingCount}</Text>
-            </View>
+            <View style={s.badge}><Text style={s.badgeText}>{pendingCount}</Text></View>
           )}
+          {tab === 'requests' && <View style={s.tabIndicator} />}
         </TouchableOpacity>
       </View>
 
+      {/* Content */}
       {loading && friends.length === 0 ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#0091ff" />
-        </View>
-      ) : tab === "friends" ? (
+        <View style={s.center}><ActivityIndicator size="large" color="#0068ff" /></View>
+      ) : tab === 'friends' ? (
         <FlatList
-          data={sortedGroups.flatMap((letter) => [
-            { type: "section" as const, letter },
-            ...groupedFriends[letter].map((f) => ({
-              type: "friend" as const,
-              data: f,
-            })),
-          ])}
-          keyExtractor={(item, idx) => `${item.type}-${idx}`}
+          data={friendListData}
+          keyExtractor={(item, idx) => `f-${idx}`}
           renderItem={({ item }) => {
-            if (item.type === "section") {
+            if (item.type === 'section') {
               return (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionText}>{(item as any).letter}</Text>
+                <View style={s.sectionHeader}>
+                  <Text style={s.sectionText}>{item.label}</Text>
                 </View>
               );
             }
-            const friend = (item as any).data as Friend;
+            const friend = item.data;
             return (
               <TouchableOpacity
-                style={styles.friendItem}
+                style={s.friendItem}
                 onPress={() => handleStartChat(friend)}
+                onLongPress={() => handleViewProfile(friend, 'accepted')}
               >
-                <Image
-                  source={{
-                    uri:
-                      friend.anhDaiDien ||
-                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${friend.userID}`,
-                  }}
-                  style={styles.avatar}
-                />
-                <View style={styles.friendInfo}>
-                  <Text style={styles.friendName}>{friend.alias || friend.name}</Text>
-                  {friend.sdt ? (
-                    <Text style={styles.friendPhone}>{friend.sdt}</Text>
-                  ) : null}
+                <View style={s.avatarWrap}>
+                  <Image
+                    source={{ uri: friend.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${friend.userID}` }}
+                    style={s.avatar}
+                  />
+                  <View style={[s.onlineDot, { backgroundColor: friend.trangThai === 'online' ? '#22c55e' : '#d1d5db' }]} />
                 </View>
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor:
-                        friend.trangThai === "online" ? "#34c759" : "#ccc",
-                    },
-                  ]}
-                />
+                <View style={s.friendInfo}>
+                  <Text style={s.friendName}>{friend.alias?.trim() || friend.name}</Text>
+                  {friend.sdt ? <Text style={s.friendPhone}>{friend.sdt}</Text> : null}
+                </View>
+                <TouchableOpacity
+                  style={s.chatBtn}
+                  onPress={() => handleStartChat(friend)}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={20} color="#0068ff" />
+                </TouchableOpacity>
               </TouchableOpacity>
             );
           }}
           ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={styles.emptyEmoji}>👥</Text>
-              <Text style={styles.emptyText}>Chua co ban be nao</Text>
+            <View style={s.center}>
+              <Text style={s.emptyEmoji}>👥</Text>
+              <Text style={s.emptyText}>Chưa có bạn bè nào</Text>
             </View>
           }
         />
       ) : (
         <FlatList
-          data={[
-            { section: "received" as const },
-            ...requests.map((r) => ({ type: "received" as const, data: r })),
-            { section: "sent" as const },
-            ...sentRequests.map((r) => ({ type: "sent" as const, data: r })),
-          ]}
+          data={requestListData}
           keyExtractor={(item, idx) => `req-${idx}`}
           renderItem={({ item }: any) => {
-            if (item.section === "received") {
+            if (item.type === 'section_received') {
               return (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionText}>
-                    Loi moi nhan duoc ({requests.length})
-                  </Text>
-                </View>
+                <TouchableOpacity style={s.sectionHeader} onPress={() => setIsReceivedExpanded(v => !v)}>
+                  <Ionicons name={isReceivedExpanded ? 'chevron-down' : 'chevron-forward'} size={12} color="#0068ff" style={{ marginRight: 6 }} />
+                  <Text style={s.sectionText}>Lời mời kết bạn ({requests.length})</Text>
+                </TouchableOpacity>
               );
             }
-            if (item.section === "sent") {
+            if (item.type === 'section_sent') {
               return (
-                <View style={[styles.sectionHeader, { marginTop: 8 }]}>
-                  <Text style={styles.sectionText}>
-                    Loi moi da gui ({sentRequests.length})
-                  </Text>
-                </View>
+                <TouchableOpacity style={[s.sectionHeader, { marginTop: 8 }]} onPress={() => setIsSentExpanded(v => !v)}>
+                  <Ionicons name={isSentExpanded ? 'chevron-down' : 'chevron-forward'} size={12} color="#0068ff" style={{ marginRight: 6 }} />
+                  <Text style={s.sectionText}>Lời mời đã gửi ({sentRequests.length})</Text>
+                </TouchableOpacity>
               );
             }
-            if (item.type === "received") {
+            if (item.type === 'received') {
               const req = item.data as FriendRequest;
               return (
-                <View style={styles.requestItem}>
-                  <Image
-                    source={{
-                      uri:
-                        req.avatar ||
-                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.contactID}`,
-                    }}
-                    style={styles.avatar}
-                  />
-                  <View style={styles.requestInfo}>
-                    <Text style={styles.friendName}>{req.name}</Text>
+                <View style={s.requestItem}>
+                  <TouchableOpacity onPress={() => handleViewProfile(req, 'pending_received')}>
+                    <Image
+                      source={{ uri: req.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.contactID}` }}
+                      style={s.avatar}
+                    />
+                  </TouchableOpacity>
+                  <View style={s.requestInfo}>
+                    <TouchableOpacity onPress={() => handleViewProfile(req, 'pending_received')}>
+                      <Text style={s.friendName}>{req.name}</Text>
+                    </TouchableOpacity>
+                    {req.sdt ? <Text style={s.friendPhone}>{req.sdt}</Text> : null}
                     {req.message ? (
-                      <Text style={styles.requestMessage} numberOfLines={1}>
-                        "{req.message}"
-                      </Text>
+                      <View style={s.messageBubble}>
+                        <Text style={s.messageText} numberOfLines={2}>"{req.message}"</Text>
+                      </View>
                     ) : null}
-                    <View style={styles.requestActions}>
-                      <TouchableOpacity
-                        style={styles.btnAccept}
-                        onPress={() => handleAccept(req)}
-                      >
-                        <Text style={styles.btnAcceptText}>Chap nhan</Text>
+                    <View style={s.requestActions}>
+                      <TouchableOpacity style={s.btnAccept} onPress={() => handleAccept(req)}>
+                        <Text style={s.btnAcceptText}>Chấp nhận</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.btnReject}
-                        onPress={() => handleReject(req)}
-                      >
-                        <Text style={styles.btnRejectText}>Tu choi</Text>
+                      <TouchableOpacity style={s.btnReject} onPress={() => handleReject(req)}>
+                        <Text style={s.btnRejectText}>Từ chối</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
                 </View>
               );
             }
-            if (item.type === "sent") {
+            if (item.type === 'sent') {
               const req = item.data as SentRequest;
               return (
-                <View style={styles.requestItem}>
-                  <Image
-                    source={{
-                      uri:
-                        req.avatar ||
-                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.recipientID}`,
-                    }}
-                    style={styles.avatar}
-                  />
-                  <View style={styles.requestInfo}>
-                    <Text style={styles.friendName}>{req.name}</Text>
-                    <Text style={styles.sentLabel}>Dang cho phan hoi</Text>
-                    <TouchableOpacity
-                      style={styles.btnRecall}
-                      onPress={() => setRecallTarget(req)}
-                    >
-                      <Text style={styles.btnRecallText}>Thu hoi loi moi</Text>
+                <View style={s.requestItem}>
+                  <TouchableOpacity onPress={() => handleViewProfile(req, 'pending_sent')}>
+                    <Image
+                      source={{ uri: req.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.recipientID}` }}
+                      style={s.avatar}
+                    />
+                  </TouchableOpacity>
+                  <View style={s.requestInfo}>
+                    <TouchableOpacity onPress={() => handleViewProfile(req, 'pending_sent')}>
+                      <Text style={s.friendName}>{req.name}</Text>
+                    </TouchableOpacity>
+                    <Text style={s.sentLabel}>Đang chờ phản hồi</Text>
+                    <TouchableOpacity style={s.btnRecall} onPress={() => setRecallTarget(req)}>
+                      <Text style={s.btnRecallText}>Thu hồi lời mời</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -447,195 +432,119 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
             return null;
           }}
           ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={styles.emptyEmoji}>📭</Text>
-              <Text style={styles.emptyText}>Khong co loi moi nao</Text>
+            <View style={s.center}>
+              <Text style={s.emptyEmoji}>📭</Text>
+              <Text style={s.emptyText}>Không có lời mời nào</Text>
             </View>
           }
         />
       )}
 
-      <Modal
-        transparent
+      {/* Profile Modal */}
+      {selectedProfile && (
+        <OtherProfileModal
+          visible={!!selectedProfile}
+          user={selectedProfile}
+          currentUser={user}
+          onClose={() => setSelectedProfile(null)}
+          onStartChat={(chat) => { onStartChat(chat); setSelectedProfile(null); }}
+          onAddFriend={() => {
+            if (selectedProfile.friendStatus === 'pending_received') {
+              handleAccept({ contactID: selectedProfile.userID, name: selectedProfile.name } as any);
+            } else if (selectedProfile.friendStatus === 'pending_sent') {
+              setRecallTarget({ recipientID: selectedProfile.userID, name: selectedProfile.name } as any);
+            }
+            setSelectedProfile(null);
+          }}
+          onStatusChange={(status) => {
+            if (status === 'none') {
+              setFriends(prev => prev.filter(f => f.userID !== selectedProfile.userID));
+            }
+            setSelectedProfile(null);
+          }}
+        />
+      )}
+
+      {/* Recall confirm */}
+      <ConfirmDialog
         visible={!!recallTarget}
-        animationType="fade"
-        onRequestClose={() => setRecallTarget(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Thu hoi loi moi</Text>
-            <Text style={styles.modalMessage}>
-              Ban co chac muon thu hoi loi moi ket ban gui den {recallTarget?.name}?
-            </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.btnCancel}
-                onPress={() => setRecallTarget(null)}
-              >
-                <Text style={styles.btnCancelText}>Huy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.btnConfirm} onPress={handleCancelSent}>
-                <Text style={styles.btnConfirmText}>Thu hoi</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title="Thu hồi lời mời"
+        message={`Bạn có chắc muốn thu hồi lời mời kết bạn gửi đến ${recallTarget?.name}?`}
+        danger
+        onConfirm={handleCancelSent}
+        onCancel={() => setRecallTarget(null)}
+      />
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#fff' },
   searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f0f2f5",
-    margin: 12,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#f3f4f6', margin: 12, borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 9,
   },
-  searchIcon: { fontSize: 16, marginRight: 8 },
-  searchInput: { flex: 1, fontSize: 15, color: "#050505" },
-  tabs: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e4e6eb",
-  },
+  searchInput: { flex: 1, fontSize: 15, color: '#111' },
+  tabs: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e5e7eb' },
   tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 6,
+    flex: 1, paddingVertical: 12, alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'center', gap: 6, position: 'relative',
   },
-  tabActive: { borderBottomColor: "#0091ff" },
-  tabText: { fontSize: 15, fontWeight: "600", color: "#65676b" },
-  tabTextActive: { color: "#0091ff" },
+  tabActive: {},
+  tabText: { fontSize: 14, fontWeight: '600', color: '#9ca3af' },
+  tabTextActive: { color: '#0068ff' },
+  tabIndicator: {
+    position: 'absolute', bottom: 0, left: '25%', right: '25%',
+    height: 2, backgroundColor: '#0068ff', borderRadius: 2,
+  },
   badge: {
-    backgroundColor: "#ff3b30",
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    minWidth: 18,
-    alignItems: "center",
+    backgroundColor: '#ef4444', borderRadius: 10,
+    paddingHorizontal: 5, paddingVertical: 1, minWidth: 18, alignItems: 'center',
   },
-  badgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
+  badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   sectionHeader: {
-    backgroundColor: "#f0f2f5",
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#f9fafb', paddingHorizontal: 16, paddingVertical: 7,
   },
-  sectionText: { fontSize: 13, fontWeight: "700", color: "#0091ff" },
+  sectionText: { fontSize: 12, fontWeight: '700', color: '#0068ff' },
   friendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#f3f4f6',
   },
-  avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  avatarWrap: { position: 'relative', marginRight: 12 },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#e5e7eb' },
+  onlineDot: {
+    position: 'absolute', bottom: 1, right: 1,
+    width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff',
+  },
   friendInfo: { flex: 1 },
-  friendName: { fontSize: 15, fontWeight: "600", color: "#050505" },
-  friendPhone: { fontSize: 13, color: "#65676b", marginTop: 2 },
-  statusDot: { width: 10, height: 10, borderRadius: 5 },
+  friendName: { fontSize: 14.5, fontWeight: '600', color: '#111' },
+  friendPhone: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  chatBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   requestItem: {
-    flexDirection: "row",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    flexDirection: 'row', padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#f3f4f6',
+    gap: 12,
   },
   requestInfo: { flex: 1 },
-  requestMessage: {
-    fontSize: 13,
-    color: "#65676b",
-    fontStyle: "italic",
-    marginTop: 2,
-    marginBottom: 8,
+  messageBubble: {
+    backgroundColor: '#f9fafb', borderRadius: 8, borderWidth: 1,
+    borderColor: '#e5e7eb', padding: 8, marginVertical: 6,
   },
-  sentLabel: { fontSize: 13, color: "#65676b", marginTop: 2, marginBottom: 8 },
-  requestActions: { flexDirection: "row", gap: 8 },
-  btnAccept: {
-    flex: 1,
-    backgroundColor: "#0091ff",
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  btnAcceptText: { color: "#fff", fontSize: 13, fontWeight: "600" },
-  btnReject: {
-    flex: 1,
-    backgroundColor: "#f0f2f5",
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  btnRejectText: { color: "#333", fontSize: 13, fontWeight: "600" },
-  btnRecall: {
-    backgroundColor: "#f0f2f5",
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    alignSelf: "flex-start",
-  },
-  btnRecallText: { color: "#ff3b30", fontSize: 13, fontWeight: "600" },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 60,
-  },
+  messageText: { fontSize: 13, color: '#6b7280', fontStyle: 'italic' },
+  sentLabel: { fontSize: 13, color: '#6b7280', marginTop: 2, marginBottom: 8 },
+  requestActions: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  btnAccept: { flex: 1, backgroundColor: '#0068ff', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
+  btnAcceptText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  btnReject: { flex: 1, backgroundColor: '#f3f4f6', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
+  btnRejectText: { color: '#374151', fontSize: 13, fontWeight: '600' },
+  btnRecall: { backgroundColor: '#fef2f2', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#fecaca' },
+  btnRecallText: { color: '#ef4444', fontSize: 13, fontWeight: '600' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
   emptyEmoji: { fontSize: 40, marginBottom: 12 },
-  emptyText: { fontSize: 15, color: "#65676b" },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  modalBox: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 24,
-    width: "100%",
-    maxWidth: 320,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#1a1a1a",
-    marginBottom: 8,
-  },
-  modalMessage: {
-    fontSize: 14,
-    color: "#666",
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  modalButtons: { flexDirection: "row", gap: 12 },
-  btnCancel: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    alignItems: "center",
-  },
-  btnCancelText: { fontSize: 14, fontWeight: "600", color: "#6b7280" },
-  btnConfirm: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: "#ff3b30",
-    alignItems: "center",
-  },
-  btnConfirmText: { fontSize: 14, fontWeight: "600", color: "#fff" },
+  emptyText: { fontSize: 15, color: '#6b7280' },
 });
 
 export default ContactsPanel;

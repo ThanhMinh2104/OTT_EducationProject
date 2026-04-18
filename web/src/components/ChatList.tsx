@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { FaSearch, FaUserPlus, FaUsers, FaAngleDown, FaEllipsisH, FaTrash } from 'react-icons/fa';
 import socket from '../utils/socket';
 import AddFriendModal from './AddFriendModal';
+import { CreateGroupModal } from './CreateGroupModal';
 import ContactsPanel from './ContactsPanel';
 import StrangerFolderItem from './StrangerFolderItem';
 import StrangerChatList from './StrangerChatList';
@@ -129,6 +130,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
   const [chats, setChats] = useState<Chat[]>([]);
   const [searchText, setSearchText] = useState('');
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
   const [typingMap, setTypingMap] = useState<
     Record<string, { userID: string; userName: string }[]>
@@ -195,6 +197,46 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     }
   };
 
+  // Fetch groups for user
+  const fetchGroups = async () => {
+    if (!user?.userID) return;
+    try {
+      const token = getToken();
+      const res = await fetch('http://localhost:5000/api/groups', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (res.ok) {
+        const groups = await res.json();
+        // Convert groups to chat format
+        const groupChats: Chat[] = groups.map((g: any) => ({
+          chatID: g.groupID,
+          name: g.name,
+          type: 'group',
+          avatar: g.avatar,
+          members: [],
+          lastMessage: [],
+          unreadCount: 0,
+        }));
+        setChats((prev) => {
+          // Merge groups with existing chats, avoiding duplicates
+          const existingIds = new Set(prev.map((c) => c.chatID));
+          const newGroups = groupChats.filter((g) => !existingIds.has(g.chatID));
+          return [...prev, ...newGroups].sort((a, b) => {
+            const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
+            const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
+            return new Date(bT).getTime() - new Date(aT).getTime();
+          });
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch groups:', err);
+    }
+  };
+
   useEffect(() => {
     if (!user?.userID) return;
 
@@ -212,7 +254,15 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     }
 
     socket.on('ChatByUserID', (data: Chat[]) => {
-      const sorted = [...data].sort((a, b) => {
+      console.log('📥 Received ChatByUserID:', data.length, 'chats');
+      
+      // Phân loại chat thành bạn bè và người lạ
+      const friendChats = data.filter((c: any) => !c.isStranger);
+      const strangers = data.filter((c: any) => c.isStranger);
+      
+      console.log(`✅ Loaded ${friendChats.length} friend chats + ${strangers.length} stranger chats`);
+      
+      const sorted = [...friendChats].sort((a, b) => {
         const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
         const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
         return new Date(bT).getTime() - new Date(aT).getTime();
@@ -222,6 +272,23 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       const filtered = sorted.filter((c) => !deletedChatIds.has(c.chatID));
       
       setChats(filtered);
+      
+      // Cập nhật stranger summary từ dữ liệu nhận được
+      if (strangers.length > 0) {
+        const unreadCount = strangers.reduce((sum, c: any) => sum + (c.unreadCount || 0), 0);
+        const lastTimes = strangers
+          .map((c: any) => c.lastMessage?.slice(-1)[0]?.timestamp)
+          .filter(Boolean)
+          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+        setStrangerSummary({
+          count: strangers.length,
+          unreadCount,
+          lastMessageTime: lastTimes[0] || null,
+        });
+      } else {
+        setStrangerSummary({ count: 0, unreadCount: 0, lastMessageTime: null });
+      }
+      
       // Prefetch member info cho private chats
       filtered.forEach((c) => {
         if (c.type === 'private') {
@@ -232,7 +299,19 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     });
 
     socket.on('new_message', (msg: Message) => {
+      console.log('📥 ChatList received new_message:', msg);
       setChats((prev) => {
+        const chatExists = prev.some(c => c.chatID === msg.chatID);
+        console.log('  → chatExists:', chatExists, 'chatID:', msg.chatID);
+        
+        if (!chatExists) {
+          // Chat chưa tồn tại trong danh sách, refetch để backend phân loại đúng
+          console.log('📥 New message from unknown chat, refetching...');
+          socket.emit('getChat', user.userID);
+          fetchStrangerSummary();
+          return prev;
+        }
+        
         const updated = prev.map((c) => {
           if (c.chatID !== msg.chatID) return c;
           const msgs = c.lastMessage || [];
@@ -247,13 +326,17 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           if (msg.senderID !== user.userID && selectedChatId !== msg.chatID) {
             notifAudioRef.current?.play().catch(() => {});
           }
+          console.log('  → Updated chat:', c.chatID, 'newMsgs count:', newMsgs.length);
           return { ...c, lastMessage: newMsgs, unreadCount: unread };
         });
-        return updated.sort((a, b) => {
+        
+        const sorted = updated.sort((a, b) => {
           const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
           const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
           return new Date(bT).getTime() - new Date(aT).getTime();
         });
+        console.log('  → Sorted chats, first chat:', sorted[0]?.chatID);
+        return sorted;
       });
     });
 
@@ -266,9 +349,33 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       }
     );
 
-    socket.on('newChat1-1', (newChat: Chat) => {
+    socket.on('friend_request_accepted', () => {
+      // Khi kết bạn thành công, tải lại toàn bộ danh sách để đưa chat người lạ ra ngoài chính
+      socket.emit('getChat', user.userID);
+      fetchStrangerSummary();
+    });
+
+    socket.on('friend_status_update', (data: { userID: string; friendStatus: string; ownerID: string }) => {
+      console.log('📥 Web received friend_status_update:', data);
+      // Khi bị chặn / bỏ chặn → refetch để phân loại lại chat
+      socket.emit('getChat', user.userID);
+      fetchStrangerSummary();
+    });
+
+    socket.on('newChat1-1', (newChat: Chat & { isStranger?: boolean }) => {
       setChats((prev) => {
-        if (prev.find((c) => c.chatID === newChat.chatID)) return prev;
+        const index = prev.findIndex((c) => c.chatID === newChat.chatID);
+        if (index !== -1) {
+          // Nếu đã tồn tại, cập nhật (đặc biệt là trạng thái isStranger)
+          const updated = [...prev];
+          updated[index] = { ...updated[index], ...newChat };
+          return updated;
+        }
+        // Nếu chưa tồn tại, thêm mới (trừ khi là người lạ thì chỉ fetch summary)
+        if (newChat.isStranger) {
+          fetchStrangerSummary();
+          return prev;
+        }
         const otherId = newChat.members.find((m) => m.userID !== user.userID)?.userID;
         if (otherId) fetchMember(otherId);
         return [newChat, ...prev];
@@ -325,6 +432,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.off('new_message');
       socket.off('status_update_all');
       socket.off('newChat1-1');
+      socket.off('friend_request_accepted');
+      socket.off('friend_status_update');
       socket.off('unsend_notification');
       socket.off('updatee_user');
       socket.off('typing_start', onTypingStart);
@@ -448,6 +557,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           </button>
           <button
             title="Tạo nhóm"
+            onClick={() => setShowCreateGroupModal(true)}
             className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-[17px] text-gray-600 hover:bg-gray-100 hover:text-[#0e9de8] transition-colors"
           >
             <FaUsers />
@@ -473,7 +583,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
 
       {/* Chat items */}
       <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded">
-        {/* Tin nhắn từ người lạ folder */}
+        {/* Tin nhắn từ người lạ folder - Chỉ hiện khi có tin nhắn mới chưa đọc */}
         {strangerSummary.count > 0 && (
           <StrangerFolderItem
             unreadCount={strangerSummary.unreadCount}
@@ -581,6 +691,17 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           onClose={() => setShowAddFriendModal(false)}
           currentUser={user}
           onStartChat={(chat: Chat) => onSelectChat(chat)}
+        />
+      )}
+
+      {showCreateGroupModal && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroupModal(false)}
+          onGroupCreated={(groupID: string) => {
+            // Reload chats from server
+            socket.emit('getChat', user?.userID);
+          }}
+          currentUser={user}
         />
       )}
 

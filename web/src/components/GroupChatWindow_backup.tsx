@@ -306,14 +306,11 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
     </div>
   );
 };
+
 const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
-  const [showReminder, setShowReminder] = useState(false);
-
-
-
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -338,6 +335,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [showSearch, setShowSearch] = useState(false);
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const msgRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [showReminder, setShowReminder] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
   // Image viewer state
@@ -377,18 +375,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleRecallFriendRequest = async (targetUserID: string) => {
-    try {
-      await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: targetUserID });
-      toast.success('Đã thu hồi lời mời kết bạn');
-      if (selectedUserForProfile && (selectedUserForProfile as any).userID === targetUserID) {
-        setSelectedUserForProfile({ ...(selectedUserForProfile as any), friendStatus: 'none' });
-      }
-    } catch (err) {
-      toast.error('Lỗi khi thu hồi lời mời');
-    }
-  };
 
   useEffect(() => {
     if (!selectedChat || !user) return;
@@ -537,23 +523,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         (prev?.userID === updatedUser.userID ? { ...prev, ...updatedUser } : prev)
       );
     };
-    
-    const onFriendStatusUpdate = (data: { userID: string; friendStatus: string; ownerID: string }) => {
-      console.log('📥 ChatWindow received friend_status_update:', data);
-      // Cập nhật friendStatus của memberInfo nếu là người đang chat
-      setMemberInfo((prev) => {
-        if (!prev) return prev;
-        // Nếu mình là người bị tác động (data.userID === currentUser)
-        if (data.userID === user?.userID && prev.userID === data.ownerID) {
-          return { ...prev, friendStatus: data.friendStatus === 'blocked' ? 'blocked_by_other' : data.friendStatus };
-        }
-        // Nếu mình là người thực hiện (data.ownerID === currentUser)
-        if (data.ownerID === user?.userID && prev.userID === data.userID) {
-          return { ...prev, friendStatus: data.friendStatus };
-        }
-        return prev;
-      });
-    };
 
     socket.on('new_message', onNewMessage);
     socket.on(chatID, onNewMessage);
@@ -562,8 +531,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     socket.on('ghim_notification', onGhim);
     socket.on('unghim_notification', onUnghim);
     socket.on(`status_update_${chatID}`, onStatusUpdate);
-    socket.on('updatee_user', onUpdateUser);
-    socket.on('friend_status_update', onFriendStatusUpdate);
+    socket.on('friend_status_update', onUpdateUser);
 
     const onTypingStart = ({
       chatID: evtChatID,
@@ -691,8 +659,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('ghim_notification', onGhim);
       socket.off('unghim_notification', onUnghim);
       socket.off(`status_update_${chatID}`, onStatusUpdate);
-      socket.off('updatee_user', onUpdateUser);
-      socket.off('friend_status_update', onFriendStatusUpdate);
+      socket.off('friend_status_update', onUpdateUser);
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
       socket.off('message_seen', onMessageSeen);
@@ -1914,23 +1881,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   return (
                     <div
                       key={item.key}
-                      id={`msg-${firstMsg.messageID}`}
-                      ref={(el) => {
-                        // ⭐ Thêm ref cho tất cả messages trong group
-                        if (el) {
-                          (group.messages as Message[]).forEach((msg) => {
-                            if (msg.messageID) {
-                              msgRefsMap.current.set(msg.messageID, el);
-                            }
-                          });
-                        }
-                      }}
-                      className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${
-                        // ⭐ Highlight nếu bất kỳ message nào trong group được highlight
-                        (group.messages as Message[]).some((msg) => msg.messageID === highlightedMsgId) 
-                          ? 'bg-blue-200/50 rounded-xl px-1 -mx-1' 
-                          : ''
-                      }`}
+                      className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'}`}
                     >
                       {/* Avatar */}
                       {!isMine && (
@@ -2116,55 +2067,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 const msgKey = item.key;
 
                 if (isNotif) {
-                  const content = msg.content || '';
-                  if (content.startsWith('##FRIENDSHIP##')) {
-                    const parts = content.split('|');
-                    const id1 = parts[1];
-                    const id2 = parts[2];
-                    const name1 = parts[3];
-                    const name2 = parts[4];
-                    const isNew = parts[5] === 'new';
-
-                    const isSelf1 = id1 === user?.userID;
-                    const friendID = isSelf1 ? id2 : id1;
-                    const friendName = isSelf1 ? name2 : name1;
-
-                    return (
-                      <div key={msgKey} className="flex justify-center my-1">
-                        <span className="text-xs text-gray-500 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 shadow-sm transition-all hover:bg-white/20">
-                          Bạn và{' '}
-                          <button
-                            className="font-bold text-blue-500 hover:text-blue-600 transition-colors mx-0.5"
-                            onClick={async () => {
-                              try {
-                                const [userRes, statusRes] = await Promise.all([
-                                  fetch(`${API}/usersID`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ userID: friendID }),
-                                  }),
-                                  fetch(`${API}/contacts/friend-status/${friendID}`, {
-                                    headers: { ...authHeaders() },
-                                  }),
-                                ]);
-                                const userData = await userRes.json();
-                                const statusData = await statusRes.json();
-                                userData.friendStatus = statusData.friendStatus || 'none';
-                                setSelectedUserForProfile(userData);
-                                setShowOtherProfile(true);
-                              } catch (err) {
-                                console.error('Failed to fetch friend profile:', err);
-                              }
-                            }}
-                          >
-                            {friendName}
-                          </button>
-                          đã trở thành bạn bè.{' '}
-                          {isNew && <span className="opacity-80">Hãy bắt đầu cuộc trò chuyện.</span>}
-                        </span>
-                      </div>
-                    );
-                  }
                   return (
                     <div key={msgKey} className="flex justify-center my-1">
                       <span className="text-xs text-gray-500 bg-white/70 px-3 py-1 rounded-full">
@@ -2475,21 +2377,24 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             {/* Input area */}
             <div className="flex-shrink-0">
               {memberInfo?.friendStatus === 'blocked' ? (
-                <div className="flex items-center justify-center p-5 bg-blue-50/50 border-t border-blue-100 gap-3 animate-fade-in">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                    <FaInfoCircle className="text-[#0068ff] text-lg" />
-                  </div>
-                  <div className="flex flex-col">
-                    <p className="text-[14px] text-gray-600 m-0 font-medium">
-                      Bạn đã chặn người dùng này
-                    </p>
+                <div className="flex items-center justify-center p-4 bg-white border-t border-gray-100 gap-2.5">
+                  <FaInfoCircle className="text-[#0068ff] text-[17px] shrink-0" />
+                  <p className="text-[14px] text-gray-500 m-0">
+                    Bỏ chặn để gửi tin nhắn tới người này.{" "}
                     <button
                       onClick={() => setShowUnblockConfirm(true)}
-                      className="text-[#0068ff] font-bold hover:underline bg-transparent border-none p-0 cursor-pointer text-[13px] text-left"
+                      className="text-[#0068ff] font-semibold hover:underline bg-transparent border-none p-0 cursor-pointer text-[14px]"
                     >
-                      Bỏ chặn để tiếp tục trò chuyện
+                      Bỏ chặn
                     </button>
-                  </div>
+                  </p>
+                </div>
+              ) : memberInfo?.friendStatus === 'blocked_by_other' ? (
+                <div className="flex items-center justify-center p-6 bg-white border-t border-gray-100 gap-3">
+                  <FaBan className="text-gray-400 text-[15px] shrink-0" />
+                  <p className="text-[14px] text-gray-400 m-0 italic font-medium">
+                    Xin lỗi! Bạn hiện không thể gửi tin nhắn tới người này.
+                  </p>
                 </div>
               ) : (
                 <>
@@ -2844,7 +2749,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
               setMemberInfo({ ...memberInfo, friendStatus: status });
             }
           }}
-          onRecall={() => selectedUserForProfile && handleRecallFriendRequest((selectedUserForProfile as any).userID)}
         />
       )}
 
@@ -2929,7 +2833,13 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           try {
             await axiosInstance.post('/contacts/unblock', { targetUserID: String(memberInfo.userID) });
             toast.success('Đã bỏ chặn');
-            // Backend sẽ emit friend_status_update, không cần emit từ client
+            if (socket) {
+              socket.emit('friend_status_update', {
+                userID: String(memberInfo.userID),
+                friendStatus: 'none',
+                ownerID: String(user.userID)
+              });
+            }
             setMemberInfo(prev => prev ? { ...prev, friendStatus: 'none' } : null);
           } catch (err) {
             toast.error('Lỗi khi bỏ chặn');
