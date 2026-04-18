@@ -507,15 +507,56 @@ router.put('/groups/:groupID/members/:targetUserID/role', authMiddleware, async 
       return;
     }
 
-    if (!['admin', 'member'].includes(role)) {
+    if (!['owner', 'admin', 'member'].includes(role)) {
       res.status(400).json({ message: 'Quyền không hợp lệ' });
       return;
+    }
+
+    // Nếu chuyển quyền owner → hạ owner hiện tại xuống admin
+    if (role === 'owner') {
+      await GroupMember.findOneAndUpdate({ groupID, userID }, { role: 'admin' });
+      await Group.findOneAndUpdate({ groupID }, { ownerID: targetUserID, updatedAt: new Date() });
     }
 
     await GroupMember.findOneAndUpdate(
       { groupID, userID: targetUserID },
       { role }
     );
+
+    // Gửi notification vào chat
+    const actor = await Users.findOne({ userID });
+    const target = await Users.findOne({ userID: targetUserID });
+    const actorName = actor?.name || 'Quản trị viên';
+    const targetName = target?.name || 'thành viên';
+
+    let notifContent = '';
+    if (role === 'owner') {
+      notifContent = `${actorName} đã chuyển quyền trưởng nhóm cho ${targetName}`;
+    } else if (role === 'admin') {
+      notifContent = `${targetName} đã được thêm làm phó nhóm`;
+    } else if (role === 'member') {
+      notifContent = `${targetName} đã bị gỡ quyền phó nhóm`;
+    }
+
+    if (notifContent) {
+      const notifID = `gmsg_${uuidv4()}`;
+      const notif = new GroupMessage({
+        messageID: notifID,
+        groupID,
+        senderID: userID,
+        content: notifContent,
+        type: 'notification',
+        timestamp: new Date(),
+      });
+      await notif.save();
+      const io = req.app.get('io');
+      if (io) {
+        io.to(groupID).emit('new_group_message', {
+          ...notif.toObject(),
+          senderInfo: { name: actorName },
+        });
+      }
+    }
 
     res.json({ message: 'Cập nhật quyền thành công' });
   } catch (error: any) {

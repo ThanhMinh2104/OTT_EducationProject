@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  FaTimes, FaUserShield, FaTrash, FaSearch, FaCrown, FaUserPlus,
-  FaEdit, FaEllipsisV, FaInfoCircle, FaCopy, FaShare,
-  FaUsers,
+  FaTimes, FaUserShield, FaTrash, FaSearch, FaCrown, FaEllipsisV, FaInfoCircle, FaCopy, FaShare,
+  FaUsers, FaKey,
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -87,6 +86,16 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
   const [selectedToBlock, setSelectedToBlock] = useState<string[]>([]);
   const [blockSearchQuery, setBlockSearchQuery] = useState('');
   const [isLoadingBlocked, setIsLoadingBlocked] = useState(false);
+
+  // Admin panel
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showAddAdminModal, setShowAddAdminModal] = useState(false);
+  const [showTransferOwnerModal, setShowTransferOwnerModal] = useState(false);
+  const [selectedNewOwner, setSelectedNewOwner] = useState<GroupMember | null>(null);
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  // 'select' = chọn người, 'confirm' = xác nhận
+  type TransferStep = 'select' | 'confirm';
+  const [transferStep, setTransferStep] = useState<TransferStep>('select');
 
   // Group settings
   const [settings, setSettings] = useState<GroupSettings>({
@@ -187,11 +196,9 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
     }
   };
 
-  const handleTransferOwner = async (member: GroupMember) => {
+  const handleTransferOwnerOld = async (member: GroupMember) => {
     try {
-      // Chuyển quyền owner cho member mới
       await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'owner' });
-      // Tự động hạ quyền owner hiện tại xuống admin
       await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${currentUserID}/role`, { role: 'admin' });
       toast.success(`Đã chuyển quyền trưởng nhóm cho ${member.name || 'thành viên'}`);
       setShowConfirmTransferOwner(false);
@@ -385,6 +392,43 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
     }
   };
 
+  const handlePromoteAdmin = async (member: GroupMember) => {
+    try {
+      await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'admin' });
+      toast.success(`Đã thêm ${member.name} làm phó nhóm`);
+      setShowAddAdminModal(false);
+      setAdminSearchQuery('');
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Lỗi khi thêm phó nhóm');
+    }
+  };
+
+  const handleDemoteAdmin = async (member: GroupMember) => {
+    try {
+      await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'member' });
+      toast.success(`Đã xóa quyền phó nhóm của ${member.name}`);
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Lỗi khi xóa quyền');
+    }
+  };
+
+  const handleTransferOwner = async () => {
+    if (!selectedNewOwner) return;
+    try {
+      // Backend tự hạ owner hiện tại xuống admin khi set role: 'owner' cho người khác
+      await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${selectedNewOwner.userID}/role`, { role: 'owner' });
+      toast.success(`Đã chuyển quyền trưởng nhóm cho ${selectedNewOwner.name}`);
+      setShowTransferOwnerModal(false);
+      setSelectedNewOwner(null);
+      setAdminSearchQuery('');
+      onUpdate();
+    } catch (error: unknown) {
+      toast.error(error.response?.data?.message || 'Lỗi khi chuyển quyền');
+    }
+  };
+
   return (
     <>
       <div
@@ -411,6 +455,20 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
               >
                 <FaTimes />
               </button>
+            ) : showAdminPanel ? (
+              <button
+                onClick={() => {
+                  if (showAddAdminModal) { setShowAddAdminModal(false); setAdminSearchQuery(''); }
+                  else if (showTransferOwnerModal) {
+                    if (transferStep === 'confirm') { setTransferStep('select'); setSelectedNewOwner(null); }
+                    else { setShowTransferOwnerModal(false); setAdminSearchQuery(''); }
+                  }
+                  else setShowAdminPanel(false);
+                }}
+                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <FaTimes />
+              </button>
             ) : (
               <button
                 onClick={onClose}
@@ -420,7 +478,19 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
               </button>
             )}
             <h2 className="text-lg font-bold text-white flex-1">
-              {showAddBlockModal ? 'Thêm vào danh sách chặn' : showBlockPanel ? 'Chặn khỏi nhóm' : 'Quản lý nhóm'}
+              {showAddBlockModal
+                ? 'Thêm vào danh sách chặn'
+                : showBlockPanel
+                  ? 'Chặn khỏi nhóm'
+                  : showAdminPanel
+                    ? showAddAdminModal
+                      ? 'Thêm phó nhóm'
+                      : showTransferOwnerModal
+                        ? transferStep === 'confirm'
+                          ? 'Xác nhận chuyển quyền'
+                          : 'Chuyển quyền trưởng nhóm'
+                        : 'Trưởng & phó nhóm'
+                    : 'Quản lý nhóm'}
             </h2>
           </div>
 
@@ -499,9 +569,189 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
               </div>
             )}
 
-            {/* Block Panel */}
-            {!showAddBlockModal && showBlockPanel && (
+            {/* Admin Panel — Transfer Owner: Select */}
+            {showAdminPanel && showTransferOwnerModal && transferStep === 'select' && (
+              <div className="flex flex-col text-white">
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <p className="text-xs text-gray-400 mb-3">Chọn thành viên để chuyển quyền trưởng nhóm:</p>
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                    <input
+                      type="text"
+                      value={adminSearchQuery}
+                      onChange={(e) => setAdminSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm thành viên"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="overflow-y-auto px-4 py-2">
+                  {groupInfo.members
+                    .filter(m => m.userID !== currentUserID &&
+                      (!adminSearchQuery || m.name?.toLowerCase().includes(adminSearchQuery.toLowerCase())))
+                    .map(m => (
+                      <div
+                        key={m.userID}
+                        className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-gray-700/50 rounded-xl px-2 -mx-2"
+                        onClick={() => { setSelectedNewOwner(m); setTransferStep('confirm'); }}
+                      >
+                        <img
+                          src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                          alt={m.name}
+                          className="w-10 h-10 rounded-full object-cover shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
+                          <p className="text-xs text-gray-400">{m.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Admin Panel — Transfer Owner: Confirm */}
+            {showAdminPanel && showTransferOwnerModal && transferStep === 'confirm' && selectedNewOwner && (
+              <div className="text-white px-5 py-5">
+                <div className="flex items-center gap-3 mb-4 p-3 bg-gray-700/50 rounded-xl">
+                  <img
+                    src={selectedNewOwner.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedNewOwner.userID}`}
+                    alt={selectedNewOwner.name}
+                    className="w-10 h-10 rounded-full object-cover shrink-0"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-white">{selectedNewOwner.name}</p>
+                    <p className="text-xs text-gray-400">{selectedNewOwner.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</p>
+                  </div>
+                </div>
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-4">
+                  <p className="text-sm text-red-400 font-semibold mb-1">⚠️ Cảnh báo quan trọng</p>
+                  <p className="text-xs text-red-300 leading-relaxed">
+                    Đây là quyết định <b>không thể hoàn tác</b>. Sau khi chuyển quyền, bạn sẽ trở thành phó nhóm và không thể lấy lại quyền trưởng nhóm trừ khi người mới chuyển lại cho bạn.
+                  </p>
+                </div>
+                <p className="text-xs text-gray-400 text-center mb-4">
+                  Bạn có chắc chắn muốn chuyển quyền trưởng nhóm cho <b className="text-white">{selectedNewOwner.name}</b>?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setTransferStep('select'); setSelectedNewOwner(null); }}
+                    className="flex-1 py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                  >
+                    Quay lại
+                  </button>
+                  <button
+                    onClick={handleTransferOwner}
+                    className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-sm text-white font-bold transition-colors"
+                  >
+                    Xác nhận chuyển
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Admin Panel — main view */}
+            {showAdminPanel && !showAddAdminModal && !showTransferOwnerModal && (
               <div className="text-white">
+                {/* Owner */}
+                {groupInfo.members.filter(m => m.role === 'owner').map(m => (
+                  <div key={m.userID} className="flex items-center gap-3 px-4 py-3 border-b border-gray-700">
+                    <img
+                      src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                      alt={m.name}
+                      className="w-11 h-11 rounded-full object-cover shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
+                      <p className="text-xs text-gray-400">Trưởng nhóm</p>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Admins */}
+                {groupInfo.members.filter(m => m.role === 'admin').map(m => (
+                  <div key={m.userID} className="flex items-center gap-3 px-4 py-3 border-b border-gray-700">
+                    <img
+                      src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                      alt={m.name}
+                      className="w-11 h-11 rounded-full object-cover shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
+                      <p className="text-xs text-gray-400">Phó nhóm</p>
+                    </div>
+                    {isOwner && (
+                      <button
+                        onClick={() => handleDemoteAdmin(m)}
+                        className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-medium transition-colors shrink-0"
+                      >
+                        Xóa
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {/* Action buttons */}
+                {isOwner && (
+                  <div className="px-4 py-3 space-y-2 mt-1">
+                    <button
+                      onClick={() => { setShowAddAdminModal(true); setAdminSearchQuery(''); }}
+                      className="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                    >
+                      Thêm phó nhóm
+                    </button>
+                    <button
+                      onClick={() => setShowTransferOwnerModal(true)}
+                      className="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                    >
+                      Chuyển quyền trưởng nhóm
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Add Admin Sub-view */}
+            {showAdminPanel && showAddAdminModal && (
+              <div className="flex flex-col h-full text-white">
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                    <input
+                      type="text"
+                      value={adminSearchQuery}
+                      onChange={(e) => setAdminSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm thành viên"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto px-4 py-2">
+                  {groupInfo.members
+                    .filter(m => m.role === 'member' && m.userID !== currentUserID &&
+                      (!adminSearchQuery || m.name?.toLowerCase().includes(adminSearchQuery.toLowerCase())))
+                    .map(m => (
+                      <div key={m.userID} className="flex items-center gap-3 py-2.5 border-b border-gray-700/50">
+                        <img
+                          src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                          alt={m.name}
+                          className="w-10 h-10 rounded-full object-cover shrink-0"
+                        />
+                        <span className="flex-1 text-sm text-white font-medium truncate">{m.name || m.userID}</span>
+                        <button
+                          onClick={() => handlePromoteAdmin(m)}
+                          className="px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold transition-colors shrink-0"
+                        >
+                          Thêm
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Block Panel */}
+            {!showAddBlockModal && showBlockPanel && (              <div className="text-white">
                 {/* Mô tả */}
                 <div className="px-4 py-4 border-b border-gray-700">
                   <p className="text-sm text-gray-400 leading-relaxed">
@@ -560,7 +810,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 </div>
               </div>
             )}
-            {!showBlockPanel && tab === 'settings' && (
+            {!showBlockPanel && !showAdminPanel && tab === 'settings' && (
               <div className="text-white">
                 {/* Thông báo chỉ dành cho quản trị viên */}
                 {!isOwner && !isAdmin && (
@@ -766,6 +1016,17 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                   </button>
                 )}
 
+                {/* Trưởng & phó nhóm */}
+                {(isOwner || isAdmin) && (
+                  <button
+                    onClick={() => setShowAdminPanel(true)}
+                    className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-700/50 transition-colors border-b border-gray-700"
+                  >
+                    <FaKey className="text-white text-lg" />
+                    <span className="text-sm text-white">Trưởng & phó nhóm</span>
+                  </button>
+                )}
+
                 {/* Giải tán nhóm - chỉ hiện với owner */}
                 {isOwner && onDeleteGroup && (
                   <button
@@ -779,7 +1040,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
               </div>
             )}
 
-            {!showBlockPanel && tab === 'members' && (
+            {!showBlockPanel && !showAdminPanel && tab === 'members' && (
               <div className="p-4 space-y-4">
                 {/* Search */}
                 <div className="relative">
@@ -953,7 +1214,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
             show={showConfirmTransferOwner}
             title="Chuyển quyền trưởng nhóm"
             message={`Bạn có chắc muốn chuyển quyền trưởng nhóm cho ${selectedMember.name || 'thành viên này'}? Bạn sẽ trở thành phó nhóm.`}
-            onConfirm={() => handleTransferOwner(selectedMember)}
+            onConfirm={() => handleTransferOwnerOld(selectedMember)}
             onCancel={() => {
               setShowConfirmTransferOwner(false);
               setSelectedMember(null);
@@ -978,6 +1239,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
         isDanger
         confirmText="Giải tán nhóm"
       />
+
     </>
   );
 };
