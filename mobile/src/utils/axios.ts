@@ -1,4 +1,5 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from './config';
 
 const axiosInstance = axios.create({
@@ -7,10 +8,14 @@ const axiosInstance = axios.create({
 
 // Request interceptor để tự động thêm token
 axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = sessionStorage?.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.error('Error getting token:', error);
     }
     return config;
   },
@@ -20,9 +25,13 @@ axiosInstance.interceptors.request.use(
 // Response interceptor để xử lý errors
 axiosInstance.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      sessionStorage?.clear();
+      try {
+        await AsyncStorage.clear();
+      } catch (e) {
+        console.error('Error clearing storage:', e);
+      }
     }
     return Promise.reject(error);
   }
