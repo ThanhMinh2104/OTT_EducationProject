@@ -1415,6 +1415,17 @@ router.post('/groups/:groupID/notes', authMiddleware, async (req: AuthRequest, r
       return;
     }
 
+    // Kiểm tra quyền createNotes
+    const isOwnerOrAdmin = ['owner', 'admin'].includes(member.role);
+    if (!isOwnerOrAdmin) {
+      const group = await Group.findOne({ groupID });
+      const canCreateNotes = group?.settings?.memberPermissions?.createNotes ?? true;
+      if (!canCreateNotes) {
+        res.status(403).json({ message: 'Bạn không có quyền tạo ghi chú trong nhóm này' });
+        return;
+      }
+    }
+
     if (!content?.trim()) {
       res.status(400).json({ message: 'Nội dung ghi chú không được để trống' });
       return;
@@ -1461,7 +1472,20 @@ router.put('/groups/:groupID/notes/:noteID', authMiddleware, async (req: AuthReq
       return;
     }
 
-    if (note.creatorID !== userID) {
+    const member = await GroupMember.findOne({ groupID, userID });
+    const isOwnerOrAdmin = member && ['owner', 'admin'].includes(member.role);
+
+    // Kiểm tra quyền createNotes (dùng chung cho cả tạo và sửa)
+    if (!isOwnerOrAdmin) {
+      const group = await Group.findOne({ groupID });
+      const canCreateNotes = group?.settings?.memberPermissions?.createNotes ?? true;
+      if (!canCreateNotes) {
+        res.status(403).json({ message: 'Bạn không có quyền chỉnh sửa ghi chú trong nhóm này' });
+        return;
+      }
+    }
+
+    if (note.creatorID !== userID && !isOwnerOrAdmin) {
       res.status(403).json({ message: 'Bạn không có quyền chỉnh sửa ghi chú này' });
       return;
     }

@@ -61,6 +61,7 @@ interface GroupBoardModalProps {
   userID: string;
   onViewMessage?: (messageID: string) => void;
   onPinLimitReached?: (noteID: string) => void;
+  canCreateNotes?: boolean;
 }
 
 type TabType = 'all' | 'pinned' | 'notes' | 'polls';
@@ -73,6 +74,7 @@ const GroupBoardModal = ({
   userID,
   onViewMessage,
   onPinLimitReached,
+  canCreateNotes = true,
 }: GroupBoardModalProps) => {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -537,11 +539,20 @@ const GroupBoardModal = ({
                   </div>
                   
                   {/* Create Note Button at bottom */}
+                  {canCreateNotes ? (
                   <div className="sticky bottom-0 left-0 right-0 p-4 bg-linear-to-t from-[#1a1a1a] via-[#1a1a1a]/80 to-transparent z-10">
                     <button className="w-full py-3.5 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all shadow-[0_4px_12px_rgba(0,132,255,0.3)] hover:bg-[#0073e6] hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,132,255,0.4)]" onClick={handleCreateNote}>
                       Tạo ghi chú
                     </button>
                   </div>
+                  ) : (
+                  <div className="sticky bottom-0 left-0 right-0 p-4 bg-linear-to-t from-[#1a1a1a] via-[#1a1a1a]/80 to-transparent z-10">
+                    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a]">
+                      <span className="text-base">🔒</span>
+                      <span className="text-sm text-[#999]">Chỉ trưởng nhóm và phó nhóm mới có thể tạo ghi chú</span>
+                    </div>
+                  </div>
+                  )}
                 </div>
               )}
 
@@ -777,7 +788,7 @@ const GroupBoardModal = ({
                   </div>
                 </div>
                 
-                {selectedNote.creatorID === userID && (
+                {selectedNote.creatorID === userID && canCreateNotes && (
                   <button 
                     className="px-4 py-2 bg-transparent border border-[#0084ff] rounded-md text-[#0084ff] text-[13px] font-medium cursor-pointer transition-all hover:bg-[#0084ff]/10"
                     onClick={() => handleEditNote(selectedNote)}
