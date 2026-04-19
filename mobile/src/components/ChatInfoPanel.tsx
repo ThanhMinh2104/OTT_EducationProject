@@ -18,6 +18,7 @@ import ImageViewer from './ImageViewer';
 import VideoViewer from './VideoViewer';
 import { downloadAndOpenFile } from '../utils/fileDownload';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GroupBoardModal } from './GroupBoardModal';
 
 const { width } = Dimensions.get('window');
 
@@ -64,12 +65,14 @@ interface Props {
 
 type Tab = 'media' | 'files' | 'links';
 
-const formatDate = (ts: string) =>
-  new Date(ts).toLocaleDateString('vi-VN', {
+const formatDate = (ts: string | Date) => {
+  const date = typeof ts === 'string' ? new Date(ts) : ts;
+  return date.toLocaleDateString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
+};
 
 const getFileExt = (name: string) => (name.split('.').pop() || '').toUpperCase();
 const getFileColor = (name: string) => {
@@ -103,6 +106,8 @@ const ChatInfoPanel = ({
   const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
   const [friendStatus, setFriendStatus] = useState<string>('none');
+  const [showGroupBoard, setShowGroupBoard] = useState(false);
+  const [currentUserID, setCurrentUserID] = useState<string>('');
 
   // Fetch friend status khi mở panel
   React.useEffect(() => {
@@ -122,6 +127,19 @@ const ChatInfoPanel = ({
       fetchStatus();
     }
   }, [visible, chat.type, memberInfo?.userID]);
+
+  // Fetch current user ID
+  React.useEffect(() => {
+    const fetchUserID = async () => {
+      try {
+        const userID = await AsyncStorage.getItem('userID');
+        if (userID) setCurrentUserID(userID);
+      } catch (error) {
+        console.error('Error fetching userID:', error);
+      }
+    };
+    fetchUserID();
+  }, []);
 
   // Extract media from messages
   const mediaImages = messages
@@ -160,7 +178,7 @@ const ChatInfoPanel = ({
     .map((m) => ({
       url: m.content || '',
       timestamp: m.timestamp,
-      id: m.messageID || m.timestamp,
+      id: m.messageID || (typeof m.timestamp === 'string' ? m.timestamp : m.timestamp.toISOString()),
     }));
 
   const allImageUrls = mediaImages.map((i) => i.url);
@@ -303,6 +321,23 @@ const ChatInfoPanel = ({
               </Text>
             </View>
           </View>
+
+          {/* Bảng tin nhóm - Only for group chats */}
+          {chat.type === 'group' && (
+            <View style={styles.boardSection}>
+              <Text style={styles.boardSectionTitle}>Bảng tin nhóm</Text>
+              <TouchableOpacity
+                style={styles.boardButton}
+                onPress={() => setShowGroupBoard(true)}
+              >
+                <View style={styles.boardButtonIcon}>
+                  <Ionicons name="document-text-outline" size={20} color="#0068ff" />
+                </View>
+                <Text style={styles.boardButtonText}>Ghi chú, ghim, bình chọn</Text>
+                <Ionicons name="chevron-forward" size={20} color="#999" />
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Tabs */}
           <View style={styles.tabs}>
@@ -625,6 +660,16 @@ const ChatInfoPanel = ({
             </View>
           </View>
         </Modal>
+
+        {/* Group Board Modal */}
+        {chat.type === 'group' && (
+          <GroupBoardModal
+            visible={showGroupBoard}
+            onClose={() => setShowGroupBoard(false)}
+            groupID={chat.chatID}
+            userID={currentUserID}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -720,6 +765,41 @@ const styles = StyleSheet.create({
   },
   statusBadgeTextOffline: {
     color: '#888',
+  },
+  boardSection: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e0e0e0',
+  },
+  boardSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+    marginBottom: 12,
+  },
+  boardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    gap: 12,
+  },
+  boardButtonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#e3f2fd',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  boardButtonText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111',
   },
   tabs: {
     flexDirection: 'row',

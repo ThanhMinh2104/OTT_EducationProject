@@ -10,6 +10,7 @@ import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
 import EditGroupInfoModal from './EditGroupInfoModal';
+import GroupBoardModal from './GroupBoardModal';
 import './GroupInfoPanel.css';
 
 interface GroupMember {
@@ -67,8 +68,10 @@ interface Props {
   onClose: () => void;
   onAddMembers: () => void;
   onManageGroup: () => void;
+  onViewMessage?: (messageID: string) => void;
   onLeaveGroup: () => void;
   onDeleteGroup?: () => void;
+  onPinLimitReached?: (noteID: string) => void;
 }
 
 type Tab = 'reminders' | 'notes' | 'media' | 'files' | 'links';
@@ -159,8 +162,10 @@ const GroupInfoPanel = ({
   onClose,
   onAddMembers,
   onManageGroup,
+  onViewMessage,
   onLeaveGroup,
   onDeleteGroup,
+  onPinLimitReached,
 }: Props) => {
   const [tab, setTab] = useState<Tab>('media');
   const [viewerUrls, setViewerUrls] = useState<string[] | null>(null);
@@ -172,6 +177,7 @@ const GroupInfoPanel = ({
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showGroupBoard, setShowGroupBoard] = useState(false);
 
   const currentMember = groupInfo.members.find(m => m.userID === currentUserID);
   const isOwner = currentMember?.role === 'owner';
@@ -383,7 +389,7 @@ const GroupInfoPanel = ({
                     Danh sách nhắc hẹn
                   </button>
                   <button
-                    onClick={() => setTab('notes')}
+                    onClick={() => setShowGroupBoard(true)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
                       tab === 'notes' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50'
                     }`}
@@ -590,6 +596,16 @@ const GroupInfoPanel = ({
           }}
         />
       )}
+
+      {/* Group Board Modal */}
+      <GroupBoardModal
+        show={showGroupBoard}
+        onClose={() => setShowGroupBoard(false)}
+        groupID={groupInfo.groupID}
+        userID={currentUserID}
+        onViewMessage={onViewMessage}
+        onPinLimitReached={onPinLimitReached}
+      />
     </>
   );
 };
