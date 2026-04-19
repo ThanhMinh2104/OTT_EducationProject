@@ -517,22 +517,26 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   }, [groupID]);
 
   const handleNewMessage = useCallback((message: Message) => {
-    console.log('📨 Web received new_group_message:', {
-      messageID: message.messageID,
-      groupID: message.groupID,
-      content: message.content,
-      senderID: message.senderID,
+    if (message.groupID !== groupID) return;
+
+    setMessages((prev) => {
+      // Kiểm tra đã tồn tại chưa (theo messageID thật)
+      const exists = prev.some(msg =>
+        msg.messageID === message.messageID && !msg.messageID.startsWith('temp_')
+      );
+      if (exists) return prev;
+
+      // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn
+      // Tin nhắn đã được thêm và xác nhận qua callback socket.emit('send_group_message')
+      // Việc bỏ qua ở đây ngăn chặn 100% tình trạng duplicate tin nhắn do Race Condition
+      if (message.senderID === userID) {
+        return prev;
+      }
+
+      // Tin nhắn người khác → thêm bình thường
+      return [...prev, message];
     });
-    console.log('🔍 Current groupID:', groupID);
-    console.log('🔍 Match:', message.groupID === groupID);
-    
-    if (message.groupID === groupID) {
-      console.log('✅ Adding message to web');
-      setMessages((prev) => [...prev, message]);
-    } else {
-      console.log('❌ GroupID mismatch, not adding message');
-    }
-  }, [groupID]);
+  }, [groupID, userID]);
 
   const handleTypingStart = useCallback((data: { groupID: string; userID: string; userName: string }) => {
     if (data.groupID === groupID && data.userID !== userID) {
@@ -690,56 +694,90 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (!inputText.trim()) return;
-
+  const dispatchGroupMessageContent = (
+    msgData: { content: string, type: Message['type'], media_url: string[], groupId?: string },
+    currentReplyTo?: typeof replyTo
+  ) => {
     if (!socketConnected) {
       toast.error('Không có kết nối socket. Vui lòng tải lại trang.');
       return;
     }
 
-    console.log('🚀 Sending group message:', {
+    const tempMessageID = `temp_${Date.now()}_${Math.random()}`;
+    const currentUserInfo = members.find(m => m.userID === userID);
+    const optimisticMessage: Message = {
+      messageID: tempMessageID,
       groupID,
-      userID,
-      content: inputText,
-      socketConnected: socket.connected,
-      socketRooms: Array.from((socket as any).rooms || []),
-    });
+      senderID: userID,
+      content: msgData.content,
+      type: msgData.type,
+      media_url: msgData.media_url,
+      groupId: msgData.groupId,
+      timestamp: new Date(),
+      status: 'sent',
+      replyTo: currentReplyTo
+        ? {
+            messageID: currentReplyTo.messageID,
+            senderID: currentReplyTo.senderID,
+            content: currentReplyTo.content,
+            type: currentReplyTo.type,
+          }
+        : undefined,
+      senderInfo: {
+        name: currentUserInfo?.name || 'Bạn',
+        avatar: currentUserInfo?.avatar,
+      },
+    };
+
+    setMessages((prev) => [...prev, optimisticMessage]);
 
     const message = {
       groupID,
       senderID: userID,
-      content: inputText,
-      type: 'text',
-      media_url: [],
-      replyTo: replyTo
+      content: msgData.content,
+      type: msgData.type,
+      media_url: msgData.media_url,
+      groupId: msgData.groupId,
+      replyTo: currentReplyTo
         ? {
-            messageID: replyTo.messageID,
-            senderID: replyTo.senderID,
-            content: replyTo.content,
-            type: replyTo.type,
+            messageID: currentReplyTo.messageID,
+            senderID: currentReplyTo.senderID,
+            content: currentReplyTo.content,
+            type: currentReplyTo.type,
           }
         : undefined,
     };
 
     socket.emit('send_group_message', message, (response: any) => {
       if (response?.error) {
-        console.error('❌ Send message error:', response.error);
         toast.error(response.error);
-      } else {
-        console.log('✅ Message sent successfully');
+        setMessages((prev) => prev.filter(msg => msg.messageID !== tempMessageID));
+      } else if (response?.success && response?.message) {
+        const realMessage: Message = response.message;
+        setMessages((prev) => {
+          const withoutTemp = prev.filter(msg => msg.messageID !== tempMessageID);
+          const alreadyExists = withoutTemp.some(msg => msg.messageID === realMessage.messageID);
+          return alreadyExists ? withoutTemp : [...withoutTemp, realMessage];
+        });
       }
     });
-    
-    console.log('✅ Message emitted via socket');
-    
-    setInputText('');
-    setReplyTo(null);
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
     socket.emit('group_typing_stop', { groupID, userID });
+  };
+
+  const handleSendMessage = () => {
+    if (!inputText.trim()) return;
+
+    const messageContent = inputText.trim();
+    const currentReplyTo = replyTo;
+    
+    setInputText('');
+    setReplyTo(null);
+
+    dispatchGroupMessageContent({ content: messageContent, type: 'text', media_url: [] }, currentReplyTo);
   };
 
   const sendEmoji = (emojiData: EmojiClickData) => {
@@ -749,27 +787,13 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   };
 
   const sendSticker = async (stickerUrl: string) => {
-    const message = {
-      groupID,
-      senderID: userID,
-      content: '',
-      type: 'sticker',
-      media_url: [stickerUrl],
-    };
-    socket.emit('send_group_message', message);
+    dispatchGroupMessageContent({ content: '', type: 'sticker', media_url: [stickerUrl] }, replyTo || undefined);
     setShowEmoji(false);
     setReplyTo(null);
   };
 
   const sendGif = async (gifUrl: string) => {
-    const message = {
-      groupID,
-      senderID: userID,
-      content: '',
-      type: 'gif',
-      media_url: [gifUrl],
-    };
-    socket.emit('send_group_message', message);
+    dispatchGroupMessageContent({ content: '', type: 'gif', media_url: [gifUrl] }, replyTo || undefined);
     setShowEmoji(false);
     setReplyTo(null);
   };
@@ -808,34 +832,25 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         const groupId = type === 'image' && data.urls.length > 1 
           ? `img_group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
           : undefined;
-
         if (type === 'image' || type === 'video') {
           for (let i = 0; i < data.urls.length; i++) {
-            const url = data.urls[i];
-            const message = {
-              groupID,
-              senderID: userID,
+            dispatchGroupMessageContent({
               content: '',
-              type,
-              media_url: [url],
+              type: type as any,
+              media_url: [data.urls[i]],
               groupId, // Thêm groupId để gom nhóm ảnh
-            };
-            socket.emit('send_group_message', message);
+            }, replyTo || undefined);
             if (i < data.urls.length - 1) {
               await new Promise(resolve => setTimeout(resolve, 100));
             }
           }
         } else {
           for (let i = 0; i < files.length; i++) {
-            const f = files[i];
-            const message = {
-              groupID,
-              senderID: userID,
-              content: f.name,
+            dispatchGroupMessageContent({
+              content: files[i].name,
               type: 'file',
               media_url: [data.urls[i]],
-            };
-            socket.emit('send_group_message', message);
+            }, replyTo || undefined);
             if (i < files.length - 1) {
               await new Promise(resolve => setTimeout(resolve, 100));
             }
@@ -909,14 +924,11 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         throw new Error(data.error || 'Upload failed');
       }
 
-      const message = {
-        groupID,
-        senderID: userID,
+      dispatchGroupMessageContent({
         content: '',
         type: 'audio',
         media_url: [data.url],
-      };
-      socket.emit('send_group_message', message);
+      }, replyTo || undefined);
       setAudioBlob(null);
       setRecordingTime(0);
       setReplyTo(null);
@@ -1129,21 +1141,37 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       formData.append('file', file);
 
       try {
-        const response = await axiosInstance.post('/upload', formData, {
+        // Xác định loại file
+        let uploadEndpoint = '/upload';
+        let messageType: 'image' | 'video' | 'audio' | 'file' = 'file';
+        
+        if (file.type.startsWith('image/')) {
+          messageType = 'image';
+        } else if (file.type.startsWith('video/')) {
+          messageType = 'video';
+        } else if (file.type.startsWith('audio/')) {
+          messageType = 'audio';
+          uploadEndpoint = '/upload/audio';
+        }
+
+        const response = await axiosInstance.post(uploadEndpoint, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
 
-        const message = {
-          groupID,
-          senderID: userID,
-          content: file.name,
-          type: file.type.startsWith('image/') ? 'image' : 'file',
-          media_url: [response.data.url],
-        };
+        // Sử dụng dispatchGroupMessageContent để đảm bảo tin nhắn được xử lý đúng
+        dispatchGroupMessageContent({
+          content: messageType === 'file' ? file.name : '',
+          type: messageType,
+          media_url: [response.data.url || response.data.urls?.[0]],
+        }, replyTo || undefined);
 
-        socket.emit('send_group_message', message);
+        // Clear reply sau khi gửi
+        if (i === files.length - 1) {
+          setReplyTo(null);
+        }
       } catch (error) {
         console.error('Error uploading file:', error);
+        toast.error('Không thể tải file lên');
       }
     }
 
