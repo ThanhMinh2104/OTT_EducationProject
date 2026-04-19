@@ -70,7 +70,7 @@ Hãy phân tích và trả về JSON thuần túy, không có ký tự thừa.`;
 
     // Sử dụng gemini-flash-latest (stable và ít bị quá tải)
     const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
-    
+
     const result = await model.generateContent(systemPrompt);
     const response = await result.response;
     const text = response.text().trim();
@@ -85,7 +85,7 @@ Hãy phân tích và trả về JSON thuần túy, không có ký tự thừa.`;
 
     // Parse JSON
     const botResponse: BotResponse = JSON.parse(cleanText);
-    
+
     // Validate intent
     if (!['summary', 'icebreaker', 'chat', 'error'].includes(botResponse.intent)) {
       throw new Error('Invalid intent from bot');
@@ -94,14 +94,14 @@ Hãy phân tích và trả về JSON thuần túy, không có ký tự thừa.`;
     return botResponse;
   } catch (error: any) {
     console.error('❌ Bot processing error:', error);
-    
+
     // Log chi tiết để debug
     if (error.status === 404) {
       console.error('Model not found. Available models: gemini-1.5-flash-latest, gemini-1.5-pro-latest');
     } else if (error.message?.includes('API key')) {
       console.error('Invalid API key. Please check GEMINI_API_KEY in .env');
     }
-    
+
     return {
       intent: 'error',
       content: 'Xin lỗi, bot đang bận. Vui lòng thử lại sau! 🤖',
@@ -175,15 +175,16 @@ export async function getChatHistory(chatID: string, limit: number = 50): Promis
  */
 export function isBotMention(message: string): boolean {
   const lowerMessage = message.toLowerCase().trim();
-  
-  // Các pattern gọi bot
+
+  // Các pattern gọi bot (vòng lặp đã được ngăn bởi check senderID !== 'bot' trong messageEvents)
   const botPatterns = [
     '@bot',
     '/bot',
-    'bot ',
     'hey bot',
     'hi bot',
     'hello bot',
+    'xin chào bot',
+    'bot ơi',
   ];
 
   return botPatterns.some(pattern => lowerMessage.includes(pattern));

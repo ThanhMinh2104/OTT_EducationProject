@@ -18,11 +18,9 @@ import {
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
-import { io, Socket } from 'socket.io-client';
+import socket from '../utils/socket';
 import OtherProfileModal from './OtherProfileModal';
 import BlockedUsersPanel from './BlockedUsersPanel';
-
-const socket: Socket = io('http://localhost:5000');
 
 interface Friend {
   userID: string;
@@ -245,10 +243,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
       await axiosInstance.post('/contacts/unfriend', { friendID: userToUnfriend.userID });
       toast.success(`Đã hủy kết bạn với ${userToUnfriend.name}`);
       setFriends(prev => prev.filter(f => f.userID !== userToUnfriend.userID));
-      socket.emit('friend_unfriended', {
-        userID: String(user?.userID),
-        friendID: String(userToUnfriend.userID)
-      });
+      // Backend sẽ emit friend_unfriended, client chỉ cần đóng modal và state local sẽ update qua socket listener
       setUserToUnfriend(null);
     } catch {
       toast.error('Có lỗi xảy ra khi hủy kết bạn');
@@ -330,7 +325,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
         >
           Lời mời
           {pendingCount > 0 && (
-            <span className="absolute top-2 right-6 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center border-2 border-white">
+            <span className="absolute top-1.5 right-2.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-1 border-2 border-white shadow-sm">
               {pendingCount}
             </span>
           )}
@@ -401,7 +396,7 @@ const ContactsPanel = ({ user, onStartChat }: Props) => {
                         </button>
 
                         {activeFriendMenu === friend.userID && (
-                          <div 
+                          <div
                             className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-gray-100 z-[100] py-1.5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
                             onClick={(e) => e.stopPropagation()}
                           >

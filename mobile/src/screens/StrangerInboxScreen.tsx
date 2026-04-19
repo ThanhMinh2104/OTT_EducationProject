@@ -26,6 +26,7 @@ interface Chat {
 }
 
 import { StackScreenProps } from '@react-navigation/stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Props = StackScreenProps<RootStackParamList, 'StrangerInbox'>;
 

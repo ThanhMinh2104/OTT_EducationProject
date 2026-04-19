@@ -145,6 +145,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [showChatInfo, setShowChatInfo] = useState(false);
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
 
+  // States cho Mention (@)
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentions, setMentions] = useState<string[]>([]);
+
   // Pinned messages states
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
@@ -182,7 +187,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  
+
   // Friend Profile States
   const [strangerChats, setStrangerChats] = useState<Chat[]>([]);
   const [showStrangerInbox, setShowStrangerInbox] = useState(false);
@@ -454,6 +459,33 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     }
   }, [initialChat, user]);
 
+  // Socket listener cho Mention
+  useEffect(() => {
+    if (!user) return;
+
+    const onUserMentioned = (data: any) => {
+      console.log('🔔 Mobile Received user_mentioned:', data);
+      if (selectedChat?.chatID === data.groupID) {
+        Alert.alert('Nhắc tên', `${data.mentionerName} đã nhắc tên bạn trong nhóm`);
+      }
+    };
+
+    const onGroupMentionAll = (data: any) => {
+      console.log('🔔 Mobile Received group_mention_all:', data);
+      if (selectedChat?.chatID === data.groupID && data.mentionerID !== user.userID) {
+        Alert.alert('Nhắc tên cả nhóm', `${data.mentionerName} đã nhắc tên tất cả mọi người`);
+      }
+    };
+
+    socket.on('user_mentioned', onUserMentioned);
+    socket.on('group_mention_all', onGroupMentionAll);
+
+    return () => {
+      socket.off('user_mentioned', onUserMentioned);
+      socket.off('group_mention_all', onGroupMentionAll);
+    };
+  }, [selectedChat?.chatID, user?.userID]);
+
   const fetchMember = async (memberID: string) => {
     if (memberCache[memberID]) return;
     try {
@@ -581,6 +613,49 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     } catch (err) {
       console.error("Failed to cancel friend request", err);
     }
+  };
+  const handleUserProfileById = async (targetUserID: string) => {
+    if (targetUserID === 'bot') {
+      setOtherProfile({
+        userID: 'bot',
+        name: 'AI Bot',
+        sdt: '1900-BOT',
+        anhDaiDien: 'https://res.cloudinary.com/dgqppqcbd/image/upload/v1727405200/ai-bot-avatar.png',
+        anhBia: 'https://res.cloudinary.com/ddu7vms87/image/upload/v1740316684/p79itfnd9o7atd62269y.jpg',
+        ngaysinh: new Date().toISOString(),
+        gioTinh: 'AI',
+        trangThai: 'online',
+        friendStatus: 'none',
+      });
+      return;
+    }
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const [userRes, statusRes] = await Promise.all([
+        fetch(`${API_URL}/api/usersID`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ userID: targetUserID }),
+        }),
+        fetch(`${API_URL}/api/contacts/friend-status/${targetUserID}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      const userData = await userRes.json();
+      const statusData = await statusRes.json();
+      setOtherProfile({
+        userID: userData.userID,
+        name: userData.name,
+        sdt: userData.sdt,
+        anhDaiDien: userData.anhDaiDien,
+        anhBia: userData.anhBia,
+        ngaysinh: userData.ngaysinh,
+        gioTinh: userData.gioTinh,
+        trangThai: userData.trangThai,
+        friendStatus: statusData.friendStatus || 'none',
+      });
+    } catch { /* ignore */ }
   };
 
   const openOtherProfile = async (chat: Chat) => {
@@ -725,19 +800,19 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       // Cập nhật messages trong chat window
       setMessages(prev => {
         // Kiểm tra xem tin nhắn đã tồn tại chưa (theo messageID hoặc tempID)
-        const existingIndex = prev.findIndex(m => 
-          m.messageID === msg.messageID || 
+        const existingIndex = prev.findIndex(m =>
+          m.messageID === msg.messageID ||
           (msg.tempID && m.tempID === msg.tempID) ||
           (m.tempID && m.tempID === msg.tempID)
         );
-        
+
         if (existingIndex !== -1) {
           // Tin nhắn đã tồn tại → update thay vì thêm mới
-          return prev.map((m, idx) => 
+          return prev.map((m, idx) =>
             idx === existingIndex ? { ...m, ...msg, tempID: undefined } : m
           );
         }
-        
+
         // Tin nhắn mới → thêm vào cuối
         return [...prev, msg];
       });
@@ -929,18 +1004,25 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     setIsLoadingMore(false);
     onChatOpen?.();
 
-    // Friend status (non-blocking)
-    if (chat.type === 'private' && user) {
-      const otherId = chat.members.find((m) => m.userID !== user.userID)?.userID;
-      if (otherId) {
-        fetchMember(otherId);
-        AsyncStorage.getItem('token').then(token => {
-          if (!token) return;
-          fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }).then(r => r.json()).then(data => {
-            setCurrentFriendStatus(data.friendStatus || 'none');
-          }).catch(() => setCurrentFriendStatus('none'));
+    // Fetch member info và friend status
+    if (user) {
+      if (chat.type === 'private') {
+        const otherId = chat.members.find((m) => m.userID !== user.userID)?.userID;
+        if (otherId) {
+          fetchMember(otherId);
+          AsyncStorage.getItem('token').then(token => {
+            if (!token) return;
+            fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }).then(r => r.json()).then(data => {
+              setCurrentFriendStatus(data.friendStatus || 'none');
+            }).catch(() => setCurrentFriendStatus('none'));
+          });
+        }
+      } else if (chat.type === 'group') {
+        // Fetch thông tin tất cả thành viên trong nhóm để hiển thị tên khi mention
+        chat.members.forEach((m) => {
+          if (m.userID !== user.userID) fetchMember(m.userID);
         });
       }
     }
@@ -1042,7 +1124,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       setIsLoadingMore(true);
       const token = await AsyncStorage.getItem('token');
       const nextPage = page + 1;
-      let newMessages = [];
+      let newMessages: Message[] = [];
       let hasMoreData = false;
 
       if (selectedChat.type === 'group') {
@@ -1051,8 +1133,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         });
         const data = await res.json();
         if (data.messages) {
-           newMessages = data.messages.map((m: any) => ({...m, chatID: m.groupID || selectedChat.chatID}));
-           hasMoreData = (data.page * 50 < data.total);
+          newMessages = data.messages.map((m: any) => ({ ...m, chatID: m.groupID || selectedChat.chatID }));
+          hasMoreData = (data.page * 50 < data.total);
         }
       } else {
         const res = await fetch(`${API_URL}/api/messages/id`, {
@@ -1067,11 +1149,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
       if (newMessages.length > 0) {
         setMessages(prev => {
-          const seen = new Set(prev.map(m => m.messageID || m.tempID));
+          const seen = new Set(prev.map((m: any) => m.messageID || m.tempID));
           const filtered = newMessages.filter(m => {
-             const k = m.messageID || m.tempID;
-             if (seen.has(k)) return false;
-             seen.add(k); return true;
+            const k = m.messageID || m.tempID;
+            if (seen.has(k)) return false;
+            seen.add(k); return true;
           });
           return [...filtered, ...prev]; // Prepend tin nhắn cũ lên đầu
         });
@@ -1093,6 +1175,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     status: 'sent',
     senderInfo: { name: user!.name, avatar: user!.anhDaiDien || null },
     replyTo: replyTo ? { messageID: replyTo.messageID, senderID: replyTo.senderID, content: replyTo.content, type: replyTo.type } : null,
+    mentions: mentions, // Gửi danh sách tag
     ...extra,
   } as Message);
 
@@ -1196,6 +1279,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     const capturedReplyTo = replyTo;
     setInputText('');
     setReplyTo(null);
+    setMentions([]); // Reset tag sau khi gửi
 
     dispatchMessageContent({ content, type: 'text', media_url: [] }, capturedReplyTo);
   };
@@ -1203,11 +1287,45 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const handleInputChange = (value: string) => {
     setInputText(value);
     if (!selectedChat || !user) return;
+
+    // Logic phát hiện Mention cho Mobile
+    if (selectedChat.type === 'group') {
+      const atIndex = value.lastIndexOf('@');
+      // Kiểm tra xem ký tự @ có ở đầu hoặc sau khoảng trắng không
+      if (atIndex !== -1 && (atIndex === 0 || value[atIndex - 1] === ' ')) {
+        const query = value.substring(atIndex + 1);
+        if (!query.includes(' ')) {
+          setMentionSearch(query);
+          setShowMentionDropdown(true);
+        } else {
+          setShowMentionDropdown(false);
+        }
+      } else {
+        setShowMentionDropdown(false);
+      }
+    }
+
     socket.emit('typing_start', { chatID: selectedChat.chatID, userID: user.userID, userName: user.name });
     if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
     typingDebounceRef.current = setTimeout(() => {
       socket.emit('typing_stop', { chatID: selectedChat.chatID, userID: user.userID, userName: user.name });
     }, 2000);
+  };
+
+  const handleMentionSelect = (member: User | 'all') => {
+    const atIndex = inputText.lastIndexOf('@');
+    const textBeforeMention = inputText.substring(0, atIndex);
+
+    let mentionText = '';
+    if (member === 'all') {
+      mentionText = '@all ';
+    } else {
+      mentionText = `@${member.name} `;
+      setMentions(prev => [...new Set([...prev, member.userID])]);
+    }
+
+    setInputText(textBeforeMention + mentionText);
+    setShowMentionDropdown(false);
   };
 
   const handlePickImage = async () => {
@@ -1241,7 +1359,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const uploadFiles = async (files: { uri: string; type: string; name?: string }[]) => {
     if (!selectedChat || !user) return;
-    
+
     console.log('📤 uploadFiles called:', {
       fileCount: files.length,
       chatType: selectedChat.type,
@@ -1589,7 +1707,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const scrollToMessage = (messageID?: string) => {
     if (!messageID) return;
-    
+
     // ⭐ Tạo mảng grouped giống như trong FlatList
     const uniqueMessages = messages.filter((msg, idx, arr) =>
       arr.findIndex(m =>
@@ -1598,7 +1716,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       ) === idx
     );
     const groupedData = groupMessages(uniqueMessages);
-    
+
     // ⭐ Tìm index trong mảng grouped
     const index = groupedData.findIndex((item) => {
       if (isMessageGroup(item)) {
@@ -1607,7 +1725,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
       return item.messageID === messageID;
     });
-    
+
     if (index !== -1 && flatListRef.current) {
       flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
       setShowInfoPanel(false);
@@ -1847,9 +1965,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               </Text>
             </View>
           )}
-          <Text style={[styles.messageText, isMine ? styles.textMine : styles.textOther]}>
-            {item.content}
-          </Text>
+          {renderMentionedText(item.content || '', isMine, item.mentions)}
           <Text style={[styles.messageTime, isMine ? styles.timeMine : styles.timeOther]}>{timeStr}</Text>
         </View>
       );
@@ -1864,13 +1980,15 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       >
         {/* Avatar bên trái cho tin nhắn người khác */}
         {!isMine && (
-          <Image
-            source={{
-              uri: item.senderInfo?.avatar ||
-                `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.senderID}`,
-            }}
-            style={styles.msgAvatar}
-          />
+          <TouchableOpacity onPress={() => handleUserProfileById(item.senderID)}>
+            <Image
+              source={{
+                uri: item.senderInfo?.avatar ||
+                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.senderID}`,
+              }}
+              style={styles.msgAvatar}
+            />
+          </TouchableOpacity>
         )}
         <View style={[styles.msgContent, isMine ? styles.msgContentMine : styles.msgContentOther]}>
           {renderBubbleContent()}
@@ -1891,12 +2009,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       <View style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}>
         {/* Avatar bên trái cho tin nhắn người khác */}
         {!isMine && (
-          <Image
-            source={{
-              uri: firstMsg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${group.senderID}`,
-            }}
-            style={styles.msgAvatar}
-          />
+          <TouchableOpacity onPress={() => handleUserProfileById(group.senderID)}>
+            <Image
+              source={{
+                uri: firstMsg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${group.senderID}`,
+              }}
+              style={styles.msgAvatar}
+            />
+          </TouchableOpacity>
         )}
 
         <View style={[styles.msgContent, isMine ? styles.msgContentMine : styles.msgContentOther]}>
@@ -2188,9 +2308,78 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     openOtherProfile(selectedChat);
   };
 
-  // ===== CHAT WINDOW VIEW =====
+  const renderMentionedText = (content: string, isMine: boolean, messageMentions?: string[]) => {
+    if (!content) return null;
+    
+    // Kiểm tra xem có tag nào không
+    const lowerContent = content.toLowerCase();
+    const hasSpecial = ['@all', '@bot', '@gif', '@sticker'].some(s => lowerContent.includes(s));
+    const hasMentions = (messageMentions && messageMentions.length > 0) || hasSpecial;
+    
+    if (!hasMentions) {
+      return <Text style={[styles.messageText, isMine ? styles.textMine : styles.textOther]}>{content}</Text>;
+    }
+
+    // Lấy thông tin thành viên từ memberCache để có "name"
+    const sortedMembers = (selectedChat?.members || [])
+      .map(m => memberCache[m.userID])
+      .filter(u => !!u && !!u.name)
+      .sort((a, b) => b.name.length - a.name.length);
+    
+    const memberPatterns = sortedMembers.map(u => u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const allPatterns = `All|Bot|GIF|STICKER${memberPatterns ? '|' + memberPatterns : ''}`;
+    const regex = new RegExp(`(@(?:${allPatterns}))`, 'gi');
+    
+    const parts = content.split(regex);
+
+    return (
+      <Text style={[styles.messageText, isMine ? styles.textMine : styles.textOther]}>
+        {parts.map((part, index) => {
+          if (part.startsWith('@')) {
+            const candidate = part.substring(1).toLowerCase().trim();
+            const isAll = candidate === 'all';
+            
+            // Tìm member khớp từ cache
+            const mentionMember = sortedMembers.find(u => 
+              u.name.toLowerCase().trim() === candidate ||
+              (messageMentions && messageMentions.includes(u.userID) && u.name.toLowerCase().trim().includes(candidate))
+            );
+
+            const isValid = isAll || ['bot', 'gif', 'sticker'].includes(candidate) || !!mentionMember;
+
+            if (isValid) {
+              return (
+                <Text
+                  key={index}
+                  onPress={() => {
+                    if (mentionMember) {
+                      handleUserProfileById(mentionMember.userID);
+                    } else if (candidate === 'bot') {
+                      handleUserProfileById('bot');
+                    }
+                  }}
+                  style={{
+                    color: isMine ? '#fff' : '#0068ff',
+                    fontWeight: 'bold',
+                    textDecorationLine: mentionMember || candidate === 'bot' ? 'underline' : 'none'
+                  }}
+                >
+                  {part}
+                </Text>
+              );
+            }
+          }
+          return part;
+        })}
+      </Text>
+    );
+  };
+
+
+  // View chính của Chat Window
   return (
     <View style={styles.container}>
+      {/* ... (phần header cũ) ... */}
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity onPress={() => { setSelectedChat(null); onChatClose?.(); }} style={styles.backButton}>
@@ -2256,72 +2445,72 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       </View>
 
       {/* Stranger Banner — Chỉ hiện khi là người lạ/chờ */}
-      {selectedChat && selectedChat.type === 'private' && 
-       (currentFriendStatus === 'none' || currentFriendStatus === 'stranger' || currentFriendStatus === 'pending') && (
-        <View style={styles.strangerActionBanner}>
-          <View style={styles.strangerBannerLeft}>
-            <Ionicons name="people-outline" size={20} color="#666" style={{ marginRight: 8 }} />
-            <Text style={styles.strangerBannerTextMain}>
-              {currentFriendStatus === 'pending'
-                ? 'Bấm vào hồ sơ để xử lý lời mời'
-                : 'Gửi yêu cầu kết bạn tới người này'}
-            </Text>
-          </View>
-          {currentFriendStatus !== 'pending' && (
-            <TouchableOpacity
-              style={[styles.strangerAddFriendBtn, loading && { opacity: 0.5 }]}
-              disabled={loading}
-              onPress={async () => {
-                try {
-                  setLoading(true);
-                  const token = await AsyncStorage.getItem('token');
-                  const otherId = selectedChat.members.find(m => m.userID !== user?.userID)?.userID;
-                  if (!otherId) {
-                    setLoading(false);
-                    return;
-                  }
-
-                  // Lấy thông tin đầy đủ + friendStatus (giống openOtherProfile)
-                  const [userRes, statusRes] = await Promise.all([
-                    fetch(`${API_URL}/api/usersID`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                      body: JSON.stringify({ userID: otherId }),
-                    }),
-                    fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
-                      headers: { Authorization: `Bearer ${token}` },
-                    }),
-                  ]);
-
-                  if (userRes.ok && statusRes.ok) {
-                    const userData = await userRes.json();
-                    const statusData = await statusRes.json();
-                    const target = { ...userData, friendStatus: statusData.status };
-                    
-                    setAddFriendTarget(target);
-                    // Đóng bất kỳ hồ sơ nào đang mở
-                    setOtherProfile(null);
-                    
-                    setTimeout(() => {
-                      setShowAddFriend(true);
-                      setLoading(false);
-                    }, 150);
-                  } else {
-                    setLoading(false);
-                  }
-                } catch (err) {
-                  console.error("Banner Button onPress error:", err);
-                  setLoading(false);
-                }
-              }}
-            >
-              <Text style={styles.strangerAddFriendBtnText}>
-                {loading ? "Đang tải..." : "Gửi kết bạn"}
+      {selectedChat && selectedChat.type === 'private' &&
+        (currentFriendStatus === 'none' || currentFriendStatus === 'stranger' || currentFriendStatus === 'pending') && (
+          <View style={styles.strangerActionBanner}>
+            <View style={styles.strangerBannerLeft}>
+              <Ionicons name="people-outline" size={20} color="#666" style={{ marginRight: 8 }} />
+              <Text style={styles.strangerBannerTextMain}>
+                {currentFriendStatus === 'pending'
+                  ? 'Bấm vào hồ sơ để xử lý lời mời'
+                  : 'Gửi yêu cầu kết bạn tới người này'}
               </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+            </View>
+            {currentFriendStatus !== 'pending' && (
+              <TouchableOpacity
+                style={[styles.strangerAddFriendBtn, loading && { opacity: 0.5 }]}
+                disabled={loading}
+                onPress={async () => {
+                  try {
+                    setLoading(true);
+                    const token = await AsyncStorage.getItem('token');
+                    const otherId = selectedChat.members.find(m => m.userID !== user?.userID)?.userID;
+                    if (!otherId) {
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Lấy thông tin đầy đủ + friendStatus (giống openOtherProfile)
+                    const [userRes, statusRes] = await Promise.all([
+                      fetch(`${API_URL}/api/usersID`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ userID: otherId }),
+                      }),
+                      fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                      }),
+                    ]);
+
+                    if (userRes.ok && statusRes.ok) {
+                      const userData = await userRes.json();
+                      const statusData = await statusRes.json();
+                      const target = { ...userData, friendStatus: statusData.status };
+
+                      setAddFriendTarget(target);
+                      // Đóng bất kỳ hồ sơ nào đang mở
+                      setOtherProfile(null);
+
+                      setTimeout(() => {
+                        setShowAddFriend(true);
+                        setLoading(false);
+                      }, 150);
+                    } else {
+                      setLoading(false);
+                    }
+                  } catch (err) {
+                    console.error("Banner Button onPress error:", err);
+                    setLoading(false);
+                  }
+                }}
+              >
+                <Text style={styles.strangerAddFriendBtnText}>
+                  {loading ? "Đang tải..." : "Gửi kết bạn"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
       {/* Pinned Messages Banner */}
       {pinnedMessages.length > 0 && (
@@ -2444,9 +2633,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         contentContainerStyle={styles.messagesList}
         // Thêm pull-to-refresh để load more messages (tải trang cũ)
         refreshControl={
-          <RefreshControl 
-            refreshing={isLoadingMore} 
-            onRefresh={loadMoreMessages} 
+          <RefreshControl
+            refreshing={isLoadingMore}
+            onRefresh={loadMoreMessages}
             tintColor="#0068ff"
             colors={["#0068ff"]}
           />
@@ -2536,6 +2725,57 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         </View>
       )}
 
+      {/* Mention Dropdown */}
+      {showMentionDropdown && selectedChat?.type === 'group' && (
+        <View style={styles.mentionDropdown}>
+          <View style={styles.mentionHeader}>
+            <Text style={styles.mentionHeaderText}>Nhắc tên thành viên</Text>
+          </View>
+          <ScrollView horizontal={false} keyboardShouldPersistTaps="always">
+            {/* Option @all */}
+            {(mentionSearch === '' || 'tất cả'.includes(mentionSearch.toLowerCase()) || 'all'.includes(mentionSearch.toLowerCase())) && (
+              <TouchableOpacity
+                style={styles.mentionItem}
+                onPress={() => handleMentionSelect('all')}
+              >
+                <View style={[styles.mentionAvatar, { backgroundColor: '#0068ff', justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>@</Text>
+                </View>
+                <View>
+                  <Text style={styles.mentionName}>@Tất cả</Text>
+                  <Text style={styles.mentionRole}>Nhắc tên mọi người trong nhóm</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* Members filtered by search */}
+            {selectedChat.members
+              .filter(m => m.userID !== user?.userID)
+              .map(m => {
+                const memberInfo = memberCache[m.userID];
+                if (!memberInfo || (mentionSearch && !memberInfo.name.toLowerCase().includes(mentionSearch.toLowerCase()))) return null;
+
+                return (
+                  <TouchableOpacity
+                    key={m.userID}
+                    style={styles.mentionItem}
+                    onPress={() => handleMentionSelect(memberInfo)}
+                  >
+                    <Image
+                      source={{ uri: memberInfo.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}` }}
+                      style={styles.mentionAvatar}
+                    />
+                    <View>
+                      <Text style={styles.mentionName}>{memberInfo.name}</Text>
+                      <Text style={styles.mentionRole}>{m.role === 'owner' ? 'Trưởng nhóm' : m.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Input */}
       {!canSendMessages ? (
         <View style={[styles.noSendPermissionBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
@@ -2545,55 +2785,55 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           </Text>
         </View>
       ) : (
-      <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 6) }]}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => setShowEmoji(!showEmoji)}>
-          <MaterialCommunityIcons name="emoticon-outline" size={26} color="#555" />
-        </TouchableOpacity>
-
-        {inputText.trim() ? null : (
-          <>
-            <TouchableOpacity style={styles.iconBtn} onPress={handlePickImage}>
-              <Ionicons name="image-outline" size={24} color="#555" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={handlePickVideo}>
-              <Ionicons name="videocam-outline" size={24} color="#555" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={handlePickFile}>
-              <Ionicons name="attach-outline" size={24} color="#555" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={startRecording}>
-              <Ionicons name="mic-outline" size={24} color="#555" />
-            </TouchableOpacity>
-          </>
-        )}
-
-        <TextInput
-          style={styles.input}
-          placeholder="Tin nhắn"
-          value={inputText}
-          onChangeText={handleInputChange}
-          placeholderTextColor="#aaa"
-          multiline
-        />
-
-        {inputText.trim() ? (
-          <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
-            <Ionicons name="send" size={18} color="#fff" />
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => setShowEmoji(!showEmoji)}>
+            <MaterialCommunityIcons name="emoticon-outline" size={26} color="#555" />
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => {
-              if (!selectedChat || !user) return;
-              const msg = buildMsg({ content: '👍', type: 'text', media_url: [] });
-              socket.emit('send_message', msg);
-              setMessages((prev) => [...prev, msg]);
-            }}
-          >
-            <FontAwesome5 name="thumbs-up" size={22} color="#0068ff" solid />
-          </TouchableOpacity>
-        )}
-      </View>
+
+          {inputText.trim() ? null : (
+            <>
+              <TouchableOpacity style={styles.iconBtn} onPress={handlePickImage}>
+                <Ionicons name="image-outline" size={24} color="#555" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={handlePickVideo}>
+                <Ionicons name="videocam-outline" size={24} color="#555" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={handlePickFile}>
+                <Ionicons name="attach-outline" size={24} color="#555" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} onPress={startRecording}>
+                <Ionicons name="mic-outline" size={24} color="#555" />
+              </TouchableOpacity>
+            </>
+          )}
+
+          <TextInput
+            style={styles.input}
+            placeholder="Tin nhắn"
+            value={inputText}
+            onChangeText={handleInputChange}
+            placeholderTextColor="#aaa"
+            multiline
+          />
+
+          {inputText.trim() ? (
+            <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
+              <Ionicons name="send" size={18} color="#fff" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => {
+                if (!selectedChat || !user) return;
+                const msg = buildMsg({ content: '👍', type: 'text', media_url: [] });
+                socket.emit('send_message', msg);
+                setMessages((prev) => [...prev, msg]);
+              }}
+            >
+              <FontAwesome5 name="thumbs-up" size={22} color="#0068ff" solid />
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* Loading overlay */}
@@ -3976,6 +4216,65 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+
+  // Mention Dropdown Styles
+  mentionDropdown: {
+    position: 'absolute',
+    bottom: 60,
+    left: 10,
+    right: 10,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    maxHeight: 250,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 1000,
+    borderWidth: 1,
+    borderColor: '#eee',
+    overflow: 'hidden',
+  },
+  mentionHeader: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  mentionHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#666',
+    textTransform: 'uppercase',
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f0f0f0',
+    gap: 12,
+  },
+  mentionAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  mentionName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111',
+  },
+  mentionRole: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 2,
   },
 });
 

@@ -41,9 +41,24 @@ import {
   loadReminderEvents,
   type ReminderEvent,
 } from '../hooks/useReminderChecker';
+import MentionDropdown, { MentionDropdownHandle } from './MentionDropdown';
+import { getCaretCoordinates } from '../utils/caretPosition';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 const API = 'http://localhost:5000/api';
+
+// Giphy API key cho gợi ý @GIF
+const GIPHY_API_KEY = 'iw8DsJkjCByct4EHovySloueKpn6ljwK';
+
+// Dữ liệu Sticker mẫu để tìm kiếm 
+const STICKER_DATA = [
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002734/android/sticker.png', name: 'cute dog', tags: ['cho', 'dog', 'hi', 'hello'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002735/android/sticker.png', name: 'happy cat', tags: ['meo', 'cat', 'vui', 'cuoi', 'haha'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002736/android/sticker.png', name: 'sad bear', tags: ['gau', 'bear', 'buon', 'khoc', 'hic'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002737/android/sticker.png', name: 'angry duck', tags: ['vit', 'duck', 'gian', 'cau', 'thoi'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002738/android/sticker.png', name: 'cool monkey', tags: ['khi', 'monkey', 'ngau', 'kinh', 'chat'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002739/android/sticker.png', name: 'shy bunny', tags: ['tho', 'bunny', 'ngai', 'xau ho', 'ahihi'] },
+];
 
 interface Member {
   userID: string;
@@ -71,6 +86,7 @@ interface Message {
   pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
   replyTo?: ReplyTo | null;
   groupId?: string; // ⭐ ID để group các ảnh gửi cùng lúc
+  mentions?: string[]; // Danh sách userID được nhắc tên
 }
 interface Chat {
   chatID: string;
@@ -361,7 +377,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   >({});
 
   const [showOtherProfile, setShowOtherProfile] = useState(false);
-  const [selectedUserForProfile, setSelectedUserForProfile] = useState<unknown | null>(null);
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<User | null>(null);
 
   const [showPinnedList, setShowPinnedList] = useState(false);
   const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
@@ -377,20 +393,73 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [showFileSizeError, setShowFileSizeError] = useState(false);
   const [fileSizeErrorMessage, setFileSizeErrorMessage] = useState('');
 
+  // States cho tính năng Command (@Bot, @STICKER, @GIF)
+  const [suggestedText, setSuggestedText] = useState('');
+  const [isLoadingGifs, setIsLoadingGifs] = useState(false);
+  const [suggestedGifs, setSuggestedGifs] = useState<any[]>([]);
+  const [isBotTyping, setIsBotTyping] = useState(false);
+  const [mutualGroups, setMutualGroups] = useState<any[]>([]);
+  const [loadingMutual, setLoadingMutual] = useState(false);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const mentionDropdownRef = useRef<MentionDropdownHandle>(null);
+
+  // States cho MentionDropdown
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [dropdownCoords, setDropdownCoords] = useState({ top: 0, left: 0 });
+  const [mentions, setMentions] = useState<string[]>([]); // Lưu trữ các user ID được nhắc tên
 
   const handleRecallFriendRequest = async (targetUserID: string) => {
     try {
       await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: targetUserID });
       toast.success('Đã thu hồi lời mời kết bạn');
+      // Cập nhật state cả memberInfo (cho banner) và selectedUserForProfile (cho modal nếu đang mở)
+      if (memberInfo && memberInfo.userID === targetUserID) {
+        setMemberInfo({ ...memberInfo, friendStatus: 'none' });
+      }
       if (selectedUserForProfile && (selectedUserForProfile as any).userID === targetUserID) {
         setSelectedUserForProfile({ ...(selectedUserForProfile as any), friendStatus: 'none' });
       }
     } catch (err) {
       toast.error('Lỗi khi thu hồi lời mời');
+    }
+  };
+
+  const handleAcceptFriendRequest = async (targetUserID: string) => {
+    try {
+      await axiosInstance.post('/contacts/accept-friend-request', { senderID: targetUserID });
+      toast.success('Đã chấp nhận kết bạn');
+      if (memberInfo && memberInfo.userID === targetUserID) {
+        setMemberInfo({ ...memberInfo, friendStatus: 'accepted' });
+        setIsStranger(false);
+      }
+      if (selectedUserForProfile && (selectedUserForProfile as any).userID === targetUserID) {
+        setSelectedUserForProfile({ ...(selectedUserForProfile as any), friendStatus: 'accepted' });
+      }
+      socket.emit('friend_request_accepted', { from: user?.userID, to: targetUserID });
+    } catch (err) {
+      toast.error('Lỗi khi chấp nhận kết bạn');
+    }
+  };
+
+  const handleRejectFriendRequest = async (targetUserID: string) => {
+    try {
+      await axiosInstance.post('/contacts/reject-friend-request', { senderID: targetUserID });
+      toast.success('Đã từ chối lời mời kết bạn');
+      if (memberInfo && memberInfo.userID === targetUserID) {
+        setMemberInfo({ ...memberInfo, friendStatus: 'none' });
+        setIsStranger(true);
+      }
+      if (selectedUserForProfile && (selectedUserForProfile as any).userID === targetUserID) {
+        setSelectedUserForProfile({ ...(selectedUserForProfile as any), friendStatus: 'none' });
+      }
+    } catch (err) {
+      toast.error('Lỗi khi từ chối kết bạn');
     }
   };
 
@@ -411,7 +480,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setPage(1);
     setHasMore((selectedChat.lastMessage || []).length >= 50);
     setIsLoadingMore(false);
-    
+
     setPinnedMessages(
       (selectedChat.lastMessage || []).filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
     );
@@ -458,16 +527,23 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           .then((d) => setMemberInfo(d))
           .catch(() => { });
 
-        // Check stranger status
-        fetch(`${API}/contacts/friend-status/${otherId}`, {
-          headers: { ...authHeaders() },
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            setIsStranger(d.friendStatus === 'none');
-            setMemberInfo(prev => prev?.userID === otherId ? { ...prev, friendStatus: d.friendStatus } : prev);
+        // Check stranger status & mutual groups
+        axiosInstance.get(`/contacts/friend-status/${otherId}`)
+          .then((res) => {
+            const d = res.data;
+            const status = d.friendStatus;
+            // Banner hiện lên khi không phải bạn bè (không là accepted, self, blocked)
+            setIsStranger(status === 'none' || status === 'pending_sent' || status === 'pending_received');
+            setMemberInfo(prev => prev?.userID === otherId ? { ...prev, friendStatus: status } : prev);
           })
           .catch(() => setIsStranger(false));
+
+        // Fetch mutual groups
+        setLoadingMutual(true);
+        axiosInstance.get(`/groups/mutual/${otherId}`)
+          .then(res => setMutualGroups(res.data))
+          .catch(() => setMutualGroups([]))
+          .finally(() => setLoadingMutual(false));
       }
     } else {
       setIsStranger(false);
@@ -483,13 +559,17 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       });
     }
 
-    // Setup socket listeners
     const onNewMessage = (msg: Message) => {
       setMessages((prev) => {
-        if (
-          prev.find((m) => m.messageID === msg.messageID || (msg.tempID && m.tempID === msg.tempID))
-        ) {
-          return prev.map((m) => (m.tempID === msg.tempID ? { ...m, ...msg } : m));
+        const existingMsg = prev.find(
+          (m) => m.messageID === msg.messageID || (msg.tempID && m.tempID === msg.tempID)
+        );
+        if (existingMsg) {
+          return prev.map((m) =>
+            (m.messageID === msg.messageID) || (msg.tempID && m.tempID === msg.tempID)
+              ? { ...m, ...msg }
+              : m
+          );
         }
         return [...prev, msg];
       });
@@ -545,7 +625,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         (prev?.userID === updatedUser.userID ? { ...prev, ...updatedUser } : prev)
       );
     };
-    
+
     const onFriendStatusUpdate = (data: { userID: string; friendStatus: string; ownerID: string }) => {
       console.log('📥 ChatWindow received friend_status_update:', data);
       // Cập nhật friendStatus của memberInfo nếu là người đang chat
@@ -564,7 +644,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     };
 
     socket.on('new_message', onNewMessage);
-    socket.on(chatID, onNewMessage);
     socket.on('unsend_notification', onUnsend);
     socket.on('message_deleted_local', onMessageDeletedLocal);
     socket.on('ghim_notification', onGhim);
@@ -658,6 +737,14 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     socket.on('message_seen', onMessageSeen);
     socket.on('bulk_seen', onBulkSeen);
 
+    // Bot typing indicator
+    const onBotTyping = ({ chatID: evtChatID, userID: uid, isTyping }: { chatID: string; userID: string; isTyping: boolean }) => {
+      if (uid === 'bot' && evtChatID === chatID) {
+        setIsBotTyping(isTyping);
+      }
+    };
+    socket.on('typing', onBotTyping);
+
     const onReminderEvent = (data: ReminderEvent) => {
       if (data.chatID !== chatID) return;
       // Just update state, data is already saved in database via API
@@ -705,6 +792,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       socket.off('typing_stop', onTypingStop);
       socket.off('message_seen', onMessageSeen);
       socket.off('bulk_seen', onBulkSeen);
+      socket.off('typing', onBotTyping);
       socket.off('reminder_event', onReminderEvent);
       socket.off('call-system-message', onCallSystemMessage);
       socket.off('friend_request_accepted', onFriendAccepted);
@@ -727,31 +815,31 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         body: JSON.stringify({ chatID: selectedChat.chatID, page: nextPage, limit: 50 }),
       });
       const data = await res.json();
-      
+
       const messageArray = Array.isArray(data) ? data : (data.messages || []);
       if (messageArray && Array.isArray(messageArray)) {
-         
-         const previousScrollHeight = scrollRef.current?.scrollHeight || 0;
 
-         setMessages(prev => {
-            const seen = new Set(prev.map(m => m.messageID || m.tempID));
-            const filtered = messageArray.filter((m: Message) => {
-               const k = m.messageID || m.tempID;
-               if (seen.has(k)) return false;
-               seen.add(k); return true;
-            });
-            return [...filtered, ...prev];
-         });
-         
-         setPage(nextPage);
-         setHasMore(Array.isArray(data) ? false : (data.page * 50 < data.total));
+        const previousScrollHeight = scrollRef.current?.scrollHeight || 0;
 
-         // Giữ vị trí cuộn
-         setTimeout(() => {
-           if (scrollRef.current) {
-             scrollRef.current.scrollTop = scrollRef.current.scrollHeight - previousScrollHeight;
-           }
-         }, 0);
+        setMessages(prev => {
+          const seen = new Set(prev.map(m => m.messageID || m.tempID));
+          const filtered = messageArray.filter((m: Message) => {
+            const k = m.messageID || m.tempID;
+            if (seen.has(k)) return false;
+            seen.add(k); return true;
+          });
+          return [...filtered, ...prev];
+        });
+
+        setPage(nextPage);
+        setHasMore(Array.isArray(data) ? false : (data.page * 50 < data.total));
+
+        // Giữ vị trí cuộn
+        setTimeout(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight - previousScrollHeight;
+          }
+        }, 0);
       }
     } catch (e) {
       console.error('Error loading more messages:', e);
@@ -805,23 +893,169 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       ...extra,
     }) as Message;
 
+  const renderHighlightedInputText = (text: string) => {
+    if (!text) {
+      return (
+        <span className="text-gray-400 opacity-70">
+          Nhập @, tin nhắn tới {memberInfo?.name || "bạn bè"}
+        </span>
+      );
+    }
+
+    const specialTags = ['GIF', 'STICKER', 'Bot'];
+
+    // Sắp xếp tên theo độ dài giảm dần
+    const mentionNames = memberInfo ? [memberInfo.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')] : [];
+    const allPatterns = [...specialTags, ...mentionNames].join('|');
+
+    const regex = new RegExp(`(@(?:${allPatterns}))`, 'gi');
+    const parts = text.split(regex);
+    const elements: JSX.Element[] = parts.map((part, index) => {
+      if (!part) return <span key={index}></span>;
+      if (part.startsWith('@')) {
+        const candidate = part.substring(1).toLowerCase();
+        const isValid = specialTags.some(t => t.toLowerCase() === candidate) ||
+          (memberInfo && memberInfo.name.toLowerCase() === candidate);
+        if (isValid) {
+          return (
+            <span key={index} className="text-[#0068ff] font-normal">
+              {part}
+            </span>
+          );
+        }
+      }
+      return <span key={index}>{part}</span>;
+    });
+
+    // Ghost Placeholder: Nếu chỉ mới gõ @Bot, @STICKER, @GIF thì hiện gợi ý mờ phía sau
+    const lowerText = text.toLowerCase().trim();
+    if (lowerText === '@bot') {
+      elements.push(
+        <span key="ghost-bot" className="text-gray-400 opacity-60 italic ml-1 pointer-events-none">
+          Bạn có yêu cầu gì...
+        </span>
+      );
+    } else if (lowerText === '@sticker') {
+      elements.push(
+        <span key="ghost-sticker" className="text-gray-400 opacity-60 italic ml-1 pointer-events-none">
+          Gõ từ khóa để tìm kiếm Sticker
+        </span>
+      );
+    } else if (lowerText === '@gif') {
+      elements.push(
+        <span key="ghost-gif" className="text-gray-400 opacity-60 italic ml-1 pointer-events-none">
+          Gõ từ khóa để tìm kiếm GIF
+        </span>
+      );
+    }
+
+    if (suggestedText) {
+      elements.push(
+        <span key="ghost-suggestion" className="text-gray-300 pointer-events-none opacity-50">
+          {suggestedText}
+        </span>
+      );
+    }
+
+    return <span className="text-sm pointer-events-none">{elements}</span>;
+  };
+
+  // Logic fetch GIF từ Giphy
+  useEffect(() => {
+    const lower = inputText.toLowerCase();
+    if (lower.startsWith('@gif')) {
+      const query = lower.substring(4).trim();
+      const fetchGifs = async () => {
+        setIsLoadingGifs(true);
+        try {
+          // Nếu không có từ khóa, lấy trending GIF
+          const url = query
+            ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=10&rating=g`
+            : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_API_KEY}&limit=10&rating=g`;
+
+          const res = await fetch(url);
+          const data = await res.json();
+          setSuggestedGifs(data.data || []);
+        } catch (err) {
+          console.error('Fetch GIF error:', err);
+        } finally {
+          setIsLoadingGifs(false);
+        }
+      };
+
+      const timer = setTimeout(fetchGifs, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setSuggestedGifs([]);
+    }
+  }, [inputText]);
+
   const sendText = () => {
     if (!inputText.trim() || !selectedChat || !user) return;
-    socket.emit('typing_stop', {
-      chatID: selectedChat.chatID,
-      userID: user.userID,
-      userName: user.name,
-    });
-    if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
-    const msg = buildMsg({ content: inputText, type: 'text', media_url: [] });
+
+    // Nếu đang gõ lệnh media nhưng chưa chọn content thì không gửi text rỗng
+    if (inputText.trim() === '@GIF' || inputText.trim() === '@STICKER') {
+      return;
+    }
+    const msg = buildMsg({ content: inputText, type: 'text', media_url: [], mentions: mentions });
     socket.emit('send_message', msg);
     setMessages((prev) => [...prev, msg]);
     setInputText('');
     setReplyTo(null);
+    setSuggestedText('');
+    setMentions([]); // Reset mentions after send
+  };
+
+  const handleMentionSelect = (user: { userID: string; name: string }) => {
+    const textBefore = inputText.substring(0, inputText.lastIndexOf('@'));
+    const newText = textBefore + `@${user.name} `;
+    setInputText(newText);
+    setMentions(prev => [...prev, user.userID]);
+    setShowMentionDropdown(false);
+    inputRef.current?.focus();
   };
 
   const handleInputChange = (value: string) => {
     setInputText(value);
+
+    // Logic gợi ý Ghost Text cho lệnh
+    const lower = value.toLowerCase();
+    const commonTags = ['@GIF', '@STICKER', '@Bot'];
+
+    if (value.startsWith('@') && value.length > 1) {
+      const match = commonTags.find(t => t.toLowerCase().startsWith(lower) && t.toLowerCase() !== lower);
+      if (match) {
+        setSuggestedText(match.substring(value.length));
+      } else {
+        setSuggestedText('');
+      }
+    } else {
+      setSuggestedText('');
+    }
+
+    // Logic xử lý MentionDropdown
+    const lastAtPos = value.lastIndexOf('@');
+    if (lastAtPos !== -1) {
+      const textAfterAt = value.substring(lastAtPos + 1);
+      // Nếu sau dấu @ có khoảng trắng hoặc xuống dòng thì ẩn dropdown
+      if (textAfterAt.includes(' ') || textAfterAt.includes('\n')) {
+        setShowMentionDropdown(false);
+      } else {
+        setMentionQuery(textAfterAt);
+        setShowMentionDropdown(true);
+
+        if (inputRef.current) {
+          const coords = getCaretCoordinates(inputRef.current);
+          setDropdownCoords({
+            top: coords.y,
+            left: coords.x
+          });
+        }
+      }
+    } else {
+      setShowMentionDropdown(false);
+    }
+
     if (!selectedChat || !user) return;
     socket.emit('typing_start', {
       chatID: selectedChat.chatID,
@@ -853,6 +1087,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setMessages((prev) => [...prev, msg]);
     setShowEmoji(false);
     setReplyTo(null);
+    setInputText(''); // Clear input after sending from suggestion bar
   };
 
   const sendGif = async (gifUrl: string) => {
@@ -862,6 +1097,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setMessages((prev) => [...prev, msg]);
     setShowEmoji(false);
     setReplyTo(null);
+    setInputText(''); // Clear input after sending from suggestion bar
   };
 
   const sendFiles = async () => {
@@ -1003,8 +1239,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         console.log('Upload success:', data);
 
         // ⭐ Tạo groupId cho batch ảnh
-        const groupId = type === 'image' && data.urls.length > 1 
-          ? `group_${Date.now()}_${user.userID}` 
+        const groupId = type === 'image' && data.urls.length > 1
+          ? `group_${Date.now()}_${user.userID}`
           : undefined;
 
         // Gửi từng ảnh/video/file riêng biệt với delay nhỏ để tránh race condition
@@ -1012,9 +1248,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           // Mỗi ảnh/video là một tin nhắn riêng
           for (let i = 0; i < data.urls.length; i++) {
             const url = data.urls[i];
-            const msg = buildMsg({ 
-              content: '', 
-              type, 
+            const msg = buildMsg({
+              content: '',
+              type,
               media_url: [url],
               groupId //  Thêm groupId cho ảnh
             });
@@ -1119,10 +1355,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     if (!msg.messageID) return;
     if (msg.pinnedInfo) {
       // Unpin message
-      socket.emit('unghim_message', { 
-        messageID: msg.messageID, 
+      socket.emit('unghim_message', {
+        messageID: msg.messageID,
         chatID: selectedChat!.chatID,
-        senderID: user?.userID 
+        senderID: user?.userID
       });
     } else {
       // Check if already have 3 pinned messages
@@ -1144,10 +1380,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const handleMoveToTop = (msg: Message) => {
     if (!msg.messageID) return;
     // Unpin and re-pin to move to top
-    socket.emit('unghim_message', { 
-      messageID: msg.messageID, 
+    socket.emit('unghim_message', {
+      messageID: msg.messageID,
       chatID: selectedChat!.chatID,
-      senderID: user?.userID 
+      senderID: user?.userID
     });
     setTimeout(() => {
       socket.emit('ghim_message', {
@@ -1170,10 +1406,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   const handleUnpinFromMenu = (msg: Message) => {
     if (!msg.messageID) return;
-    socket.emit('unghim_message', { 
-      messageID: msg.messageID, 
+    socket.emit('unghim_message', {
+      messageID: msg.messageID,
       chatID: selectedChat!.chatID,
-      senderID: user?.userID 
+      senderID: user?.userID
     });
     setPinnedMenuId(null);
     toast.success('Đã bỏ ghim');
@@ -1332,6 +1568,15 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       return <span className="italic text-gray-400 text-sm">Tin nhắn đã bị thu hồi</span>;
     }
     if (msg.type === 'notification') {
+      if (msg.content?.startsWith('##FRIENDSHIP##')) {
+        const parts = msg.content.split('|');
+        const senderID = parts[1];
+        const receiverID = parts[2];
+        const senderName = parts[3];
+        const receiverName = parts[4];
+        const otherName = user?.userID === senderID ? receiverName : senderName;
+        return <span className="text-xs text-gray-500 italic">Bạn và {otherName} đã trở thành bạn bè</span>;
+      }
       return <span className="text-xs text-gray-500 italic">{msg.content}</span>;
     }
     if (msg.type === 'call-missed') {
@@ -1491,6 +1736,27 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         <FileDisplay fileName={fileName} fileUrl={url} isMine={isMine} />
       );
     }
+    const content = msg.content || '';
+    const specialTags = ['GIF', 'STICKER', 'Bot'];
+    const regex = new RegExp(`(@(?:${specialTags.join('|')}))`, 'gi');
+    const parts = content.split(regex);
+
+    if (parts.length > 1) {
+      return (
+        <span className="text-sm whitespace-pre-wrap break-words">
+          {parts.map((part, index) => {
+            if (part.startsWith('@')) {
+              const candidate = part.substring(1).toLowerCase();
+              if (specialTags.some(t => t.toLowerCase() === candidate)) {
+                return <b key={index} className="text-[#0068ff] font-bold">{part}</b>;
+              }
+            }
+            return <span key={index}>{part}</span>;
+          })}
+        </span>
+      );
+    }
+
     return <span className="text-sm whitespace-pre-wrap break-words">{msg.content}</span>;
   };
 
@@ -1576,7 +1842,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   alt="avatar"
                   className="w-[42px] h-[42px] rounded-full object-cover border-2 border-[#0068ff]/10 cursor-pointer hover:ring-2 hover:ring-[#0068ff] transition-all"
                   onClick={async () => {
-                    if (selectedChat.type === 'private' && memberInfo) {
+                    if (selectedChat.type === 'private' && memberInfo && memberInfo.userID !== 'bot') {
                       try {
                         const [userRes, statusRes] = await Promise.all([
                           fetch(`${API}/usersID`, {
@@ -1624,7 +1890,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   )}
                   {isStranger && (
                     <span className="flex items-center gap-1 text-gray-400">
-                      <FaUserFriends className="text-[10px]" /> Không có nhóm chung
+                      <FaUserFriends className="text-[10px]" />
+                      {loadingMutual ? 'Đang tải nhóm chung...' :
+                        mutualGroups.length > 0 ? `${mutualGroups.length} nhóm chung` : 'Không có nhóm chung'
+                      }
                     </span>
                   )}
                 </p>
@@ -1668,56 +1937,84 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   <FaSearch />
                 </button>
 
-                {/* Nút thông tin hội thoại */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowInfo((v) => !v);
-                    setShowSearch(false);
-                  }}
-                  title="Thông tin hội thoại"
-                  className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showInfo ? 'bg-blue-50 text-[#0068ff]' : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
-                >
-                  <FaInfoCircle />
-                </button>
+                {/* Nút thông tin hội thoại (Ẩn cho AI Bot) */}
+                {memberInfo?.userID !== 'bot' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowInfo((v) => !v);
+                      setShowSearch(false);
+                    }}
+                    title="Thông tin hội thoại"
+                    className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showInfo ? 'bg-blue-50 text-[#0068ff]' : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
+                  >
+                    <FaInfoCircle />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Stranger banner */}
-            {isStranger && (
-              <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                <FaUserFriends className="text-gray-400 text-base shrink-0" />
-                {friendRequestSent ? (
-                  <span className="flex-1 text-[13px] text-gray-500">
-                    Bạn đã gửi yêu cầu kết bạn và đang chờ người này đồng ý
-                  </span>
+            {/* Stranger banner (Zalo Style) */}
+            {isStranger && memberInfo && (memberInfo.friendStatus !== 'accepted' && memberInfo.friendStatus !== 'self') && (
+              <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex-shrink-0 animate-in fade-in slide-in-from-top-1">
+                <FaUserFriends className="text-blue-500 text-base shrink-0" />
+
+                {memberInfo.friendStatus === 'pending_sent' ? (
+                  <>
+                    <span className="flex-1 text-[13px] text-gray-600 font-medium">
+                      Đã gửi lời mời kết bạn tới người này
+                    </span>
+                    <button
+                      onClick={() => handleRecallFriendRequest(memberInfo.userID)}
+                      className="px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 text-[12px] font-bold rounded-lg transition-all shadow-sm"
+                    >
+                      Thu hồi lời mời
+                    </button>
+                  </>
+                ) : memberInfo.friendStatus === 'pending_received' ? (
+                  <>
+                    <span className="flex-1 text-[13px] text-gray-600 font-medium">
+                      <b className="text-gray-900">{memberInfo.name}</b> đã gửi cho bạn lời mời kết bạn
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRejectFriendRequest(memberInfo.userID)}
+                        className="px-3 py-1.5 bg-white border border-red-500 text-red-600 hover:bg-red-50 text-[12px] font-bold rounded-lg transition-all shadow-sm"
+                      >
+                        Từ chối
+                      </button>
+                      <button
+                        onClick={() => handleAcceptFriendRequest(memberInfo.userID)}
+                        className="px-3 py-1.5 bg-[#0068ff] text-white hover:brightness-110 text-[12px] font-bold rounded-lg transition-all shadow-sm"
+                      >
+                        Chấp nhận
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
-                    <span className="flex-1 text-[13px] text-gray-500">Gửi yêu cầu kết bạn tới người này</span>
+                    <span className="flex-1 text-[13px] text-gray-600 font-medium">Gửi yêu cầu kết bạn tới người này để trò chuyện thuận tiện hơn</span>
                     <button
                       disabled={isSendingFriendRequest}
                       onClick={async () => {
                         if (!memberInfo?.sdt) return;
                         setIsSendingFriendRequest(true);
                         try {
-                          const res = await fetch(`${API}/contacts/send-friend-request`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                            body: JSON.stringify({ recipientPhone: memberInfo.sdt }),
+                          const res = await axiosInstance.post('/contacts/send-friend-request', {
+                            recipientPhone: memberInfo.sdt,
+                            message: 'Mình kết bạn nhé!'
                           });
-                          if (res.ok) {
-                            setFriendRequestSent(true);
-                          } else {
-                            const d = await res.json();
-                            toast.error(d.message || 'Không thể gửi lời mời');
+                          if (res.status === 201 || res.status === 200) {
+                            setMemberInfo({ ...memberInfo, friendStatus: 'pending_sent' });
+                            socket.emit('friend_request_sent', { from: user?.userID, to: memberInfo.userID });
                           }
-                        } catch {
-                          toast.error('Lỗi kết nối');
+                        } catch (err: any) {
+                          toast.error(err.response?.data?.message || 'Lỗi khi gửi lời mời');
                         } finally {
                           setIsSendingFriendRequest(false);
                         }
                       }}
-                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0068ff] text-[13px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 bg-[#e5efff] text-[#0068ff] hover:bg-[#d0e3ff] text-[12px] font-bold rounded-lg transition-all shadow-sm disabled:opacity-50"
                     >
                       {isSendingFriendRequest ? 'Đang gửi...' : 'Gửi kết bạn'}
                     </button>
@@ -1890,7 +2187,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             )}
 
             {/* Messages */}
-            <div 
+            <div
               ref={scrollRef}
               onScroll={handleScroll}
               className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-[#eef0f3] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded">
@@ -1980,7 +2277,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   const group = item.data;
                   const isMine = group.senderID === user?.userID;
                   const firstMsg = group.messages[0];
-                  
+
                   return (
                     <div
                       key={item.key}
@@ -1997,10 +2294,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       }}
                       className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${
                         // ⭐ Highlight nếu bất kỳ message nào trong group được highlight
-                        (group.messages as Message[]).some((msg) => msg.messageID === highlightedMsgId) 
-                          ? 'bg-blue-200/50 rounded-xl px-1 -mx-1' 
+                        (group.messages as Message[]).some((msg) => msg.messageID === highlightedMsgId)
+                          ? 'bg-blue-200/50 rounded-xl px-1 -mx-1'
                           : ''
-                      }`}
+                        }`}
                     >
                       {/* Avatar */}
                       {!isMine && (
@@ -2012,6 +2309,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           alt="av"
                           className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                           onClick={async () => {
+                            if (group.senderID === 'bot') return;
                             try {
                               const [userRes, statusRes] = await Promise.all([
                                 fetch(`${API}/usersID`, {
@@ -2044,7 +2342,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         )}
 
                         {/* Image Grid */}
-                        <div 
+                        <div
                           className="relative group"
                         >
                           <ImageGrid
@@ -2073,7 +2371,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                               </svg>
                             </button>
-                            
+
                             {/* Menu button */}
                             <button
                               onClick={(e) => {
@@ -2096,7 +2394,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                               title="Tùy chọn"
                             >
                               <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
                               </svg>
                             </button>
                           </div>
@@ -2124,7 +2422,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                                 }}
                               >
                                 <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M7.707 3.293a1 1 0 010 1.414L5.414 7H11a7 7 0 017 7v2a1 1 0 11-2 0v-2a5 5 0 00-5-5H5.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"/>
+                                  <path d="M7.707 3.293a1 1 0 010 1.414L5.414 7H11a7 7 0 017 7v2a1 1 0 11-2 0v-2a5 5 0 00-5-5H5.414l2.293 2.293a1 1 0 11-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" />
                                 </svg>
                                 Trả lời
                               </button>
@@ -2136,7 +2434,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                                 }}
                               >
                                 <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6z"/>
+                                  <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6z" />
                                 </svg>
                                 {firstMsg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
                               </button>
@@ -2150,7 +2448,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                                 }}
                               >
                                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/>
+                                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                                 </svg>
                                 Xóa phía tôi
                               </button>
@@ -2165,7 +2463,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                                   }}
                                 >
                                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/>
+                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                                   </svg>
                                   Thu hồi
                                 </button>
@@ -2263,6 +2561,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         alt="av"
                         className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                         onClick={async () => {
+                          if (msg.senderID === 'bot') return;
                           try {
                             const [userRes, statusRes] = await Promise.all([
                               fetch(`${API}/usersID`, {
@@ -2471,7 +2770,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 );
               })}
 
-              {/* Typing indicator */}
+              {/* Typing indicator - người dùng thường */}
               {typingUsers.length > 0 && (
                 <div className="flex items-end gap-2 flex-row">
                   <div className="flex flex-col items-start max-w-[65%]">
@@ -2482,6 +2781,27 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bot typing indicator */}
+              {isBotTyping && (
+                <div className="flex mb-3 justify-start">
+                  <div className="relative flex-shrink-0 mr-2">
+                    <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs font-bold">
+                      T
+                    </div>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1 font-semibold px-1">
+                      AI Bot đang nhập...
+                    </span>
+                    <div className="bg-white px-4 py-2.5 rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.08)] flex gap-1">
+                      <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"></div>
+                      <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.4s' }}></div>
                     </div>
                   </div>
                 </div>
@@ -2718,22 +3038,121 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     </div>
                   )}
 
-                  {/* Text input row */}
-                  <div className="flex items-center px-3 pb-2.5 pt-1 bg-white gap-2">
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={inputText}
-                      onChange={(e) => handleInputChange(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          sendText();
+                  {/* Thanh Suggestion cho @Bot */}
+                  {inputText.toLowerCase().includes('@bot') && (
+                    <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-100 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden w-full text-sm bg-white">
+                      {['Gợi ý quà tặng', 'Dịch tin nhắn', 'Tóm tắt nội dung'].map((sug, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            const hasSpace = inputText.endsWith(' ');
+                            handleInputChange(inputText + (hasSpace ? sug : ' ' + sug) + ' ');
+                            inputRef.current?.focus();
+                          }}
+                          className="px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0 font-medium border border-indigo-100/50 flex items-center gap-1.5"
+                        >
+                          <span className="text-[10px] opacity-70">✦</span> {sug}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Thanh Suggestion cho @STICKER */}
+                  {inputText.toLowerCase().startsWith('@sticker') && (
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden w-full bg-white/50 backdrop-blur-sm">
+                      {(() => {
+                        const query = inputText.substring(8).trim().toLowerCase();
+                        const filtered = query
+                          ? STICKER_DATA.filter(s => s.name.includes(query) || s.tags.some(t => t.includes(query)))
+                          : STICKER_DATA;
+
+                        if (filtered.length === 0) {
+                          return <span className="text-xs text-gray-500 mx-auto italic py-1">Vui lòng thử lại với từ khóa khác</span>;
                         }
-                      }}
-                      placeholder="Nhập tin nhắn..."
-                      className="flex-1 px-4 py-2 border border-gray-200 rounded-[22px] outline-none text-sm bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:border-[#0068ff] focus:bg-white focus:shadow-[0_0_0_2px_rgba(0,104,255,0.1)] transition-all"
-                    />
+
+                        return filtered.map((sticker, i) => (
+                          <button
+                            key={i}
+                            onClick={() => sendSticker(sticker.url)}
+                            className="w-[60px] h-[60px] shrink-0 bg-gray-50 rounded-xl p-1.5 hover:bg-blue-50 hover:scale-110 transition-all border border-gray-100/50 shadow-sm"
+                            title={sticker.name}
+                          >
+                            <img src={sticker.url} alt={sticker.name} className="w-full h-full object-contain" />
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Thanh Suggestion cho @GIF */}
+                  {inputText.toLowerCase().startsWith('@gif') && (
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden w-full bg-white/50 backdrop-blur-sm h-[90px]">
+                      {isLoadingGifs ? (
+                        <div className="flex items-center gap-2 text-gray-400 italic text-xs py-2 mx-auto">
+                          <div className="w-3 h-3 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                          Đang tìm GIF...
+                        </div>
+                      ) : suggestedGifs.length === 0 ? (
+                        <span className="text-xs text-gray-500 mx-auto italic py-1">Không tìm thấy GIF phù hợp</span>
+                      ) : (
+                        suggestedGifs.map((gif, i) => (
+                          <button
+                            key={gif.id}
+                            onClick={() => sendGif(gif.images.original.url)}
+                            className="w-[100px] h-[70px] shrink-0 bg-gray-50 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-400 hover:scale-105 transition-all shadow-sm"
+                          >
+                            <img src={gif.images.fixed_height.url} alt="gif" className="w-full h-full object-cover" />
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Text input row */}
+                  <div className="flex items-center px-3 pb-2.5 pt-1 bg-white gap-2 relative">
+                    <div className="flex-1 relative min-h-[40px] flex items-center bg-gray-50 rounded-[22px] border border-gray-200 focus-within:border-[#0068ff] focus-within:bg-white focus-within:shadow-[0_0_0_2px_rgba(0,104,255,0.1)] transition-all overflow-hidden">
+                      <textarea
+                        ref={inputRef}
+                        rows={1}
+                        value={inputText}
+                        onChange={(e) => {
+                          handleInputChange(e.target.value);
+                          // Auto-resize
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (showMentionDropdown && mentionDropdownRef.current) {
+                            if (mentionDropdownRef.current.handleKeyDown(e)) return;
+                          }
+                          if (e.key === 'Tab' && suggestedText) {
+                            e.preventDefault();
+                            handleInputChange(inputText + suggestedText);
+                          }
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            sendText();
+                            e.currentTarget.style.height = '40px';
+                          }
+                        }}
+                        placeholder=""
+                        className="w-full px-4 py-2 outline-none text-sm bg-transparent resize-none overflow-y-auto text-transparent caret-gray-900 z-10 block"
+                        style={{
+                          lineHeight: '1.5',
+                          minHeight: '40px'
+                        }}
+                      />
+
+                      {/* Ghost Placeholder & Highlight Overlay */}
+                      <div
+                        ref={overlayRef}
+                        className="absolute inset-0 px-4 py-2 text-sm pointer-events-none whitespace-pre-wrap break-words overflow-hidden text-gray-900 z-0"
+                        style={{ lineHeight: '1.5' }}
+                      >
+                        {renderHighlightedInputText(inputText)}
+                      </div>
+                    </div>
+
                     <button
                       onClick={sendText}
                       disabled={!inputText.trim()}
@@ -2741,6 +3160,29 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     >
                       <FaPaperPlane />
                     </button>
+
+                    <MentionDropdown
+                      ref={mentionDropdownRef}
+                      isOpen={showMentionDropdown}
+                      members={[]} // Không mention người khác trong chat 1-1 theo yêu cầu
+                      query={mentionQuery}
+                      onSelect={(item) => {
+                        if (typeof item === 'string') {
+                          // Handle special tags (@GIF, @STICKER, @Bot) - Sửa capitalization cho Bot
+                          const tagMap: Record<string, string> = { 'gif': '@GIF', 'sticker': '@STICKER', 'bot': '@Bot' };
+                          const tag = tagMap[item.toLowerCase()] || `@${item}`;
+                          const textBefore = inputText.substring(0, inputText.lastIndexOf('@'));
+                          handleInputChange(textBefore + tag + ' ');
+                        } else {
+                          handleMentionSelect(item);
+                        }
+                        setShowMentionDropdown(false);
+                      }}
+                      onClose={() => setShowMentionDropdown(false)}
+                      coords={{ x: dropdownCoords.left, y: dropdownCoords.top }}
+                      existingMentionIDs={mentions}
+                      disableAll={true} // Ẩn @All trong chat 1-1
+                    />
                   </div>
                 </>
               )}
@@ -2915,6 +3357,27 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             }
           }}
           onRecall={() => selectedUserForProfile && handleRecallFriendRequest((selectedUserForProfile as any).userID)}
+          onAccept={() => selectedUserForProfile && handleAcceptFriendRequest((selectedUserForProfile as any).userID)}
+          onReject={() => selectedUserForProfile && handleRejectFriendRequest((selectedUserForProfile as any).userID)}
+          onAddFriend={async () => {
+            if (!selectedUserForProfile?.sdt || isSendingFriendRequest) return;
+            setIsSendingFriendRequest(true);
+            try {
+              const res = await axiosInstance.post('/contacts/send-friend-request', {
+                recipientPhone: selectedUserForProfile.sdt,
+                message: 'Mình kết bạn nhé!'
+              });
+              if (res.status === 201 || res.status === 200) {
+                toast.success('Đã gửi lời mời kết bạn');
+                setSelectedUserForProfile({ ...selectedUserForProfile, friendStatus: 'pending_sent' });
+                socket.emit('friend_request_sent', { from: user?.userID, to: selectedUserForProfile.userID });
+              }
+            } catch (err: any) {
+              toast.error(err.response?.data?.message || 'Lỗi khi gửi lời mời');
+            } finally {
+              setIsSendingFriendRequest(false);
+            }
+          }}
         />
       )}
 

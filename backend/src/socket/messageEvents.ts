@@ -3,6 +3,7 @@ import Message from '../models/Messages';
 import ChatMember from '../models/ChatMember';
 import GroupMember from '../models/GroupMember';
 import Users from '../models/User';
+import GroupMessage from '../models/GroupMessage';
 import { 
   processBotAction, 
   getChatHistory, 
@@ -90,7 +91,6 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       } else {
         // Gửi tới tất cả thành viên
         memberIDs.forEach((id) => io.to(id).emit('new_message', fullMessage));
-        io.to(data.chatID).emit(data.chatID, fullMessage);
       }
 
       // Cập nhật trạng thái delivered sau 1 giây
@@ -111,8 +111,8 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       }, 1000);
 
       // ==================== BOT INTEGRATION ====================
-      // Kiểm tra xem có gọi bot không
-      if (data.content && isBotMention(data.content)) {
+      // Kiểm tra xem có gọi bot không (không xử lý nếu chính bot gửi)
+      if (data.content && data.senderID !== 'bot' && isBotMention(data.content)) {
         console.log('🤖 Bot mentioned, processing...');
         
         // Emit typing indicator
@@ -172,7 +172,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
           memberIDs.forEach((id) => {
             io.to(id).emit('new_message', botMessageData);
           });
-          io.to(data.chatID).emit(data.chatID, botMessageData);
+          // KHÔNG emit qua chatID để tránh nhận tin 2 lần
 
           console.log('✅ Bot response sent:', botResponse.intent);
         } catch (error) {
@@ -196,7 +196,25 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
   // ==================== 2. ĐÁNH DẤU ĐÃ ĐỌC ====================
   socket.on('read_messages', async ({ chatID, userID }: { chatID: string; userID: string }) => {
     try {
+      // Đánh dấu đã đọc cho chat 1-1
       await Message.updateMany({ chatID, status: { $ne: 'read' } }, { status: 'read' });
+
+      // Đánh dấu đã đọc cho chat Group (Cập nhật mảng seenBy)
+      await GroupMessage.updateMany(
+        { 
+          groupID: chatID, 
+          senderID: { $ne: userID }, 
+          'seenBy.userID': { $ne: userID } 
+        },
+        { 
+          $push: { 
+            seenBy: { 
+              userID, 
+              readAt: new Date() 
+            } 
+          } 
+        }
+      );
 
       io.to(chatID).emit(`status_update_${chatID}`, { userID, status: 'read' });
       io.to(userID).emit('status_update_all', { chatID, userID, status: 'read' });
