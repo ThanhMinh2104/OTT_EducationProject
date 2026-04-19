@@ -10,7 +10,6 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('🔥 CRITICAL ERROR (unhandledRejection):', reason);
 });
 
-
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
@@ -28,6 +27,7 @@ import { registerMessageEvents } from './socket/messageEvents';
 import { registerNotificationEvents } from './socket/notificationEvents';
 import { registerCallEvents, getActiveCallsMap, clearActiveCallsMap } from './socket/index';
 import { registerGroupChatEvents } from './socket/groupChatEvents';
+import { registerGroupCallEvents } from './socket/groupCallEvents';
 
 const app = express();
 
@@ -56,10 +56,8 @@ app.use('/api/reminders', reminderRoutes);
 app.use('/api', groupRoutes);
 app.use('/api', groupMediaRoutes);
 
-
 // Lưu io vào app để các routes có thể truy cập
 app.set('io', io);
-
 
 // Debug route để xem active calls
 app.get('/api/debug/active-calls', (req, res) => {
@@ -104,9 +102,11 @@ io.on('connection', (socket) => {
       const allChats = await getChatsForUser(userID, false); // Chỉ lấy bạn bè
       const strangerChats = await getChatsForUser(userID, true); // Chỉ lấy người lạ
       const combined = [...allChats, ...strangerChats];
-      
+
       if (process.env.NODE_ENV === 'development') {
-        console.log(`📋 getChat for ${userID}: ${allChats.length} friend chats + ${strangerChats.length} stranger chats = ${combined.length} total`);
+        console.log(
+          `📋 getChat for ${userID}: ${allChats.length} friend chats + ${strangerChats.length} stranger chats = ${combined.length} total`
+        );
       }
       // Emit tới user room, không phải chỉ socket hiện tại
       io.to(userID).emit('ChatByUserID', combined);
@@ -126,6 +126,9 @@ io.on('connection', (socket) => {
 
   // Đăng ký group chat events
   registerGroupChatEvents(io, socket);
+
+  // Đăng ký group call events
+  registerGroupCallEvents(io, socket);
 
   socket.on('updateStatus', async (user) => {
     // Chỉ broadcast tới user room của chính họ, không broadcast toàn bộ

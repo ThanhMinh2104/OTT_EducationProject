@@ -39,7 +39,10 @@ import { AddMembersModal } from './AddMembersModal';
 import GroupInfoPanel from './GroupInfoPanel';
 import GroupManagementModal from './GroupManagementModal';
 import EditGroupInfoModal from './EditGroupInfoModal';
+import PinLimitModal from './PinLimitModal';
 import { groupMessages, isMessageGroup, MessageGroup } from '../utils/messageGrouping';
+import GroupCallModal from './GroupCallModal';
+import GroupIncomingCallModal from './GroupIncomingCallModal';
 import MentionDropdown, { MentionDropdownHandle } from './MentionDropdown';
 import { getCaretCoordinates } from '../utils/caretPosition';
 import OtherProfileModal from './OtherProfileModal';
@@ -370,6 +373,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [pinnedNotes, setPinnedNotes] = useState<any[]>([]);
   const [showPinnedList, setShowPinnedList] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [showImageViewer, setShowImageViewer] = useState(false);
@@ -382,11 +386,44 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [showGroupInfoPanel, setShowGroupInfoPanel] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [showEditGroupInfoModal, setShowEditGroupInfoModal] = useState(false);
+  const [showGroupCall, setShowGroupCall] = useState(false);
+  const [joinExistingCall, setJoinExistingCall] = useState(false);
+  const [groupCallIsCallee, setGroupCallIsCallee] = useState(false);
+  const [groupCallWithVideo, setGroupCallWithVideo] = useState(true);
+  const [groupCallInitialParticipants, setGroupCallInitialParticipants] = useState<{ userID: string; name: string; avatar?: string }[]>([]);
+
+  const getMyInfo = () => ({
+    userID,
+    name: members.find(m => m.userID === userID)?.name || groupInfo?.members.find(m => m.userID === userID)?.name || userID,
+    anhDaiDien: groupInfo?.members.find(m => m.userID === userID)?.avatar,
+  });
+
+  const openNewCall = () => setShowGroupCall(true);
+
+  const joinCall = () => {
+    setGroupCallIsCallee(true);
+    setGroupCallWithVideo(true);
+    setGroupCallInitialParticipants([]);
+    setJoinExistingCall(true);
+  };
+  const [incomingGroupCall, setIncomingGroupCall] = useState<{
+    callerInfo: { name: string; avatar?: string };
+    groupName: string;
+    invitedNames: string[];
+    groupID: string;
+  } | null>(null);
+  const [groupCallAccepted, setGroupCallAccepted] = useState<{ withVideo: boolean } | null>(null);
+  const [showPinLimitModal, setShowPinLimitModal] = useState(false);
+  const [pendingPinItem, setPendingPinItem] = useState<{ type: 'message' | 'note'; id: string; data: any } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   interface JoinRequest { requestID: string; userID: string; name: string; avatar?: string; requestedByName: string; }
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [pendingApprovalModal, setPendingApprovalModal] = useState<{ requestID: string; inviteeName: string; inviterName: string } | null>(null);
   const [socketConnected, setSocketConnected] = useState(socket.connected);
+  const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
 
   // States cho tính năng Mention
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -400,6 +437,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [isLoadingGifs, setIsLoadingGifs] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -492,15 +530,17 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       setGroupInfo((prev) =>
         prev ? { ...prev, members: membersWithInfo } : prev
       );
-      setMessages(messagesRes.data.messages || []);
+      const fetchedMessages = messagesRes.data.messages || [];
+      setMessages(fetchedMessages);
+      setCurrentPage(1);
+      setHasMoreMessages(fetchedMessages.length === 50);
 
       // Memoized filtered members to exclude current user
       const otherMembers = membersWithInfo.filter(m => m.userID !== userID);
 
-      // Load pinned messages
-      setPinnedMessages(
-        (messagesRes.data.messages || []).filter((m: Message) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
-      );
+      // Load pinned messages from separate API
+      await fetchPinnedMessages();
+      await fetchPinnedNotes();
 
       // Load all images from chat
       const images = (messagesRes.data.messages || [])
@@ -517,6 +557,71 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       setLoading(false);
     }
   }, [groupID]);
+
+  const fetchPinnedMessages = useCallback(async () => {
+    try {
+      const response = await axiosInstance.get(`/groups/${groupID}/pinned-messages`);
+      setPinnedMessages(response.data.pinnedMessages || []);
+    } catch (error) {
+      console.error('Error fetching pinned messages:', error);
+      setPinnedMessages([]);
+    }
+  }, [groupID]);
+
+  const fetchPinnedNotes = useCallback(async () => {
+    try {
+      const response = await axiosInstance.get(`/groups/${groupID}/notes`);
+      const allNotes = response.data.notes || [];
+      const pinned = allNotes.filter((note: any) => note.isPinned);
+      setPinnedNotes(pinned);
+    } catch (error) {
+      console.error('Error fetching pinned notes:', error);
+      setPinnedNotes([]);
+    }
+  }, [groupID]);
+
+  const loadMoreMessages = useCallback(async () => {
+    if (isLoadingMore || !hasMoreMessages) return;
+
+    try {
+      setIsLoadingMore(true);
+      const nextPage = currentPage + 1;
+      const response = await axiosInstance.get(`/groups/${groupID}/messages?page=${nextPage}&limit=50`);
+      const olderMessages = response.data.messages || [];
+
+      if (olderMessages.length > 0) {
+        // Save current scroll position
+        const container = messagesContainerRef.current;
+        const oldScrollHeight = container?.scrollHeight || 0;
+
+        setMessages((prev) => [...olderMessages, ...prev]);
+        setCurrentPage(nextPage);
+        setHasMoreMessages(olderMessages.length === 50);
+
+        // Restore scroll position after new messages are added
+        setTimeout(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - oldScrollHeight;
+          }
+        }, 0);
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch (error) {
+      console.error('Error loading more messages:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [groupID, currentPage, isLoadingMore, hasMoreMessages]);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    // Load more when scrolled to top (within 100px)
+    if (container.scrollTop < 100 && !isLoadingMore && hasMoreMessages) {
+      loadMoreMessages();
+    }
+  }, [isLoadingMore, hasMoreMessages, loadMoreMessages]);
 
   const fetchJoinRequests = useCallback(async () => {
     try {
@@ -572,31 +677,26 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   }, [groupID]);
 
   const handleNewMessage = useCallback((message: Message) => {
-    console.log('📨 Web received new_group_message:', {
-      messageID: message.messageID,
-      groupID: message.groupID,
-      content: message.content,
-      senderID: message.senderID,
-    });
-    console.log('🔍 Current groupID:', groupID);
-    console.log('🔍 Match:', message.groupID === groupID);
+    if (message.groupID !== groupID) return;
 
-    if (message.groupID === groupID) {
-      console.log('✅ Adding message to web');
-      setMessages((prev) => [...prev, message]);
-      
-      // Nếu đang mở group này, đánh dấu đã đọc tin nhắn mới ngay lập tức
-      if (message.senderID !== userID) {
-        socket.emit('mark_as_read', { 
-          messageID: message.messageID, 
-          userID, 
-          groupID 
-        });
+    setMessages((prev) => {
+      // Kiểm tra đã tồn tại chưa (theo messageID thật)
+      const exists = prev.some(msg =>
+        msg.messageID === message.messageID && !msg.messageID.startsWith('temp_')
+      );
+      if (exists) return prev;
+
+      // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn
+      // Tin nhắn đã được thêm và xác nhận qua callback socket.emit('send_group_message')
+      // Việc bỏ qua ở đây ngăn chặn 100% tình trạng duplicate tin nhắn do Race Condition
+      if (message.senderID === userID) {
+        return prev;
       }
-    } else {
-      console.log('❌ GroupID mismatch, not adding message');
-    }
-  }, [groupID]);
+
+      // Tin nhắn người khác → thêm bình thường
+      return [...prev, message];
+    });
+  }, [groupID, userID]);
 
   const handleTypingStart = useCallback((data: { groupID: string; userID: string; userName: string }) => {
     if (data.groupID === groupID && data.userID !== userID) {
@@ -692,12 +792,9 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         msg.messageID === data.messageID ? { ...msg, pinnedInfo: data.pinnedInfo } : msg
       )
     );
-    setPinnedMessages((prev) => {
-      const exists = prev.find((m) => m.messageID === data.messageID);
-      if (exists) return prev;
-      return [...prev, data];
-    });
-  }, []);
+    // Refresh pinned messages list from API
+    fetchPinnedMessages();
+  }, [fetchPinnedMessages]);
 
   const handleUnpinNotification = useCallback((data: any) => {
     console.log('📌 Unpin notification received:', data);
@@ -706,8 +803,30 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         msg.messageID === data.messageID ? { ...msg, pinnedInfo: null } : msg
       )
     );
-    setPinnedMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
-  }, []);
+    // Refresh pinned messages list from API
+    fetchPinnedMessages();
+  }, [fetchPinnedMessages]);
+
+  // Note event handlers
+  const handleNoteCreated = useCallback((note: any) => {
+    console.log('📝 Note created:', note);
+    fetchPinnedNotes();
+  }, [fetchPinnedNotes]);
+
+  const handleNoteUpdated = useCallback((note: any) => {
+    console.log('📝 Note updated:', note);
+    fetchPinnedNotes();
+  }, [fetchPinnedNotes]);
+
+  const handleNoteDeleted = useCallback((data: { noteID: string }) => {
+    console.log('📝 Note deleted:', data);
+    fetchPinnedNotes();
+  }, [fetchPinnedNotes]);
+
+  const handleNotePinToggled = useCallback((note: any) => {
+    console.log('📝 Note pin toggled:', note);
+    fetchPinnedNotes();
+  }, [fetchPinnedNotes]);
 
   useEffect(() => {
     fetchGroupData();
@@ -747,13 +866,16 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     socket.on('reaction_updated', handleReactionUpdated);
     socket.on('ghim_group_notification', handlePinNotification);
     socket.on('unghim_group_notification', handleUnpinNotification);
+    socket.on('note_created', handleNoteCreated);
+    socket.on('note_updated', handleNoteUpdated);
+    socket.on('note_deleted', handleNoteDeleted);
+    socket.on('note_pin_toggled', handleNotePinToggled);
     socket.on('new_join_request', () => fetchJoinRequests());
     socket.on('join_request_resolved', (data: { requestID: string }) => {
       setJoinRequests((prev) => prev.filter((r) => r.requestID !== data.requestID));
     });
     socket.on('new_join_request_notification', (data: { groupID: string; message: Message }) => {
       if (data.groupID !== groupID) return;
-      // Chỉ owner/admin mới thêm vào messages
       const currentRole = groupInfo?.members?.find(m => m.userID === userID)?.role;
       if (currentRole === 'owner' || currentRole === 'admin') {
         setMessages((prev) => [...prev, data.message]);
@@ -796,63 +918,101 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       socket.off('reaction_updated', handleReactionUpdated);
       socket.off('ghim_group_notification', handlePinNotification);
       socket.off('unghim_group_notification', handleUnpinNotification);
+      socket.off('note_created', handleNoteCreated);
+      socket.off('note_updated', handleNoteUpdated);
+      socket.off('note_deleted', handleNoteDeleted);
+      socket.off('note_pin_toggled', handleNotePinToggled);
       socket.off('new_join_request');
       socket.off('join_request_resolved');
       socket.off('new_join_request_notification');
       socket.emit('leave_group', { groupID, userID });
     };
-  }, [groupID, userID, fetchGroupData, fetchJoinRequests, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification]);
+  }, [groupID, userID, fetchGroupData, fetchJoinRequests, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification, handleNoteCreated, handleNoteUpdated, handleNoteDeleted, handleNotePinToggled]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (!inputText.trim()) return;
+  // Close pinned menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pinnedMenuId) {
+        setPinnedMenuId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [pinnedMenuId]);
 
+  const dispatchGroupMessageContent = (
+    msgData: { content: string, type: Message['type'], media_url: string[], groupId?: string },
+    currentReplyTo?: typeof replyTo
+  ) => {
     if (!socketConnected) {
       toast.error('Không có kết nối socket. Vui lòng tải lại trang.');
       return;
     }
 
-    console.log('🚀 Sending group message:', {
+    const tempMessageID = `temp_${Date.now()}_${Math.random()}`;
+    const currentUserInfo = members.find(m => m.userID === userID);
+    const optimisticMessage: Message = {
+      messageID: tempMessageID,
       groupID,
-      userID,
-      content: inputText,
-      socketConnected: socket.connected,
-      socketRooms: Array.from((socket as any).rooms || []),
-    });
+      senderID: userID,
+      content: msgData.content,
+      type: msgData.type,
+      media_url: msgData.media_url,
+      groupId: msgData.groupId,
+      timestamp: new Date(),
+      status: 'sent',
+      replyTo: currentReplyTo
+        ? {
+            messageID: currentReplyTo.messageID,
+            senderID: currentReplyTo.senderID,
+            content: currentReplyTo.content,
+            type: currentReplyTo.type,
+          }
+        : undefined,
+      senderInfo: {
+        name: currentUserInfo?.name || 'Bạn',
+        avatar: currentUserInfo?.avatar,
+      },
+    };
+
+    setMessages((prev) => [...prev, optimisticMessage]);
 
     const message = {
       groupID,
       senderID: userID,
-      content: inputText,
-      type: 'text',
-      media_url: [],
-      replyTo: replyTo
+      content: msgData.content,
+      type: msgData.type,
+      media_url: msgData.media_url,
+      groupId: msgData.groupId,
+      replyTo: currentReplyTo
         ? {
-          messageID: replyTo.messageID,
-          senderID: replyTo.senderID,
-          senderName: replyTo.senderInfo?.name || members.find(m => m.userID === replyTo.senderID)?.name,
-          content: replyTo.content,
-          type: replyTo.type,
-        }
+            messageID: currentReplyTo.messageID,
+            senderID: currentReplyTo.senderID,
+            senderName: currentReplyTo.senderInfo?.name || members.find(m => m.userID === currentReplyTo.senderID)?.name,
+            content: currentReplyTo.content,
+            type: currentReplyTo.type,
+          }
         : undefined,
       mentions: mentions, // Gửi danh sách ID được tag
     };
 
     socket.emit('send_group_message', message, (response: any) => {
       if (response?.error) {
-        console.error('❌ Send message error:', response.error);
         toast.error(response.error);
-      } else {
-        console.log('✅ Message sent successfully');
+        setMessages((prev) => prev.filter(msg => msg.messageID !== tempMessageID));
+      } else if (response?.success && response?.message) {
+        const realMessage: Message = response.message;
+        setMessages((prev) => {
+          const withoutTemp = prev.filter(msg => msg.messageID !== tempMessageID);
+          const alreadyExists = withoutTemp.some(msg => msg.messageID === realMessage.messageID);
+          return alreadyExists ? withoutTemp : [...withoutTemp, realMessage];
+        });
       }
     });
-
-    console.log('✅ Message emitted via socket');
-
-
     setInputText('');
     setReplyTo(null);
     setMentions([]); // Reset danh sách tag sau khi gửi
@@ -868,6 +1028,18 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     socket.emit('group_typing_stop', { groupID, userID });
   };
 
+  const handleSendMessage = () => {
+    if (!inputText.trim()) return;
+
+    const messageContent = inputText.trim();
+    const currentReplyTo = replyTo;
+    
+    setInputText('');
+    setReplyTo(null);
+
+    dispatchGroupMessageContent({ content: messageContent, type: 'text', media_url: [] }, currentReplyTo);
+  };
+
   const sendEmoji = (emojiData: EmojiClickData) => {
     setInputText((prev) => prev + emojiData.emoji);
     setShowEmoji(false);
@@ -875,27 +1047,13 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   };
 
   const sendSticker = async (stickerUrl: string) => {
-    const message = {
-      groupID,
-      senderID: userID,
-      content: '',
-      type: 'sticker',
-      media_url: [stickerUrl],
-    };
-    socket.emit('send_group_message', message);
+    dispatchGroupMessageContent({ content: '', type: 'sticker', media_url: [stickerUrl] }, replyTo || undefined);
     setShowEmoji(false);
     setReplyTo(null);
   };
 
   const sendGif = async (gifUrl: string) => {
-    const message = {
-      groupID,
-      senderID: userID,
-      content: '',
-      type: 'gif',
-      media_url: [gifUrl],
-    };
-    socket.emit('send_group_message', message);
+    dispatchGroupMessageContent({ content: '', type: 'gif', media_url: [gifUrl] }, replyTo || undefined);
     setShowEmoji(false);
     setReplyTo(null);
   };
@@ -934,34 +1092,25 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         const groupId = type === 'image' && data.urls.length > 1
           ? `img_group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
           : undefined;
-
         if (type === 'image' || type === 'video') {
           for (let i = 0; i < data.urls.length; i++) {
-            const url = data.urls[i];
-            const message = {
-              groupID,
-              senderID: userID,
+            dispatchGroupMessageContent({
               content: '',
-              type,
-              media_url: [url],
+              type: type as any,
+              media_url: [data.urls[i]],
               groupId, // Thêm groupId để gom nhóm ảnh
-            };
-            socket.emit('send_group_message', message);
+            }, replyTo || undefined);
             if (i < data.urls.length - 1) {
               await new Promise(resolve => setTimeout(resolve, 100));
             }
           }
         } else {
           for (let i = 0; i < files.length; i++) {
-            const f = files[i];
-            const message = {
-              groupID,
-              senderID: userID,
-              content: f.name,
+            dispatchGroupMessageContent({
+              content: files[i].name,
               type: 'file',
               media_url: [data.urls[i]],
-            };
-            socket.emit('send_group_message', message);
+            }, replyTo || undefined);
             if (i < files.length - 1) {
               await new Promise(resolve => setTimeout(resolve, 100));
             }
@@ -1035,14 +1184,11 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         throw new Error(data.error || 'Upload failed');
       }
 
-      const message = {
-        groupID,
-        senderID: userID,
+      dispatchGroupMessageContent({
         content: '',
         type: 'audio',
         media_url: [data.url],
-      };
-      socket.emit('send_group_message', message);
+      }, replyTo || undefined);
       setAudioBlob(null);
       setRecordingTime(0);
       setReplyTo(null);
@@ -1069,9 +1215,12 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         senderID: userID
       });
     } else {
-      // Check if already have 3 pinned messages
-      if (pinnedMessages.length >= 3) {
-        toast.error('Chỉ có thể ghim tối đa 3 tin nhắn');
+      // Check if already have 3 pinned items (messages + notes)
+      const totalPinned = pinnedMessages.length + pinnedNotes.length;
+      if (totalPinned >= 3) {
+        // Store the pending pin item
+        setPendingPinItem({ type: 'message', id: msg.messageID, data: msg });
+        setShowPinLimitModal(true);
         setActionMsgId(null);
         return;
       }
@@ -1086,6 +1235,87 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     }
 
     setActionMsgId(null);
+  };
+
+  const handleMoveToTop = (msg: Message) => {
+    if (!msg.messageID) return;
+    // Unpin then re-pin to move to top
+    socket.emit('unghim_group_message', {
+      messageID: msg.messageID,
+      groupID,
+      senderID: userID
+    });
+    setTimeout(() => {
+      socket.emit('ghim_group_message', {
+        messageID: msg.messageID,
+        groupID,
+        senderID: userID
+      });
+    }, 100);
+    setPinnedMenuId(null);
+    toast.success('Đã đưa lên đầu');
+  };
+
+  const handleCopyPinned = (msg: Message) => {
+    if (msg.content) {
+      navigator.clipboard.writeText(msg.content);
+      toast.success('Đã sao chép');
+    }
+    setPinnedMenuId(null);
+  };
+
+  const handleUnpinFromMenu = (msg: Message) => {
+    if (!msg.messageID) return;
+    socket.emit('unghim_group_message', {
+      messageID: msg.messageID,
+      groupID,
+      senderID: userID
+    });
+    setPinnedMenuId(null);
+  };
+
+  const handleReplacePinnedItem = async (itemIdToReplace: string) => {
+    if (!pendingPinItem) return;
+
+    // Step 1: Unpin the selected item
+    const messageToUnpin = pinnedMessages.find(m => m.messageID === itemIdToReplace);
+    const noteToUnpin = pinnedNotes.find(n => n.noteID === itemIdToReplace);
+
+    if (messageToUnpin) {
+      socket.emit('unghim_group_message', {
+        messageID: itemIdToReplace,
+        groupID,
+        senderID: userID
+      });
+    } else if (noteToUnpin) {
+      try {
+        await axiosInstance.post(`/groups/${groupID}/notes/${itemIdToReplace}/toggle-pin`);
+      } catch (error) {
+        console.error('Error unpinning note:', error);
+      }
+    }
+
+    // Step 2: Wait a bit for unpin to complete, then pin the new item
+    setTimeout(async () => {
+      if (pendingPinItem.type === 'message') {
+        socket.emit('ghim_group_message', {
+          messageID: pendingPinItem.id,
+          groupID,
+          senderID: userID
+        });
+      } else if (pendingPinItem.type === 'note') {
+        try {
+          await axiosInstance.post(`/groups/${groupID}/notes/${pendingPinItem.id}/toggle-pin`);
+          fetchPinnedNotes();
+        } catch (error) {
+          console.error('Error pinning note:', error);
+        }
+      }
+
+      setShowPinLimitModal(false);
+      setPendingPinItem(null);
+      toast.success('Đã cập nhật danh sách ghim');
+    }, 300);
   };
 
   const handleUnsend = (msg: Message) => {
@@ -1443,21 +1673,37 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       formData.append('file', file);
 
       try {
-        const response = await axiosInstance.post('/upload', formData, {
+        // Xác định loại file
+        let uploadEndpoint = '/upload';
+        let messageType: 'image' | 'video' | 'audio' | 'file' = 'file';
+        
+        if (file.type.startsWith('image/')) {
+          messageType = 'image';
+        } else if (file.type.startsWith('video/')) {
+          messageType = 'video';
+        } else if (file.type.startsWith('audio/')) {
+          messageType = 'audio';
+          uploadEndpoint = '/upload/audio';
+        }
+
+        const response = await axiosInstance.post(uploadEndpoint, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
 
-        const message = {
-          groupID,
-          senderID: userID,
-          content: file.name,
-          type: file.type.startsWith('image/') ? 'image' : 'file',
-          media_url: [response.data.url],
-        };
+        // Sử dụng dispatchGroupMessageContent để đảm bảo tin nhắn được xử lý đúng
+        dispatchGroupMessageContent({
+          content: messageType === 'file' ? file.name : '',
+          type: messageType,
+          media_url: [response.data.url || response.data.urls?.[0]],
+        }, replyTo || undefined);
 
-        socket.emit('send_group_message', message);
+        // Clear reply sau khi gửi
+        if (i === files.length - 1) {
+          setReplyTo(null);
+        }
       } catch (error) {
         console.error('Error uploading file:', error);
+        toast.error('Không thể tải file lên');
       }
     }
 
@@ -1662,18 +1908,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  toast('Tính năng gọi thoại nhóm đang phát triển');
-                }}
-                title="Gọi thoại"
-                className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]"
-              >
-                <FaPhone />
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toast('Tính năng gọi video nhóm đang phát triển');
+                  openNewCall();
                 }}
                 title="Gọi video"
                 className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]"
@@ -1734,34 +1969,81 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             </div>
           </div>
 
-          {/* Pinned Messages Bar */}
-          {pinnedMessages.length > 0 && (
+          {/* Pinned Messages & Notes Bar */}
+          {(pinnedMessages.length > 0 || pinnedNotes.length > 0) && (
             <div className="relative bg-white border-b border-gray-200 flex-shrink-0">
-              {/* Main pinned message display */}
+              {/* Main pinned item display */}
               <div
                 className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => {
-                  const lastPinned = pinnedMessages[pinnedMessages.length - 1];
-                  if (lastPinned?.messageID) {
-                    setHighlightedMsgId(lastPinned.messageID);
-                    msgRefsMap.current.get(lastPinned.messageID)?.scrollIntoView({
-                      behavior: 'smooth',
-                      block: 'center'
-                    });
-                    setTimeout(() => setHighlightedMsgId(null), 2500);
+                  // Show the most recent pinned item (message or note)
+                  const allPinned = [
+                    ...pinnedMessages.map(m => ({ type: 'message' as const, data: m, pinnedAt: m.pinnedInfo?.pinnedAt })),
+                    ...pinnedNotes.map(n => ({ type: 'note' as const, data: n, pinnedAt: n.pinnedAt }))
+                  ].sort((a, b) => {
+                    const dateA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+                    const dateB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+                    return dateB - dateA;
+                  });
+
+                  if (allPinned.length > 0 && allPinned[0].type === 'message') {
+                    const msg = allPinned[0].data as Message;
+                    if (msg.messageID) {
+                      setHighlightedMsgId(msg.messageID);
+                      msgRefsMap.current.get(msg.messageID)?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                      });
+                      setTimeout(() => setHighlightedMsgId(null), 2500);
+                    }
                   }
                 }}
               >
                 <BsPinAngleFill className="text-[#0068ff] text-lg shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
-                    {pinnedMessages[pinnedMessages.length - 1]?.senderInfo?.name || 'Tin nhắn'}
-                  </div>
-                  <div className="text-[12px] text-gray-500 truncate">
-                    {pinnedMessages[pinnedMessages.length - 1]?.content || '[Media]'}
-                  </div>
+                  {(() => {
+                    const allPinned = [
+                      ...pinnedMessages.map(m => ({ type: 'message' as const, data: m, pinnedAt: m.pinnedInfo?.pinnedAt })),
+                      ...pinnedNotes.map(n => ({ type: 'note' as const, data: n, pinnedAt: n.pinnedAt }))
+                    ].sort((a, b) => {
+                      const dateA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+                      const dateB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+                      return dateB - dateA;
+                    });
+
+                    if (allPinned.length === 0) return null;
+
+                    const latest = allPinned[0];
+                    if (latest.type === 'message') {
+                      const msg = latest.data as Message;
+                      return (
+                        <>
+                          <div className="text-[13px] font-semibold text-gray-800 mb-0.5 flex items-center gap-1">
+                            <span>📌</span>
+                            {msg.senderInfo?.name || 'Tin nhắn'}
+                          </div>
+                          <div className="text-[12px] text-gray-500 truncate">
+                            {msg.content || '[Media]'}
+                          </div>
+                        </>
+                      );
+                    } else {
+                      const note = latest.data as any;
+                      return (
+                        <>
+                          <div className="text-[13px] font-semibold text-gray-800 mb-0.5 flex items-center gap-1">
+                            <span>📝</span>
+                            {note.creatorInfo?.name || 'Ghi chú'}
+                          </div>
+                          <div className="text-[12px] text-gray-500 truncate">
+                            {note.content}
+                          </div>
+                        </>
+                      );
+                    }
+                  })()}
                 </div>
-                {pinnedMessages.length > 1 && (
+                {(pinnedMessages.length + pinnedNotes.length > 1) && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1769,7 +2051,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                     }}
                     className="px-3 py-1 bg-gray-50 hover:bg-gray-100 rounded-lg text-[12px] text-gray-700 font-medium transition-colors flex items-center gap-1"
                   >
-                    +{pinnedMessages.length - 1} ghim
+                    +{pinnedMessages.length + pinnedNotes.length - 1} ghim
                     <svg
                       className={`w-3 h-3 transition-transform ${showPinnedList ? 'rotate-180' : ''}`}
                       fill="none"
@@ -1782,12 +2064,12 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 )}
               </div>
 
-              {/* Dropdown list of all pinned messages */}
-              {showPinnedList && pinnedMessages.length > 1 && (
+              {/* Dropdown list of all pinned messages and notes */}
+              {showPinnedList && (pinnedMessages.length + pinnedNotes.length > 1) && (
                 <div className="absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-10 max-h-[300px] overflow-y-auto">
                   <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between">
                     <span className="text-[13px] font-semibold text-gray-700">
-                      Danh sách ghim ({pinnedMessages.length})
+                      Danh sách ghim ({pinnedMessages.length + pinnedNotes.length})
                     </span>
                     <button
                       onClick={() => setShowPinnedList(false)}
@@ -1796,57 +2078,128 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                       <FaTimes />
                     </button>
                   </div>
-                  {pinnedMessages.slice().reverse().map((msg) => (
-                    <div
-                      key={msg.messageID}
-                      className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                      onClick={() => {
-                        if (msg.messageID) {
-                          setHighlightedMsgId(msg.messageID);
-                          msgRefsMap.current.get(msg.messageID)?.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'center'
-                          });
-                          setTimeout(() => setHighlightedMsgId(null), 2500);
-                          setShowPinnedList(false);
-                        }
-                      }}
-                    >
-                      <img
-                        src={msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`}
-                        alt="avatar"
-                        className="w-8 h-8 rounded-full object-cover shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
-                          {msg.senderInfo?.name}
-                        </div>
-                        <div className="text-[12px] text-gray-600 truncate">
-                          {msg.content || '[Media]'}
-                        </div>
-                        <div className="text-[11px] text-gray-400 mt-0.5">
-                          {formatTime(msg.timestamp)}
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePin(msg);
-                        }}
-                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                        title="Bỏ ghim"
-                      >
-                        <FaTimes className="text-sm" />
-                      </button>
-                    </div>
-                  ))}
+                  
+                  {/* Combine and sort pinned messages and notes by pin date */}
+                  {[
+                    ...pinnedMessages.map(m => ({ type: 'message' as const, data: m, pinnedAt: m.pinnedInfo?.pinnedAt })),
+                    ...pinnedNotes.map(n => ({ type: 'note' as const, data: n, pinnedAt: n.pinnedAt }))
+                  ]
+                    .sort((a, b) => {
+                      const dateA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+                      const dateB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+                      return dateB - dateA;
+                    })
+                    .map((item, index) => {
+                      if (item.type === 'message') {
+                        const msg = item.data as Message;
+                        return (
+                          <div
+                            key={`msg-${msg.messageID}`}
+                            className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            onClick={() => {
+                              if (msg.messageID) {
+                                setHighlightedMsgId(msg.messageID);
+                                msgRefsMap.current.get(msg.messageID)?.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'center'
+                                });
+                                setTimeout(() => setHighlightedMsgId(null), 2500);
+                                setShowPinnedList(false);
+                              }
+                            }}
+                          >
+                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                              <span className="text-base">📌</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
+                                {msg.senderInfo?.name}
+                              </div>
+                              <div className="text-[12px] text-gray-600 truncate">
+                                {msg.content || '[Media]'}
+                              </div>
+                              <div className="text-[11px] text-gray-400 mt-0.5">
+                                {formatTime(msg.timestamp)}
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePin(msg);
+                              }}
+                              className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                              title="Bỏ ghim"
+                            >
+                              <FaTimes className="text-sm" />
+                            </button>
+                          </div>
+                        );
+                      } else {
+                        const note = item.data as any;
+                        return (
+                          <div
+                            key={`note-${note.noteID}`}
+                            className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            onClick={() => {
+                              // Open note modal or show note details
+                              setShowPinnedList(false);
+                            }}
+                          >
+                            <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+                              <span className="text-base">📝</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
+                                {note.creatorInfo?.name || 'Ghi chú'}
+                              </div>
+                              <div className="text-[12px] text-gray-600 line-clamp-2">
+                                {note.content}
+                              </div>
+                              <div className="text-[11px] text-gray-400 mt-0.5">
+                                {new Date(note.createdAt).toLocaleString('vi-VN', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </div>
+                            </div>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await axiosInstance.post(`/groups/${groupID}/notes/${note.noteID}/toggle-pin`);
+                                  toast.success('Đã bỏ ghim ghi chú');
+                                  fetchPinnedNotes();
+                                } catch (error: any) {
+                                  toast.error(error.response?.data?.message || 'Lỗi khi bỏ ghim');
+                                }
+                              }}
+                              className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                              title="Bỏ ghim"
+                            >
+                              <FaTimes className="text-sm" />
+                            </button>
+                          </div>
+                        );
+                      }
+                    })}
                 </div>
               )}
             </div>
           )}
 
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 bg-gray-50">
+          <div 
+            ref={messagesContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto px-4 py-3 bg-gray-50"
+          >
+            {isLoadingMore && (
+              <div className="flex justify-center py-2">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+              </div>
+            )}
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-4">
                 <div className="w-16 h-16 bg-linear-to-br from-[#0068ff] to-[#0077c2] rounded-full flex items-center justify-center text-white text-3xl shadow-[0_4px_16px_rgba(14,157,232,0.35)]">
@@ -2062,6 +2415,38 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                               </span>
                             );
                           })()}
+                        </div>
+                      </div>
+                    ) : msg.type === 'group-call' ? (
+                      /* Tin nhắn cuộc gọi nhóm */
+                      <div className="w-full flex justify-center my-2">
+                        <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3 max-w-[320px]">
+                          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
+                            <FaVideo className="text-white text-sm" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800">Cuộc gọi nhóm</p>
+                            <p className="text-xs text-gray-500">{msg.senderInfo?.name} đã bắt đầu</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              // Kiểm tra call còn active không trước khi join
+                              socket.emit('group-call-check', { groupID }, (active: boolean) => {
+                                if (active) {
+                                  joinCall();
+                                } else {
+                                  toast('Cuộc gọi đã kết thúc', {
+                                    icon: '📵',
+                                    style: { fontSize: '14px' },
+                                    duration: 2500,
+                                  });
+                                }
+                              });
+                            }}
+                            className="shrink-0 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-colors"
+                          >
+                            Tham gia
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -2744,6 +3129,20 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               setShowManagementModal(true);
               setShowGroupInfoPanel(false);
             }}
+            onViewMessage={(messageID: string) => {
+              setHighlightedMsgId(messageID);
+              msgRefsMap.current.get(messageID)?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+              });
+              setTimeout(() => setHighlightedMsgId(null), 2500);
+              setShowGroupInfoPanel(false);
+            }}
+            onPinLimitReached={(noteID: string) => {
+              // Find the note to pin
+              setPendingPinItem({ type: 'note', id: noteID, data: null });
+              setShowPinLimitModal(true);
+            }}
             onLeaveGroup={async () => {
               try {
                 await axiosInstance.post(`/groups/${groupID}/leave`);
@@ -3014,6 +3413,30 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         />
       )}
 
+      {/* Pin Limit Modal */}
+      <PinLimitModal
+        show={showPinLimitModal}
+        onClose={() => setShowPinLimitModal(false)}
+        pinnedItems={[
+          ...pinnedMessages.map(m => ({
+            id: m.messageID,
+            type: 'message' as const,
+            content: m.content || '[Media]',
+            senderName: m.senderInfo?.name,
+            timestamp: m.timestamp.toString()
+          })),
+          ...pinnedNotes.map(n => ({
+            id: n.noteID,
+            type: 'note' as const,
+            content: n.content,
+            creatorName: n.creatorInfo?.name,
+            timestamp: n.createdAt
+          }))
+        ]}
+        onReplace={handleReplacePinnedItem}
+      />
+
+      {/* Pending Approval Modal */}
       {pendingApprovalModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]"
@@ -3080,6 +3503,21 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
           user={members.find((m) => m.userID === userID) as any}
           onClose={() => setShowUserProfile(false)}
           setUser={() => { }}
+        />
+      )}
+
+      {/* Group Call Modal — floating window */}
+      {(showGroupCall || joinExistingCall) && (
+        <GroupCallModal
+          user={{ userID, name: getMyInfo().name, anhDaiDien: getMyInfo().anhDaiDien }}
+          groupID={groupID}
+          groupName={groupInfo?.name || 'Nhóm'}
+          groupAvatar={groupInfo?.avatar}
+          members={members.filter(m => m.userID !== userID).map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar }))}
+          isCallee={groupCallIsCallee}
+          initialWithVideo={groupCallWithVideo}
+          initialParticipants={groupCallInitialParticipants}
+          onClose={() => { setShowGroupCall(false); setJoinExistingCall(false); setGroupCallIsCallee(false); }}
         />
       )}
     </div>

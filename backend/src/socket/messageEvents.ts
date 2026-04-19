@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import Message from '../models/Messages';
 import ChatMember from '../models/ChatMember';
+import GroupMember from '../models/GroupMember';
 import Users from '../models/User';
 import GroupMessage from '../models/GroupMessage';
 import { 
@@ -602,6 +603,162 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       }, 1000);
     } catch (e) {
       console.error('❌ forward_message error:', e);
+      if (callback) callback({ success: false, error: String(e) });
+    }
+  });
+
+  // ==================== 7.1 CHUYỂN TIẾP TIN NHẮN ĐẾN NHÓM (MỚI) ====================
+  socket.on('forward_to_group', async (data: {
+    originalMessageID: string;
+    targetGroupID: string;
+    senderID: string;
+    senderInfo: {
+      name: string;
+      avatar: string | null;
+    };
+  }, callback?: (response: any) => void) => {
+    try {
+      console.log('📨 Forward to group request received:', {
+        originalMessageID: data.originalMessageID,
+        targetGroupID: data.targetGroupID,
+        senderID: data.senderID,
+      });
+
+      // Import models
+      const GroupMessage = (await import('../models/GroupMessage')).default;
+      const Group = (await import('../models/Group')).default;
+
+      // Lấy tin nhắn gốc (có thể từ private chat hoặc group chat)
+      let originalMsg: any;
+      
+      // Try to find in GroupMessage first
+      originalMsg = await GroupMessage.findOne({ messageID: data.originalMessageID });
+      
+      // If not found, try Message model (private chat)
+      if (!originalMsg) {
+        originalMsg = await Message.findOne({ messageID: data.originalMessageID });
+      }
+
+      if (!originalMsg) {
+        console.error('❌ Original message not found:', data.originalMessageID);
+        if (callback) callback({ success: false, error: 'Message not found' });
+        return;
+      }
+
+      // Không cho phép forward tin nhắn đã thu hồi
+      if (originalMsg.type === 'unsend' || originalMsg.type === 'notification') {
+        console.error('❌ Cannot forward unsent/notification message');
+        if (callback) callback({ success: false, error: 'Cannot forward this message type' });
+        return;
+      }
+
+      // Lấy thông tin nhóm đích
+      const targetGroup = await Group.findOne({ groupID: data.targetGroupID });
+      if (!targetGroup) {
+        console.error('❌ Target group not found:', data.targetGroupID);
+        if (callback) callback({ success: false, error: 'Group not found' });
+        return;
+      }
+
+      const memberIDs = (await GroupMember.find({ groupID: data.targetGroupID })).map((m: any) => m.userID);
+      console.log('👥 Target group members:', memberIDs);
+
+      // ⭐ Xử lý image group nếu có
+      let messagesToForward: any[] = [originalMsg];
+      if (originalMsg.type === 'image' && originalMsg.groupId) {
+        console.log('📸 Forwarding entire image group:', originalMsg.groupId);
+        
+        // Try to find all messages in the group
+        const groupMessages = await GroupMessage.find({ groupId: originalMsg.groupId });
+        if (groupMessages.length > 0) {
+          messagesToForward = groupMessages;
+        } else {
+          const privateMessages = await Message.find({ groupId: originalMsg.groupId });
+          if (privateMessages.length > 0) {
+            messagesToForward = privateMessages;
+          }
+        }
+      }
+
+      const newGroupId = messagesToForward.length > 1 
+        ? `group_${Date.now()}_${data.senderID}` 
+        : undefined;
+
+      const forwardedMessageIDs: string[] = [];
+
+      // Tạo và gửi từng tin nhắn vào nhóm
+      for (const originalMessage of messagesToForward) {
+        const messageID = `gmsg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        const newMsg = new GroupMessage({
+          messageID,
+          groupID: data.targetGroupID,
+          senderID: data.senderID,
+          content: originalMessage.content,
+          type: originalMessage.type,
+          timestamp: new Date(),
+          media_url: originalMessage.media_url || [],
+          status: 'sent',
+          forwardedFrom: originalMessage.messageID,
+          groupId: newGroupId,
+          replyTo: null,
+          pinnedInfo: null,
+        });
+
+        const saved = await newMsg.save();
+        forwardedMessageIDs.push(saved.messageID);
+        console.log('💾 New group message saved:', messageID);
+
+        const fullMessage = {
+          messageID: saved.messageID,
+          _id: saved._id,
+          groupID: data.targetGroupID,
+          senderID: data.senderID,
+          content: saved.content,
+          type: saved.type,
+          timestamp: saved.timestamp,
+          media_url: saved.media_url,
+          status: 'sent',
+          forwardedFrom: originalMessage.messageID,
+          groupId: saved.groupId,
+          senderInfo: data.senderInfo,
+        };
+
+        // Gửi tới tất cả thành viên của nhóm
+        memberIDs.forEach((id: string) => {
+          io.to(id).emit('new_group_message', fullMessage);
+        });
+
+        if (messagesToForward.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      console.log(`✅ ${messagesToForward.length} message(s) forwarded to group ${data.targetGroupID}`);
+
+      if (callback) {
+        callback({ 
+          success: true, 
+          messageIDs: forwardedMessageIDs,
+          targetGroupID: data.targetGroupID 
+        });
+      }
+
+      // Update status
+      setTimeout(async () => {
+        for (const msgID of forwardedMessageIDs) {
+          await GroupMessage.findOneAndUpdate({ messageID: msgID }, { status: 'delivered' });
+          memberIDs.forEach((id: string) => {
+            io.to(id).emit('group_message_status_update', {
+              groupID: data.targetGroupID,
+              messageID: msgID,
+              status: 'delivered',
+            });
+          });
+        }
+      }, 1000);
+    } catch (e) {
+      console.error('❌ forward_to_group error:', e);
       if (callback) callback({ success: false, error: String(e) });
     }
   });

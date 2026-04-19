@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, Image,
   TextInput, Modal, Alert, ActivityIndicator, Linking, ScrollView, Clipboard, Platform,
+  InteractionManager, RefreshControl
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,6 +28,7 @@ import AddFriendModal from '../components/AddFriendModal';
 import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
 import { Swipeable } from 'react-native-gesture-handler';
 import { CreateGroupModal } from '../components/CreateGroupModal';
+import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
 
 import { StackScreenProps } from '@react-navigation/stack';
 
@@ -141,6 +143,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   // Chat info panel state
   const [showChatInfo, setShowChatInfo] = useState(false);
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
 
   // States cho Mention (@)
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -152,6 +155,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
   const [showPinnedList, setShowPinnedList] = useState(false);
+  // Quyền ghim tin nhắn trong group
+  const [canPinMessages, setCanPinMessages] = useState(true);
+  // Quyền gửi tin nhắn trong group
+  const [canSendMessages, setCanSendMessages] = useState(true);
 
   // Forward message states
   const [showForwardModal, setShowForwardModal] = useState(false);
@@ -176,7 +183,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const flatListRef = useRef<FlatList>(null);
   const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Stranger / AddFriend / Profile states
+  // Pagination States
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  
+  // Friend Profile States
   const [strangerChats, setStrangerChats] = useState<Chat[]>([]);
   const [showStrangerInbox, setShowStrangerInbox] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
@@ -631,9 +643,16 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   useEffect(() => {
     if (!selectedChat || !user) return;
     const chatID = selectedChat.chatID;
+    const isGroup = selectedChat.type === 'group';
 
-    socket.emit('join_chat', chatID);
-    socket.emit('read_messages', { chatID, userID: user.userID });
+    if (isGroup) {
+      // Group chat: join_group
+      socket.emit('join_group', { groupID: chatID, userID: user.userID });
+    } else {
+      // Private chat: join_chat
+      socket.emit('join_chat', chatID);
+      socket.emit('read_messages', { chatID, userID: user.userID });
+    }
 
     const onNewMessage = (msg: Message) => {
       // Luôn cập nhật chat list preview, bất kể chat có đang mở hay không
@@ -710,14 +729,61 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
       // Cập nhật messages trong chat window
       setMessages(prev => {
-        const exists = prev.find(m => m.messageID === msg.messageID || (msg.tempID && m.tempID === msg.tempID));
-        if (exists) return prev.map(m => (m.messageID === msg.messageID || m.tempID === msg.tempID) ? { ...m, ...msg } : m);
+        // Kiểm tra xem tin nhắn đã tồn tại chưa (theo messageID hoặc tempID)
+        const existingIndex = prev.findIndex(m => 
+          m.messageID === msg.messageID || 
+          (msg.tempID && m.tempID === msg.tempID) ||
+          (m.tempID && m.tempID === msg.tempID)
+        );
+        
+        if (existingIndex !== -1) {
+          // Tin nhắn đã tồn tại → update thay vì thêm mới
+          return prev.map((m, idx) => 
+            idx === existingIndex ? { ...m, ...msg, tempID: undefined } : m
+          );
+        }
+        
+        // Tin nhắn mới → thêm vào cuối
         return [...prev, msg];
       });
 
       if (msg.senderID !== user.userID) {
         socket.emit('read_messages', { chatID, userID: user.userID });
       }
+    };
+
+    // Handler cho group messages
+    const onNewGroupMessage = (msg: any) => {
+      const normalizedMsg: Message = {
+        ...msg,
+        chatID: msg.groupID || chatID,
+        messageID: msg.messageID,
+        tempID: undefined,
+      };
+
+      // Cập nhật chat list preview
+      setChats(prev => prev.map(c => {
+        if (c.chatID !== normalizedMsg.chatID) return c;
+        const msgs = c.lastMessage || [];
+        const exists = msgs.find(m => m.messageID === normalizedMsg.messageID);
+        return exists ? c : { ...c, lastMessage: [...msgs, normalizedMsg] };
+      }));
+
+      if (msg.groupID !== chatID && msg.chatID !== chatID) return;
+
+      // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn
+      // Chúng ta đã cập nhật tin nhắn này thông qua callback của socket.emit('send_group_message')
+      // Điều này ngăn chặn triệt để lỗi duplicate do bất đồng bộ (Race condition)
+      if (msg.senderID === user.userID) {
+        return;
+      }
+
+      // Tin nhắn từ người khác → thêm bình thường
+      setMessages(prev => {
+        const exists = prev.find(m => m.messageID === normalizedMsg.messageID);
+        if (exists) return prev;
+        return [...prev, normalizedMsg];
+      });
     };
 
     const onUnsend = (updated: Message) => {
@@ -730,13 +796,15 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
     };
 
-    const onTypingStart = ({ chatID: cid, userID: uid, userName }: any) => {
-      if (uid === user.userID || cid !== chatID) return;
+    const onTypingStart = ({ chatID: cid, userID: uid, userName, groupID }: any) => {
+      const targetID = groupID || cid;
+      if (uid === user.userID || targetID !== chatID) return;
       setTypingUsers(prev => prev.find(u => u.userID === uid) ? prev : [...prev, { userID: uid, userName }]);
     };
 
-    const onTypingStop = ({ chatID: cid, userID: uid }: any) => {
-      if (cid !== chatID) return;
+    const onTypingStop = ({ chatID: cid, userID: uid, groupID }: any) => {
+      const targetID = groupID || cid;
+      if (targetID !== chatID) return;
       setTypingUsers(prev => prev.filter(u => u.userID !== uid));
     };
 
@@ -765,34 +833,85 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
     };
 
+    // Group chat pin/unpin events
+    const onGhimGroupNotification = (updated: Message) => {
+      console.log("📌 Received ghim_group_notification:", updated);
+      if (updated.groupID === chatID || updated.chatID === chatID) {
+        setMessages((prev) =>
+          prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m))
+        );
+        setPinnedMessages((prev) => {
+          const exists = prev.find((m) => m.messageID === updated.messageID);
+          return exists
+            ? prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m))
+            : [...prev, updated];
+        });
+      }
+    };
+
+    const onUnghimGroupNotification = (updated: Message) => {
+      console.log("📌 Received unghim_group_notification:", updated);
+      if (updated.groupID === chatID || updated.chatID === chatID) {
+        setMessages((prev) =>
+          prev.map((m) => (m.messageID === updated.messageID ? { ...m, pinnedInfo: undefined } : m))
+        );
+        setPinnedMessages((prev) => prev.filter((m) => m.messageID !== updated.messageID));
+      }
+    };
+
+    // Rejoin group khi socket reconnect
+    const onReconnect = () => {
+      if (isGroup) {
+        socket.emit('join_group', { groupID: chatID, userID: user.userID });
+      } else {
+        socket.emit('join_chat', chatID);
+      }
+    };
+
     socket.on('new_message', onNewMessage);
-    socket.on(chatID, onNewMessage);
+    // Lắng nghe group messages
+    if (isGroup) {
+      socket.on('new_group_message', onNewGroupMessage);
+      socket.on('group_typing_start', onTypingStart);
+      socket.on('group_typing_stop', onTypingStop);
+    } else {
+      socket.on('typing_start', onTypingStart);
+      socket.on('typing_stop', onTypingStop);
+    }
     socket.on('unsend_notification', onUnsend);
     socket.on('message_deleted_local', onDeletedLocal);
-    socket.on('typing_start', onTypingStart);
-    socket.on('typing_stop', onTypingStop);
     socket.on('ghim_notification', onGhimNotification);
     socket.on('unghim_notification', onUnghimNotification);
+    socket.on('ghim_group_notification', onGhimGroupNotification);
+    socket.on('unghim_group_notification', onUnghimGroupNotification);
+    socket.on('connect', onReconnect);
 
     return () => {
       socket.off('new_message', onNewMessage);
-      socket.off(chatID, onNewMessage);
+      if (isGroup) {
+        socket.off('new_group_message', onNewGroupMessage);
+        socket.off('group_typing_start', onTypingStart);
+        socket.off('group_typing_stop', onTypingStop);
+        socket.emit('leave_group', { groupID: chatID, userID: user.userID });
+      } else {
+        socket.off('typing_start', onTypingStart);
+        socket.off('typing_stop', onTypingStop);
+      }
       socket.off('unsend_notification', onUnsend);
       socket.off('message_deleted_local', onDeletedLocal);
-      socket.off('typing_start', onTypingStart);
-      socket.off('typing_stop', onTypingStop);
       socket.off('ghim_notification', onGhimNotification);
       socket.off('unghim_notification', onUnghimNotification);
+      socket.off('ghim_group_notification', onGhimGroupNotification);
+      socket.off('unghim_group_notification', onUnghimGroupNotification);
+      socket.off('connect', onReconnect);
       setTypingUsers([]);
     };
   }, [selectedChat?.chatID, user?.userID]);
 
-  const handleSelectChat = async (chat: Chat) => {
+  const handleSelectChat = (chat: Chat) => {
     // Đảm bảo chat có trong danh sách
     const chatInList = chats.find(c => c.chatID === chat.chatID) || strangerChats.find(c => c.chatID === chat.chatID);
     if (!chatInList) {
-      console.log('📥 Chat not in list, adding it:', chat.chatID);
-      // Thêm vào danh sách phù hợp
       if (chat.isStranger) {
         setStrangerChats(prev => [chat, ...prev]);
       } else {
@@ -800,39 +919,35 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
     }
 
+    // Hiển thị ngay cached messages từ lastMessage (không block UI)
+    const cachedMessages = chat.lastMessage || [];
+    const normalizedCached = chat.type === 'group'
+      ? cachedMessages.map((m: any) => ({ ...m, chatID: m.groupID || chat.chatID }))
+      : cachedMessages;
     setSelectedChat(chat);
-    setMessages(chat.lastMessage || []);
-    const initialPinned = (chat.lastMessage || []).filter(
-      (m) => m.pinnedInfo?.pinnedBy // Chỉ cần check pinnedBy, không cần check pinnedInfo
-    );
-    console.log('📌 Initial pinned messages:', initialPinned.length, initialPinned);
-    setPinnedMessages(initialPinned);
+    setMessages(normalizedCached);
+    setPinnedMessages(normalizedCached.filter((m: any) => m.pinnedInfo?.pinnedBy));
     setReplyTo(null);
     setInputText('');
-    onChatOpen?.(); // ẩn tab bar
+    setPage(1);
+    setHasMore(true);
+    setIsLoadingMore(false);
+    onChatOpen?.();
 
-    // Fetch member info và friend status nếu chưa có
+    // Fetch member info và friend status
     if (user) {
       if (chat.type === 'private') {
         const otherId = chat.members.find((m) => m.userID !== user.userID)?.userID;
         if (otherId) {
           fetchMember(otherId);
-          (async () => {
-            try {
-              const token = await AsyncStorage.getItem('token');
-              const statusRes = await fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              if (statusRes.ok) {
-                const statusData = await statusRes.json();
-                setCurrentFriendStatus(statusData.friendStatus || 'none');
-              } else {
-                setCurrentFriendStatus('none');
-              }
-            } catch {
-              setCurrentFriendStatus('none');
-            }
-          })();
+          AsyncStorage.getItem('token').then(token => {
+            if (!token) return;
+            fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }).then(r => r.json()).then(data => {
+              setCurrentFriendStatus(data.friendStatus || 'none');
+            }).catch(() => setCurrentFriendStatus('none'));
+          });
         }
       } else if (chat.type === 'group') {
         // Fetch thông tin tất cả thành viên trong nhóm để hiển thị tên khi mention
@@ -842,30 +957,144 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
     }
 
-    // Load full messages from API
-    try {
-      const token = await AsyncStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/messages/id`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ chatID: chat.chatID }),
-      });
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        // Deduplicate theo messageID
-        const seen = new Set<string>();
-        const deduped = data.filter((m: Message) => {
-          const key = m.messageID || m.tempID || '';
-          if (!key || seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-        setMessages(deduped);
-        const pinnedFromAPI = deduped.filter((m) => m.pinnedInfo?.pinnedBy); // Chỉ check pinnedBy
-        console.log('📌 Pinned messages from API:', pinnedFromAPI.length, pinnedFromAPI);
-        setPinnedMessages(pinnedFromAPI);
+    // Fetch full messages trong background (không block render)
+    const fetchFullMessages = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        if (!token) return;
+
+        if (chat.type === 'group') {
+          const groupID = chat.chatID;
+          const res = await fetch(`${API_URL}/api/groups/${groupID}/messages?page=1&limit=50`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          if (data.messages && Array.isArray(data.messages)) {
+            const normalized = data.messages.map((m: any) => ({
+              ...m,
+              chatID: m.groupID || groupID,
+            }));
+            // Chỉ update nếu vẫn đang ở chat này
+            setSelectedChat(current => {
+              if (current?.chatID === chat.chatID) {
+                setMessages(normalized);
+                setPinnedMessages(normalized.filter((m: any) => m.pinnedInfo?.pinnedBy));
+              }
+              return current;
+            });
+          }
+        } else {
+          const res = await fetch(`${API_URL}/api/messages/id`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ chatID: chat.chatID, page: 1, limit: 50 }),
+          });
+          const data = await res.json();
+          const messageArray = Array.isArray(data) ? data : (data.messages || []);
+          if (messageArray && Array.isArray(messageArray)) {
+            const seen = new Set<string>();
+            const deduped = messageArray.filter((m: Message) => {
+              const key = m.messageID || m.tempID || '';
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            setSelectedChat(current => {
+              if (current?.chatID === chat.chatID) {
+                setMessages(deduped);
+                setPinnedMessages(deduped.filter((m: any) => m.pinnedInfo?.pinnedBy));
+                setHasMore(Array.isArray(data) ? false : (data.page * data.limit < data.total));
+              }
+              return current;
+            });
+          }
+        }
+      } catch (err) {
+        // Giữ nguyên cached messages nếu fetch thất bại
       }
-    } catch { /* fallback to lastMessage */ }
+    };
+
+    // Fetch quyền cho group chat (ghim + gửi tin nhắn)
+    const fetchGroupSettings = async () => {
+      if (chat.type === 'group') {
+        try {
+          const token = await AsyncStorage.getItem('token');
+          const settingsRes = await fetch(`${API_URL}/api/groups/${chat.chatID}/settings`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (settingsRes.ok) {
+            const settingsData = await settingsRes.json();
+            const userStored = await AsyncStorage.getItem('user');
+            const me = userStored ? JSON.parse(userStored) : null;
+            const myMember = chat.members.find((m: any) => m.userID === me?.userID);
+            const isOwnerOrAdmin = myMember?.role === 'owner' || myMember?.role === 'admin';
+            const perms = settingsData.settings?.memberPermissions;
+            // owner/admin luôn có quyền; member thường phụ thuộc setting
+            setCanPinMessages(isOwnerOrAdmin || (perms?.pinMessages ?? true));
+            setCanSendMessages(isOwnerOrAdmin || (perms?.sendMessages ?? true));
+          }
+        } catch { /* fallback: cho phép tất cả */ }
+      } else {
+        setCanPinMessages(true);
+        setCanSendMessages(true);
+      }
+    };
+
+    // Chạy fetch data SAU KHI animation chuyển màn hình hoàn tất
+    // Giúp UX khi mở màn hình chat mượt mà hơn, không bị giật/khựng
+    InteractionManager.runAfterInteractions(() => {
+      fetchFullMessages();
+      fetchGroupSettings();
+    });
+  };
+
+  const loadMoreMessages = async () => {
+    if (isLoadingMore || !hasMore || !selectedChat) return;
+    try {
+      setIsLoadingMore(true);
+      const token = await AsyncStorage.getItem('token');
+      const nextPage = page + 1;
+      let newMessages = [];
+      let hasMoreData = false;
+
+      if (selectedChat.type === 'group') {
+        const res = await fetch(`${API_URL}/api/groups/${selectedChat.chatID}/messages?page=${nextPage}&limit=50`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.messages) {
+           newMessages = data.messages.map((m: any) => ({...m, chatID: m.groupID || selectedChat.chatID}));
+           hasMoreData = (data.page * 50 < data.total);
+        }
+      } else {
+        const res = await fetch(`${API_URL}/api/messages/id`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ chatID: selectedChat.chatID, page: nextPage, limit: 50 }),
+        });
+        const data = await res.json();
+        newMessages = Array.isArray(data) ? [] : (data.messages || []);
+        hasMoreData = Array.isArray(data) ? false : (data.page * data.limit < data.total);
+      }
+
+      if (newMessages.length > 0) {
+        setMessages(prev => {
+          const seen = new Set(prev.map(m => m.messageID || m.tempID));
+          const filtered = newMessages.filter(m => {
+             const k = m.messageID || m.tempID;
+             if (seen.has(k)) return false;
+             seen.add(k); return true;
+          });
+          return [...filtered, ...prev]; // Prepend tin nhắn cũ lên đầu
+        });
+        setPage(nextPage);
+      }
+      setHasMore(hasMoreData);
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingMore(false);
+    }
   };
 
   const buildMsg = (extra: Partial<Message>): Message => ({
@@ -880,16 +1109,109 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     ...extra,
   } as Message);
 
+  const dispatchMessageContent = (
+    msgData: { content: string, type: Message['type'], media_url: string[], groupId?: string },
+    currentReplyTo?: typeof replyTo
+  ) => {
+    if (!selectedChat || !user) return;
+    const isGroup = selectedChat.type === 'group';
+    const chatID = selectedChat.chatID;
+
+    console.log('📤 dispatchMessageContent:', {
+      isGroup,
+      chatID,
+      type: msgData.type,
+      hasMediaUrl: msgData.media_url?.length > 0,
+      mediaUrl: msgData.media_url?.[0]?.substring(0, 50),
+    });
+
+    if (isGroup) {
+      const tempID = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const tempMsg: Message = {
+        messageID: tempID,
+        tempID,
+        chatID,
+        senderID: user.userID,
+        content: msgData.content,
+        type: msgData.type,
+        media_url: msgData.media_url,
+        groupId: msgData.groupId,
+        timestamp: new Date().toISOString(),
+        status: 'sending',
+        senderInfo: { name: user.name, avatar: user.anhDaiDien || null },
+        replyTo: currentReplyTo
+          ? { messageID: currentReplyTo.messageID, senderID: currentReplyTo.senderID, content: currentReplyTo.content, type: currentReplyTo.type }
+          : null,
+      } as Message;
+      setMessages(prev => [...prev, tempMsg]);
+
+      console.log('📡 Emitting send_group_message:', {
+        groupID: chatID,
+        type: msgData.type,
+        mediaUrlCount: msgData.media_url?.length,
+      });
+
+      socket.emit('send_group_message', {
+        groupID: chatID,
+        senderID: user.userID,
+        content: msgData.content,
+        type: msgData.type,
+        media_url: msgData.media_url,
+        groupId: msgData.groupId,
+        replyTo: currentReplyTo
+          ? { messageID: currentReplyTo.messageID, senderID: currentReplyTo.senderID, content: currentReplyTo.content, type: currentReplyTo.type }
+          : undefined,
+        senderInfo: { name: user.name, avatar: user.anhDaiDien || null },
+      }, (ack: any) => {
+        console.log('✅ Received callback from send_group_message:', {
+          success: ack?.success,
+          hasMessage: !!ack?.message,
+          error: ack?.error,
+        });
+
+        if (ack?.success && ack?.message) {
+          const realMsg: Message = {
+            ...ack.message,
+            chatID: ack.message.groupID || chatID,
+            tempID: undefined,
+          };
+          setMessages(prev => {
+            const withoutTemp = prev.filter(m => m.tempID !== tempID);
+            const alreadyExists = withoutTemp.find(m => m.messageID === realMsg.messageID);
+            return alreadyExists ? withoutTemp : [...withoutTemp, realMsg];
+          });
+        } else if (!ack?.success) {
+          console.error('❌ Message send failed:', ack?.error);
+          setMessages(prev => prev.map(m => m.tempID === tempID ? { ...m, status: 'error' } : m));
+        }
+      });
+    } else {
+      const msg = buildMsg({ ...msgData, replyTo: currentReplyTo ? currentReplyTo : null });
+      socket.emit('send_message', msg);
+      setMessages(prev => [...prev, msg]);
+    }
+  };
+
   const sendMessage = () => {
     if (!inputText.trim() || !selectedChat || !user) return;
     if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
-    socket.emit('typing_stop', { chatID: selectedChat.chatID, userID: user.userID, userName: user.name });
-    const msg = buildMsg({ content: inputText, type: 'text', media_url: [] });
-    socket.emit('send_message', msg);
-    setMessages(prev => [...prev, msg]);
+
+    const isGroup = selectedChat.type === 'group';
+    const chatID = selectedChat.chatID;
+
+    if (isGroup) {
+      socket.emit('group_typing_stop', { groupID: chatID, userID: user.userID });
+    } else {
+      socket.emit('typing_stop', { chatID, userID: user.userID, userName: user.name });
+    }
+
+    const content = inputText.trim();
+    const capturedReplyTo = replyTo;
     setInputText('');
     setReplyTo(null);
     setMentions([]); // Reset tag sau khi gửi
+
+    dispatchMessageContent({ content, type: 'text', media_url: [] }, capturedReplyTo);
   };
 
   const handleInputChange = (value: string) => {
@@ -967,6 +1289,13 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const uploadFiles = async (files: { uri: string; type: string; name?: string }[]) => {
     if (!selectedChat || !user) return;
+    
+    console.log('📤 uploadFiles called:', {
+      fileCount: files.length,
+      chatType: selectedChat.type,
+      chatID: selectedChat.chatID,
+    });
+
     setIsUploading(true);
     try {
       const token = await AsyncStorage.getItem('token');
@@ -982,12 +1311,21 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               : 'application/octet-stream',
         } as any);
       });
+
+      console.log('⬆️ Uploading files to server...');
       const res = await fetch(`${API_URL}/api/upload`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       const data = await res.json();
+
+      console.log('✅ Upload response:', {
+        status: res.status,
+        urlCount: data.urls?.length,
+        firstUrl: data.urls?.[0]?.substring(0, 50),
+      });
+
       if (data.urls?.length > 0) {
         const msgType = files[0].type === 'image'
           ? 'image'
@@ -1000,16 +1338,16 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           ? `group_${Date.now()}_${user.userID}`
           : undefined;
 
+        console.log('📨 Sending', data.urls.length, 'messages with type:', msgType);
+
         // Gửi từng ảnh/video/file riêng biệt
         for (let i = 0; i < data.urls.length; i++) {
-          const msg = buildMsg({
+          dispatchMessageContent({
             content: msgType === 'file' ? (files[i]?.name || '') : '',
             type: msgType,
             media_url: [data.urls[i]],
             groupId, // ⭐ Thêm groupId
-          });
-          socket.emit('send_message', msg);
-          setMessages(prev => [...prev, msg]);
+          }, replyTo || undefined);
 
           // Delay nhỏ giữa các lần gửi
           if (i < data.urls.length - 1) {
@@ -1018,8 +1356,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         }
 
         setReplyTo(null);
+      } else {
+        console.error('❌ No URLs in upload response');
+        Alert.alert('Lỗi', 'Không nhận được URL từ server');
       }
-    } catch {
+    } catch (error) {
+      console.error('❌ Upload error:', error);
       Alert.alert('Lỗi', 'Không thể tải file lên');
     } finally {
       setIsUploading(false);
@@ -1116,15 +1458,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         throw new Error('No audio URL in response');
       }
 
-      const msg = buildMsg({
+      console.log('Sending audio message...');
+      dispatchMessageContent({
         content: '',
         type: 'audio',
         media_url: [data.url],
-      });
-
-      console.log('Sending audio message:', msg);
-      socket.emit('send_message', msg);
-      setMessages((prev) => [...prev, msg]);
+      }, replyTo || undefined);
       setAudioUri(null);
       setRecordingTime(0);
       setReplyTo(null);
@@ -1145,18 +1484,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const handleStickerSelect = (url: string) => {
     if (!selectedChat || !user) return;
-    const msg = buildMsg({ content: '', type: 'sticker', media_url: [url] });
-    socket.emit('send_message', msg);
-    setMessages(prev => [...prev, msg]);
+    dispatchMessageContent({ content: '', type: 'sticker', media_url: [url] }, replyTo || undefined);
     setShowEmoji(false);
     setReplyTo(null);
   };
 
   const handleGifSelect = (url: string) => {
     if (!selectedChat || !user) return;
-    const msg = buildMsg({ content: '', type: 'gif', media_url: [url] });
-    socket.emit('send_message', msg);
-    setMessages(prev => [...prev, msg]);
+    dispatchMessageContent({ content: '', type: 'gif', media_url: [url] }, replyTo || undefined);
     setShowEmoji(false);
     setReplyTo(null);
   };
@@ -1264,18 +1599,17 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const handleMoveToTop = (msg: Message) => {
     if (!msg.messageID || !selectedChat) return;
+    const isGroup = selectedChat.type === 'group';
+    const pinEvent = isGroup ? 'ghim_group_message' : 'ghim_message';
+    const unpinEvent = isGroup ? 'unghim_group_message' : 'unghim_message';
+    const payload = isGroup
+      ? { messageID: msg.messageID, groupID: selectedChat.chatID, senderID: user!.userID }
+      : { messageID: msg.messageID, chatID: selectedChat.chatID, senderID: user!.userID };
+
     // Bỏ ghim rồi ghim lại để đưa lên đầu
-    socket.emit("unghim_message", {
-      messageID: msg.messageID,
-      chatID: selectedChat.chatID,
-      senderID: user!.userID
-    });
+    socket.emit(unpinEvent, payload);
     setTimeout(() => {
-      socket.emit("ghim_message", {
-        messageID: msg.messageID,
-        chatID: selectedChat.chatID,
-        senderID: user!.userID,
-      });
+      socket.emit(pinEvent, payload);
     }, 100);
     setPinnedMenuId(null);
     Alert.alert("Thành công", "Đã đưa lên đầu");
@@ -1291,11 +1625,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const handleUnpinFromMenu = (msg: Message) => {
     if (!msg.messageID || !selectedChat) return;
-    socket.emit("unghim_message", {
-      messageID: msg.messageID,
-      chatID: selectedChat.chatID,
-      senderID: user!.userID
-    });
+    const isGroup = selectedChat.type === 'group';
+    const unpinEvent = isGroup ? 'unghim_group_message' : 'unghim_message';
+    const payload = isGroup
+      ? { messageID: msg.messageID, groupID: selectedChat.chatID, senderID: user!.userID }
+      : { messageID: msg.messageID, chatID: selectedChat.chatID, senderID: user!.userID };
+    socket.emit(unpinEvent, payload);
     setPinnedMenuId(null);
     Alert.alert("Thành công", "Đã bỏ ghim");
   };
@@ -1865,12 +2200,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         {/* Add Friend Modal */}
         <AddFriendModal
           visible={showAddFriend}
-          onClose={() => setShowAddFriend(false)}
-          targetUser={addFriendTarget}
-          onSuccess={() => {
+          onClose={() => {
             setShowAddFriend(false);
             setAddFriendTarget(null);
           }}
+          currentUser={user ? { userID: user.userID, name: user.name } : null}
+          initialUser={addFriendTarget}
         />
 
         {/* Create Group Modal */}
@@ -1891,6 +2226,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   }
 
   const handleHeaderPress = () => {
+    if (selectedChat?.type === 'group') {
+      setShowEditGroupModal(true);
+      return;
+    }
     if (selectedChat?.type !== 'private') return;
     openOtherProfile(selectedChat);
   };
@@ -2199,8 +2538,27 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           return renderMessage(item);
         }}
         contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-        onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        // Thêm pull-to-refresh để load more messages (tải trang cũ)
+        refreshControl={
+          <RefreshControl 
+            refreshing={isLoadingMore} 
+            onRefresh={loadMoreMessages} 
+            tintColor="#0068ff"
+            colors={["#0068ff"]}
+          />
+        }
+        onContentSizeChange={(_, h) => {
+          // Chỉ cuộn xuống cuôi nếu như đang ở trang 1 
+          // (tránh việc khi load more xong trang 2 thì bị giật xuống luôn)
+          if (page === 1) {
+            flatListRef.current?.scrollToEnd({ animated: false });
+          }
+        }}
+        onLayout={() => {
+          if (page === 1) {
+            flatListRef.current?.scrollToEnd({ animated: false });
+          }
+        }}
       />
 
       {/* Reply preview bar */}
@@ -2326,6 +2684,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       )}
 
       {/* Input */}
+      {!canSendMessages ? (
+        <View style={[styles.noSendPermissionBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+          <Ionicons name="lock-closed" size={16} color="#9ca3af" />
+          <Text style={styles.noSendPermissionText}>
+            Chỉ trưởng nhóm và phó nhóm mới có thể gửi tin nhắn
+          </Text>
+        </View>
+      ) : (
       <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 6) }]}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => setShowEmoji(!showEmoji)}>
           <MaterialCommunityIcons name="emoticon-outline" size={26} color="#555" />
@@ -2375,6 +2741,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           </TouchableOpacity>
         )}
       </View>
+      )}
 
       {/* Loading overlay */}
       {isUploading && (
@@ -2396,7 +2763,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             </TouchableOpacity>
 
             {/* Nút Ghim tin nhắn */}
-            {selectedMessage?.messageID && (
+            {selectedMessage?.messageID && (selectedMessage?.pinnedInfo || canPinMessages) && (
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
@@ -2405,15 +2772,24 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                     return;
                   }
 
+                  const isGroup = selectedChat.type === 'group';
+                  const pinEvent = isGroup ? 'ghim_group_message' : 'ghim_message';
+                  const unpinEvent = isGroup ? 'unghim_group_message' : 'unghim_message';
+                  const payload = isGroup
+                    ? { messageID: selectedMessage.messageID, groupID: selectedChat.chatID, senderID: user.userID }
+                    : { messageID: selectedMessage.messageID, chatID: selectedChat.chatID, senderID: user.userID };
+
                   if (selectedMessage.pinnedInfo) {
                     // Bỏ ghim
-                    socket.emit("unghim_message", {
-                      messageID: selectedMessage.messageID,
-                      chatID: selectedChat.chatID,
-                      senderID: user.userID,
-                    });
+                    socket.emit(unpinEvent, payload);
                     Alert.alert("Thành công", "Đã bỏ ghim tin nhắn");
                   } else {
+                    // Kiểm tra quyền ghim
+                    if (!canPinMessages) {
+                      Alert.alert("Thông báo", "Bạn không có quyền ghim tin nhắn trong nhóm này");
+                      setShowMenu(false);
+                      return;
+                    }
                     // Kiểm tra giới hạn 3 tin nhắn ghim
                     const pinnedCount = pinnedMessages.length;
                     if (pinnedCount >= 3) {
@@ -2422,11 +2798,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                       return;
                     }
                     // Ghim tin nhắn
-                    socket.emit("ghim_message", {
-                      messageID: selectedMessage.messageID,
-                      chatID: selectedChat.chatID,
-                      senderID: user.userID,
-                    });
+                    socket.emit(pinEvent, payload);
                     Alert.alert("Thành công", "Đã ghim tin nhắn");
                   }
                   setShowMenu(false);
@@ -2743,6 +3115,20 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         />
       )}
 
+      {/* Edit Group Info Modal — mở khi nhấn avatar nhóm trên header */}
+      {selectedChat && selectedChat.type === 'group' && (
+        <EditGroupInfoModal
+          visible={showEditGroupModal}
+          groupID={selectedChat.chatID}
+          currentName={selectedChat.name}
+          currentAvatar={selectedChat.avatar}
+          onClose={() => setShowEditGroupModal(false)}
+          onSuccess={() => {
+            setShowEditGroupModal(false);
+          }}
+        />
+      )}
+
       {/* Global Modals — Dùng chung cho cả Chat List & Chat Window */}
       {incomingCall && (
         <IncomingCallModal
@@ -3055,6 +3441,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-end',
     backgroundColor: '#fff', paddingHorizontal: 6, paddingTop: 6, gap: 2,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#ddd',
+  },
+  // Thanh thông báo khi không có quyền gửi tin nhắn
+  noSendPermissionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: '#f9fafb',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
+  noSendPermissionText: {
+    fontSize: 13,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    flex: 1,
   },
   iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   input: {

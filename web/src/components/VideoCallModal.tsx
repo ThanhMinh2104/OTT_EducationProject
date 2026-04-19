@@ -1,134 +1,148 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-  FaPhoneSlash,
-  FaMicrophone,
-  FaMicrophoneSlash,
-  FaVideo,
-  FaVideoSlash,
-} from 'react-icons/fa';
+import { FaPhoneSlash, FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash } from 'react-icons/fa';
 import socket from '../utils/socket';
 
 interface Props {
   user: { userID: string; name: string; anhDaiDien?: string };
   memberInfo: { userID: string; name: string; anhDaiDien?: string } | null;
   incomingOffer?: RTCSessionDescriptionInit | null;
-  // remoteUserID: userID của đối phương (dùng để route qua room)
   remoteUserID?: string | null;
   chatID?: string | null;
-  callType?: 'voice' | 'video'; // Loại cuộc gọi
+  callType?: 'voice' | 'video';
   onClose: () => void;
 }
 
-const VideoCallModal = ({
-  user,
-  memberInfo,
-  incomingOffer,
-  remoteUserID,
-  chatID,
-  callType = 'video', // Mặc định là video call
-  onClose,
-}: Props) => {
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  {
+    urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443'],
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+];
+
+const VideoCallModal = ({ user, memberInfo, incomingOffer, remoteUserID, chatID, callType = 'video', onClose }: Props) => {
+  // ── State (tất cả hooks phải ở đây, trước mọi return) ──────────────────
   const [callState, setCallState] = useState<'calling' | 'connected'>('calling');
   const [isMuted, setIsMuted] = useState(false);
   const [isLocalVideoOff, setIsLocalVideoOff] = useState(callType === 'voice');
+  const [isRemoteVideoOff, setIsRemoteVideoOff] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [endMessage, setEndMessage] = useState<string | null>(null);
+  const [pos, setPos] = useState({ x: Math.max(0, window.innerWidth - 520), y: 60 });
 
-  const callStateRef = useRef<'calling' | 'connected'>('calling');
-
-  // Sync callStateRef với callState
-  useEffect(() => {
-    callStateRef.current = callState;
-  }, [callState]);
-
+  // ── Refs ────────────────────────────────────────────────────────────────
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  // Lưu userID của đối phương để route ICE/answer
   const remoteUserIDRef = useRef<string | null>(remoteUserID || memberInfo?.userID || null);
-  const callStartTimeRef = useRef<number | null>(null);
-  const isActiveRef = useRef<boolean>(true); // Track if this call instance is active
+  const callDurationRef = useRef(0);
+  const callStateRef = useRef<'calling' | 'connected'>('calling');
+  const isActiveRef = useRef(true);
+  const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
+  const timerRef = useRef<number | null>(null);
+  const dragState = useRef({ dragging: false, startX: 0, startY: 0, initX: 0, initY: 0 });
+
+  useEffect(() => { callStateRef.current = callState; }, [callState]);
+  useEffect(() => { callDurationRef.current = callDuration; }, [callDuration]);
+
+  // Gắn remote stream vào video element khi ref sẵn sàng
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStreamRef.current) {
+      remoteVideoRef.current.srcObject = remoteStreamRef.current;
+    }
+  });
+
+  const fmt = (s: number) => {
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
+  const flushICE = async (pc: RTCPeerConnection) => {
+    for (const c of iceCandidateQueueRef.current) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { /* stale */ }
+    }
+    iceCandidateQueueRef.current = [];
+  };
+
+  const startTimer = () => {
+    if (timerRef.current) return;
+    timerRef.current = window.setInterval(() => setCallDuration(p => p + 1), 1000);
+  };
 
   const createPC = () => {
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ],
-    });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    pc.onicecandidate = (e) => {
+    pc.onicecandidate = e => {
       if (e.candidate && remoteUserIDRef.current) {
-        socket.emit('ice-candidate', {
-          to: remoteUserIDRef.current,
-          candidate: e.candidate,
-          from: user.userID,
-        });
+        socket.emit('ice-candidate', { to: remoteUserIDRef.current, candidate: e.candidate, from: user.userID });
       }
     };
 
-    pc.ontrack = (e) => {
-      if (remoteVideoRef.current && e.streams[0]) {
-        remoteVideoRef.current.srcObject = e.streams[0];
+    pc.ontrack = e => {
+      if (!isActiveRef.current) return;
+      const stream = e.streams[0];
+      if (!stream) return;
+
+      // Lưu stream vào ref và gắn vào video element
+      remoteStreamRef.current = stream;
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = stream;
       }
+
+      // Check có video track không
+      const checkRemoteVideo = () => {
+        const hasVid = stream.getVideoTracks().some(t => t.readyState !== 'ended');
+        setIsRemoteVideoOff(!hasVid);
+      };
+      checkRemoteVideo();
+      stream.getVideoTracks().forEach(t => {
+        t.onended = checkRemoteVideo;
+        t.onmute = () => setIsRemoteVideoOff(true);
+        t.onunmute = () => setIsRemoteVideoOff(false);
+      });
+
       setCallState('connected');
+      startTimer();
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') setCallState('connected');
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        setCallState('connected');
-      }
+      if (!isActiveRef.current) return;
+      if (pc.connectionState === 'failed') pc.restartIce();
     };
 
     return pc;
   };
 
-  const getLocalStream = async () => {
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: callType === 'video',
-        audio: true,
-      });
-    } catch {
-      try {
-        // Camera bị chiếm (test cùng máy) hoặc không có camera → fallback audio only
-        stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-        setIsLocalVideoOff(true);
-      } catch {
-        // Cả audio cũng fail → tạo stream rỗng để WebRTC vẫn hoạt động
-        stream = new MediaStream();
-        setIsLocalVideoOff(true);
-      }
+  const getLocalStream = async (): Promise<MediaStream> => {
+    if (callType === 'video') {
+      try { return await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); } catch { /* fallback */ }
+      try { return await navigator.mediaDevices.getUserMedia({ video: { width: 640 }, audio: true }); } catch { /* fallback */ }
     }
-    localStreamRef.current = stream;
-    if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-    return stream;
+    try { return await navigator.mediaDevices.getUserMedia({ video: false, audio: true }); } catch { /* fallback */ }
+    setIsLocalVideoOff(true);
+    return new MediaStream();
   };
 
   const startOutgoingCall = async () => {
-    if (!memberInfo) return;
-    remoteUserIDRef.current = memberInfo.userID;
-
     const stream = await getLocalStream();
+    localStreamRef.current = stream;
+    if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    if (!stream.getVideoTracks().length) setIsLocalVideoOff(true);
+
     const pc = createPC();
     pcRef.current = pc;
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-
     socket.emit('call-user', {
-      to: memberInfo.userID, // route tới userID room của người nhận
-      offer,
-      from: user.userID, // userID của người gọi (để người nhận biết route về)
-      callerInfo: { name: user.name, avatar: user.anhDaiDien },
-      callType: callType, // Gửi loại cuộc gọi
+      to: memberInfo!.userID, offer, from: user.userID,
+      callerInfo: { name: user.name, avatar: user.anhDaiDien }, callType,
     });
   };
 
@@ -137,98 +151,70 @@ const VideoCallModal = ({
     remoteUserIDRef.current = remoteUserID;
 
     const stream = await getLocalStream();
+    localStreamRef.current = stream;
+    if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    if (!stream.getVideoTracks().length) setIsLocalVideoOff(true);
+
     const pc = createPC();
     pcRef.current = pc;
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
     await pc.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+    await flushICE(pc);
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-
-    socket.emit('make-answer', {
-      to: remoteUserID,
-      answer,
-      from: user.userID,
-    });
-
-    // Người nhận đã chấp nhận và gửi answer → set connected ngay
+    socket.emit('make-answer', { to: remoteUserID, answer, from: user.userID });
     setCallState('connected');
-    callStartTimeRef.current = Date.now();
-  };
-
-  const endCall = () => {
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    pcRef.current?.close();
-
-    if (remoteUserIDRef.current) {
-      if (callStateRef.current === 'calling' && !incomingOffer) {
-        socket.emit('call-cancelled', {
-          to: remoteUserIDRef.current,
-          from: user.userID,
-          chatID: chatID,
-        });
-        onClose();
-      } else if (callStateRef.current === 'connected') {
-        socket.emit('call-ended', {
-          to: remoteUserIDRef.current,
-          from: user.userID,
-          duration: callDuration,
-          chatID: chatID,
-        });
-        setEndMessage('Cuộc gọi kết thúc');
-        setTimeout(() => onClose(), 2000);
-      } else {
-        onClose();
-      }
-    } else {
-      onClose();
-    }
+    startTimer();
   };
 
   const toggleMute = () => {
-    localStreamRef.current?.getAudioTracks().forEach((t) => {
-      t.enabled = isMuted;
-    });
-    setIsMuted((v) => !v);
+    const newMuted = !isMuted;
+    localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !newMuted; });
+    setIsMuted(newMuted);
   };
 
   const toggleVideo = async () => {
     if (!localStreamRef.current) return;
+    const tracks = localStreamRef.current.getVideoTracks();
+    const newOff = !isLocalVideoOff;
 
-    if (isLocalVideoOff) {
-      // Bật video: yêu cầu quyền camera
-      try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const videoTrack = videoStream.getVideoTracks()[0];
-
-        // Thay thế audio track cũ bằng track mới có video
-        const audioTrack = localStreamRef.current.getAudioTracks()[0];
-        const newStream = new MediaStream([audioTrack, videoTrack]);
-
-        // Cập nhật local video
-        localStreamRef.current = newStream;
-        if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
-
-        // Thay thế track trong peer connection
-        const sender = pcRef.current?.getSenders().find((s) => s.track?.kind === 'video');
-        if (sender) {
-          sender.replaceTrack(videoTrack);
-        } else {
-          pcRef.current?.addTrack(videoTrack, newStream);
-        }
-
-        setIsLocalVideoOff(false);
-      } catch (error) {
-        console.error('Error enabling video:', error);
-        alert('Không thể bật camera. Vui lòng kiểm tra quyền truy cập.');
+    if (!newOff) {
+      // Bật lại
+      if (tracks.length > 0 && tracks[0].readyState !== 'ended') {
+        tracks[0].enabled = true;
+      } else {
+        try {
+          const vs = await navigator.mediaDevices.getUserMedia({ video: true });
+          const newTrack = vs.getVideoTracks()[0];
+          localStreamRef.current.addTrack(newTrack);
+          if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
+          const sender = pcRef.current?.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) await sender.replaceTrack(newTrack);
+          else pcRef.current?.addTrack(newTrack, localStreamRef.current);
+        } catch { return; }
       }
     } else {
-      // Tắt video
-      localStreamRef.current.getVideoTracks().forEach((t) => {
-        t.stop();
-        localStreamRef.current?.removeTrack(t);
-      });
-      setIsLocalVideoOff(true);
+      // Tắt: chỉ disable, không stop
+      tracks.forEach(t => { t.enabled = false; });
+    }
+    setIsLocalVideoOff(newOff);
+  };
+
+  const endCall = () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    localStreamRef.current?.getTracks().forEach(t => t.stop());
+    pcRef.current?.close();
+    if (!remoteUserIDRef.current) { onClose(); return; }
+    if (callStateRef.current === 'calling' && !incomingOffer) {
+      socket.emit('call-cancelled', { to: remoteUserIDRef.current, from: user.userID, chatID });
+      onClose();
+    } else if (callStateRef.current === 'connected') {
+      socket.emit('call-ended', { to: remoteUserIDRef.current, from: user.userID, duration: callDurationRef.current, chatID });
+      setEndMessage('Cuộc gọi kết thúc');
+      setTimeout(() => onClose(), 2000);
+    } else {
+      onClose();
     }
   };
 
@@ -236,64 +222,51 @@ const VideoCallModal = ({
     isActiveRef.current = true;
     socket.emit('join_user', user.userID);
 
-    if (incomingOffer && remoteUserID) {
-      answerIncomingCall();
-    } else {
-      startOutgoingCall();
-    }
-
     const onAnswerMade = async (data: { answer: RTCSessionDescriptionInit; from: string }) => {
-      if (!isActiveRef.current) return;
+      if (!isActiveRef.current || !pcRef.current) return;
       if (!remoteUserIDRef.current) remoteUserIDRef.current = data.from;
-      callStartTimeRef.current = Date.now();
-      if (pcRef.current && pcRef.current.signalingState !== 'stable') {
+      if (pcRef.current.signalingState !== 'stable') {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+        await flushICE(pcRef.current);
       }
-      // Người gọi nhận được answer → set connected ngay
       setCallState('connected');
     };
 
-    const onIceCandidate = async (data: { candidate: RTCIceCandidateInit; from: string }) => {
+    const onIceCandidate = async (data: { candidate: RTCIceCandidateInit }) => {
       if (!isActiveRef.current) return;
-      if (pcRef.current && pcRef.current.remoteDescription) {
-        try {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch {
-          // ignore stale candidates
-        }
+      if (pcRef.current?.remoteDescription) {
+        try { await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch { /* stale */ }
+      } else {
+        iceCandidateQueueRef.current.push(data.candidate);
       }
     };
 
     const onCallRejected = () => {
       if (!isActiveRef.current) return;
       setEndMessage('Cuộc gọi bị từ chối');
-      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
       setTimeout(() => onClose(), 2000);
     };
 
     const onCallMissed = () => {
       if (!isActiveRef.current) return;
-      setEndMessage('Không trả lời');
-      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      setEndMessage('Không có ai trả lời');
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
       setTimeout(() => onClose(), 2000);
     };
 
     const onCallCancelled = () => {
       if (!isActiveRef.current) return;
       setEndMessage('Cuộc gọi đã bị hủy');
-      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
       setTimeout(() => onClose(), 2000);
     };
 
     const onCallEnded = (data: { duration?: number }) => {
       if (!isActiveRef.current) return;
-      const duration = data.duration || callDuration;
-      if (duration > 0) {
-        setEndMessage(`Cuộc gọi kết thúc • ${formatDuration(duration)}`);
-      } else {
-        setEndMessage('Cuộc gọi kết thúc');
-      }
-      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      const dur = data.duration ?? callDurationRef.current;
+      setEndMessage(dur > 0 ? `Cuộc gọi kết thúc • ${fmt(dur)}` : 'Cuộc gọi kết thúc');
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
       pcRef.current?.close();
       setTimeout(() => onClose(), 2000);
     };
@@ -305,187 +278,111 @@ const VideoCallModal = ({
     socket.on('call-cancelled', onCallCancelled);
     socket.on('call-ended', onCallEnded);
 
+    if (incomingOffer && remoteUserID) {
+      answerIncomingCall();
+    } else {
+      startOutgoingCall();
+    }
+
     return () => {
-      isActiveRef.current = false; // Mark this call as inactive
+      isActiveRef.current = false;
+      if (timerRef.current) clearInterval(timerRef.current);
       socket.off('answer-made', onAnswerMade);
       socket.off('ice-candidate', onIceCandidate);
       socket.off('call-rejected', onCallRejected);
       socket.off('call-missed', onCallMissed);
       socket.off('call-cancelled', onCallCancelled);
       socket.off('call-ended', onCallEnded);
-      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
       pcRef.current?.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Timer cho cuộc gọi
-  useEffect(() => {
-    let interval: number;
-    if (callState === 'connected') {
-      interval = window.setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    }
-    return () => {
-      if (interval) window.clearInterval(interval);
+  // Drag
+  const onMouseDown = (e: React.MouseEvent) => {
+    dragState.current = { dragging: true, startX: e.clientX, startY: e.clientY, initX: pos.x, initY: pos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragState.current.dragging) return;
+      setPos({ x: dragState.current.initX + ev.clientX - dragState.current.startX, y: dragState.current.initY + ev.clientY - dragState.current.startY });
     };
-  }, [callState]);
-
-  const formatDuration = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    
-    if (hours > 0) {
-      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const onUp = () => { dragState.current.dragging = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   const displayName = memberInfo?.name || 'Người dùng';
-  const displayAvatar =
-    memberInfo?.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user';
+  const displayAvatar = memberInfo?.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayName}`;
+
+  // Remote video hiển thị khi connected và không bị tắt
+  const showRemoteVideo = callState === 'connected' && !endMessage && !isRemoteVideoOff;
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
-      onClick={(e) => e.stopPropagation()}
+      className="fixed z-[9998] rounded-2xl overflow-hidden shadow-2xl bg-gray-900 border border-white/10 flex flex-col"
+      style={{ left: pos.x, top: pos.y, width: 480, height: 380 }}
+      onClick={e => e.stopPropagation()}
     >
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl overflow-hidden shadow-2xl">
-        {/* Remote video (full) hoặc avatar nếu video tắt */}
-        <div className="relative w-full h-[420px] bg-gray-100">
-          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+      {/* Remote video — luôn render trong DOM */}
+      <video
+        ref={remoteVideoRef}
+        autoPlay
+        playsInline
+        className={`absolute inset-0 w-full h-full object-cover z-0 ${showRemoteVideo ? 'block' : 'hidden'}`}
+      />
 
-          {/* Hiển thị avatar khi remote video tắt hoặc chưa có stream */}
-          {(callType === 'voice' || !remoteVideoRef.current?.srcObject) &&
-            callState === 'connected' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-                <img
-                  src={displayAvatar}
-                  alt="avatar"
-                  className="w-32 h-32 rounded-full border-4 border-blue-200 object-cover shadow-lg"
-                />
-              </div>
-            )}
+      {/* Overlay: calling / no video / end */}
+      {!showRemoteVideo && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+          <img src={displayAvatar} alt="avatar" className="w-20 h-20 rounded-full border-4 border-white/20 object-cover mb-3" />
+          <p className="text-white text-lg font-semibold">{displayName}</p>
+          <p className="text-gray-400 text-sm mt-1 animate-pulse">
+            {endMessage ?? (callState === 'connected' ? 'Video đang tắt' : incomingOffer ? 'Đang kết nối...' : 'Đang gọi...')}
+          </p>
         </div>
+      )}
 
-        {/* Overlay khi chưa kết nối */}
-        {callState !== 'connected' && !endMessage && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-            <img
-              src={displayAvatar}
-              alt="avatar"
-              className="w-24 h-24 rounded-full border-4 border-blue-200 mb-4 object-cover shadow-lg"
-            />
-            <p className="text-gray-900 text-xl font-bold mb-2">{displayName}</p>
-            <p className="text-gray-500 text-sm animate-pulse">
-              {incomingOffer 
-                ? 'Đang kết nối...' 
-                : 'Đang gọi...'}
-            </p>
+      {/* Header drag + tên + timer */}
+      <div
+        onMouseDown={onMouseDown}
+        className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2 bg-gradient-to-b from-black/70 to-transparent cursor-move select-none"
+      >
+        <p className="text-white text-sm font-semibold drop-shadow">{displayName}</p>
+        {callState === 'connected' && !endMessage && (
+          <div className="flex items-center gap-1 bg-black/40 px-2 py-0.5 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-green-400 text-xs font-bold">{fmt(callDuration)}</span>
           </div>
         )}
+      </div>
 
-        {/* Overlay thông báo kết thúc cuộc gọi */}
-        {endMessage && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-            <img
-              src={displayAvatar}
-              alt="avatar"
-              className="w-24 h-24 rounded-full border-4 border-blue-200 mb-4 object-cover shadow-lg"
-            />
-            <p className="text-gray-900 text-xl font-bold mb-2">{displayName}</p>
-            <p className="text-gray-600 text-base">{endMessage}</p>
+      {/* Local video PiP */}
+      <div className="absolute bottom-16 right-3 w-24 rounded-xl overflow-hidden border-2 border-white/30 bg-gray-700 z-20" style={{ height: 72 }}>
+        {isLocalVideoOff ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <img src={user.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} alt="you" className="w-10 h-10 rounded-full object-cover" />
           </div>
+        ) : (
+          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
         )}
+      </div>
 
-        {/* Header khi đã kết nối - hiển thị tên và thời gian */}
-        {callState === 'connected' && (
-          <div className="absolute top-0 left-0 right-0 flex flex-col items-center py-5 bg-gradient-to-b from-black/70 to-transparent z-10">
-            <p className="text-white text-lg font-semibold drop-shadow-lg">{displayName}</p>
-            <div className="flex items-center gap-2 mt-2 bg-black/40 px-4 py-1.5 rounded-full backdrop-blur-sm">
-              <svg 
-                className="w-4 h-4 text-green-400" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <circle cx="12" cy="12" r="10" strokeWidth="2"/>
-                <path strokeLinecap="round" strokeWidth="2" d="M12 6v6l4 2"/>
-              </svg>
-              <p className="text-green-400 text-base font-bold tracking-wider">
-                {formatDuration(callDuration)}
-              </p>
-            </div>
-          </div>
+      {/* Controls */}
+      <div className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-4 py-3 bg-gradient-to-t from-black/80 to-transparent">
+        <button onClick={toggleMute} title={isMuted ? 'Bật mic' : 'Tắt mic'}
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-white transition-colors ${isMuted ? 'bg-red-500 hover:bg-red-600' : 'bg-white/20 hover:bg-white/30'}`}>
+          {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
+        </button>
+        <button onClick={endCall} title="Kết thúc"
+          className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white text-lg transition-colors">
+          <FaPhoneSlash />
+        </button>
+        {callType === 'video' && (
+          <button onClick={toggleVideo} title={isLocalVideoOff ? 'Bật camera' : 'Tắt camera'}
+            className={`w-10 h-10 rounded-full flex items-center justify-center text-white transition-colors ${isLocalVideoOff ? 'bg-red-500 hover:bg-red-600' : 'bg-white/20 hover:bg-white/30'}`}>
+            {isLocalVideoOff ? <FaVideoSlash /> : <FaVideo />}
+          </button>
         )}
-
-        {/* Local video PiP hoặc avatar */}
-        <div className="absolute bottom-20 right-4 w-32 h-24 rounded-xl border-2 border-white/30 bg-gray-200 overflow-hidden">
-          {isLocalVideoOff ? (
-            <div className="w-full h-full flex items-center justify-center bg-gray-100">
-              <img
-                src={
-                  user.anhDaiDien || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.name
-                }
-                alt="You"
-                className="w-16 h-16 rounded-full object-cover"
-              />
-            </div>
-          ) : (
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-          )}
-        </div>
-
-        {/* Controls */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent">
-          {/* Timer bar - hiển thị khi đã kết nối */}
-          {callState === 'connected' && (
-            <div className="flex items-center justify-center py-2">
-              <div className="flex items-center gap-2 bg-black/50 px-4 py-2 rounded-full backdrop-blur-sm">
-                <svg 
-                  className="w-4 h-4 text-green-400 animate-pulse" 
-                  fill="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <circle cx="12" cy="12" r="8"/>
-                </svg>
-                <span className="text-white text-sm font-semibold tracking-wider">
-                  {formatDuration(callDuration)}
-                </span>
-              </div>
-            </div>
-          )}
-          
-          {/* Control buttons */}
-          <div className="flex items-center justify-center gap-4 py-4">
-            <button
-              onClick={toggleMute}
-              className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/20 hover:bg-white/30'}`}
-            >
-              {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
-            </button>
-            <button
-              onClick={endCall}
-              className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white text-xl transition-colors"
-            >
-              <FaPhoneSlash />
-            </button>
-            <button
-              onClick={toggleVideo}
-              className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg transition-colors ${isLocalVideoOff ? 'bg-red-500' : 'bg-white/20 hover:bg-white/30'}`}
-            >
-              {isLocalVideoOff ? <FaVideoSlash /> : <FaVideo />}
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
