@@ -48,9 +48,9 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [inputValue, setInputValue] = useState('');
-  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set<string>());
   const flatListRef = useRef<FlatList>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const typingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
     console.log('🔌 Joining group:', { groupID, userID });
@@ -295,7 +295,6 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
             handleTyping();
           }}
           multiline
-          maxHeight={100}
         />
         <TouchableOpacity
           style={[styles.btnSend, !inputValue.trim() && styles.btnSendDisabled]}
