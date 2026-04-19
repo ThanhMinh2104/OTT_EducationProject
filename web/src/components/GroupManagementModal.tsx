@@ -424,7 +424,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
       setSelectedNewOwner(null);
       setAdminSearchQuery('');
       onUpdate();
-    } catch (error: unknown) {
+    } catch (error: any) {
       toast.error(error.response?.data?.message || 'Lỗi khi chuyển quyền');
     }
   };
@@ -436,22 +436,22 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
         onClick={onClose}
       >
         <div
-          className="bg-[#2a2f35] rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl"
+          className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-700">
+          <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-200">
             {showAddBlockModal ? (
               <button
                 onClick={() => { setShowAddBlockModal(false); setSelectedToBlock([]); setBlockSearchQuery(''); }}
-                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+                className="w-8 h-8 flex items-center justify-center text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <FaTimes />
               </button>
             ) : showBlockPanel ? (
               <button
                 onClick={() => setShowBlockPanel(false)}
-                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+                className="w-8 h-8 flex items-center justify-center text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <FaTimes />
               </button>
@@ -465,19 +465,19 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                   }
                   else setShowAdminPanel(false);
                 }}
-                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+                className="w-8 h-8 flex items-center justify-center text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <FaTimes />
               </button>
             ) : (
               <button
                 onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+                className="w-8 h-8 flex items-center justify-center text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <FaTimes />
               </button>
             )}
-            <h2 className="text-lg font-bold text-white flex-1">
+            <h2 className="text-lg font-bold text-gray-900 flex-1">
               {showAddBlockModal
                 ? 'Thêm vào danh sách chặn'
                 : showBlockPanel
@@ -498,9 +498,9 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
           <div className="flex-1 overflow-y-auto">
             {/* Add Block View (inline, không phải modal) */}
             {showAddBlockModal && (
-              <div className="flex flex-col h-full text-white">
+              <div className="flex flex-col h-full text-gray-900">
                 {/* Search */}
-                <div className="px-4 py-3 border-b border-gray-700">
+                <div className="px-4 py-3 border-b border-gray-200">
                   <div className="relative">
                     <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                     <input
@@ -508,7 +508,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                       value={blockSearchQuery}
                       onChange={(e) => setBlockSearchQuery(e.target.value)}
                       placeholder="Tìm kiếm thành viên"
-                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-900 placeholder-gray-500 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -526,7 +526,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                     .map((m) => (
                       <label
                         key={m.userID}
-                        className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-gray-700/50 rounded-xl px-2 -mx-2"
+                        className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-gray-100/50 rounded-xl px-2 -mx-2"
                       >
                         <input
                           type="checkbox"
@@ -545,16 +545,16 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                           alt={m.name}
                           className="w-10 h-10 rounded-full object-cover shrink-0"
                         />
-                        <span className="text-sm text-white font-medium">{m.name || m.userID}</span>
+                        <span className="text-sm text-gray-900 font-medium">{m.name || m.userID}</span>
                       </label>
                     ))}
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-700">
+                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-200">
                   <button
                     onClick={() => { setShowAddBlockModal(false); setSelectedToBlock([]); setBlockSearchQuery(''); }}
-                    className="px-4 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-700 transition-colors font-medium"
+                    className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors font-medium"
                   >
                     Hủy
                   </button>
@@ -571,9 +571,9 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
             {/* Admin Panel — Transfer Owner: Select */}
             {showAdminPanel && showTransferOwnerModal && transferStep === 'select' && (
-              <div className="flex flex-col text-white">
-                <div className="px-4 py-3 border-b border-gray-700">
-                  <p className="text-xs text-gray-400 mb-3">Chọn thành viên để chuyển quyền trưởng nhóm:</p>
+              <div className="flex flex-col text-gray-900">
+                <div className="px-4 py-3 border-b border-gray-200">
+                  <p className="text-xs text-gray-600 mb-3">Chọn thành viên để chuyển quyền trưởng nhóm:</p>
                   <div className="relative">
                     <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                     <input
@@ -581,7 +581,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                       value={adminSearchQuery}
                       onChange={(e) => setAdminSearchQuery(e.target.value)}
                       placeholder="Tìm kiếm thành viên"
-                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-900 placeholder-gray-500 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -592,7 +592,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                     .map(m => (
                       <div
                         key={m.userID}
-                        className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-gray-700/50 rounded-xl px-2 -mx-2"
+                        className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-gray-100/50 rounded-xl px-2 -mx-2"
                         onClick={() => { setSelectedNewOwner(m); setTransferStep('confirm'); }}
                       >
                         <img
@@ -601,8 +601,8 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                           className="w-10 h-10 rounded-full object-cover shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
-                          <p className="text-xs text-gray-400">{m.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</p>
+                          <p className="text-sm font-semibold text-gray-900 truncate">{m.name || m.userID}</p>
+                          <p className="text-xs text-gray-600">{m.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</p>
                         </div>
                       </div>
                     ))}
@@ -612,16 +612,16 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
             {/* Admin Panel — Transfer Owner: Confirm */}
             {showAdminPanel && showTransferOwnerModal && transferStep === 'confirm' && selectedNewOwner && (
-              <div className="text-white px-5 py-5">
-                <div className="flex items-center gap-3 mb-4 p-3 bg-gray-700/50 rounded-xl">
+              <div className="text-gray-900 px-5 py-5">
+                <div className="flex items-center gap-3 mb-4 p-3 bg-gray-100/50 rounded-xl">
                   <img
                     src={selectedNewOwner.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedNewOwner.userID}`}
                     alt={selectedNewOwner.name}
                     className="w-10 h-10 rounded-full object-cover shrink-0"
                   />
                   <div>
-                    <p className="text-sm font-semibold text-white">{selectedNewOwner.name}</p>
-                    <p className="text-xs text-gray-400">{selectedNewOwner.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</p>
+                    <p className="text-sm font-semibold text-gray-900">{selectedNewOwner.name}</p>
+                    <p className="text-xs text-gray-600">{selectedNewOwner.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</p>
                   </div>
                 </div>
                 <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-4">
@@ -630,13 +630,13 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                     Đây là quyết định <b>không thể hoàn tác</b>. Sau khi chuyển quyền, bạn sẽ trở thành phó nhóm và không thể lấy lại quyền trưởng nhóm trừ khi người mới chuyển lại cho bạn.
                   </p>
                 </div>
-                <p className="text-xs text-gray-400 text-center mb-4">
-                  Bạn có chắc chắn muốn chuyển quyền trưởng nhóm cho <b className="text-white">{selectedNewOwner.name}</b>?
+                <p className="text-xs text-gray-600 text-center mb-4">
+                  Bạn có chắc chắn muốn chuyển quyền trưởng nhóm cho <b className="text-gray-900">{selectedNewOwner.name}</b>?
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setTransferStep('select'); setSelectedNewOwner(null); }}
-                    className="flex-1 py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                    className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-900 font-medium transition-colors"
                   >
                     Quay lại
                   </button>
@@ -652,33 +652,33 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
             {/* Admin Panel — main view */}
             {showAdminPanel && !showAddAdminModal && !showTransferOwnerModal && (
-              <div className="text-white">
+              <div className="text-gray-900">
                 {/* Owner */}
                 {groupInfo.members.filter(m => m.role === 'owner').map(m => (
-                  <div key={m.userID} className="flex items-center gap-3 px-4 py-3 border-b border-gray-700">
+                  <div key={m.userID} className="flex items-center gap-3 px-4 py-3 border-b border-gray-200">
                     <img
                       src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
                       alt={m.name}
                       className="w-11 h-11 rounded-full object-cover shrink-0"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
-                      <p className="text-xs text-gray-400">Trưởng nhóm</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">{m.name || m.userID}</p>
+                      <p className="text-xs text-gray-600">Trưởng nhóm</p>
                     </div>
                   </div>
                 ))}
 
                 {/* Admins */}
                 {groupInfo.members.filter(m => m.role === 'admin').map(m => (
-                  <div key={m.userID} className="flex items-center gap-3 px-4 py-3 border-b border-gray-700">
+                  <div key={m.userID} className="flex items-center gap-3 px-4 py-3 border-b border-gray-200">
                     <img
                       src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
                       alt={m.name}
                       className="w-11 h-11 rounded-full object-cover shrink-0"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
-                      <p className="text-xs text-gray-400">Phó nhóm</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">{m.name || m.userID}</p>
+                      <p className="text-xs text-gray-600">Phó nhóm</p>
                     </div>
                     {isOwner && (
                       <button
@@ -696,13 +696,13 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                   <div className="px-4 py-3 space-y-2 mt-1">
                     <button
                       onClick={() => { setShowAddAdminModal(true); setAdminSearchQuery(''); }}
-                      className="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                      className="w-full py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-900 font-medium transition-colors"
                     >
                       Thêm phó nhóm
                     </button>
                     <button
                       onClick={() => setShowTransferOwnerModal(true)}
-                      className="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                      className="w-full py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-900 font-medium transition-colors"
                     >
                       Chuyển quyền trưởng nhóm
                     </button>
@@ -713,8 +713,8 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
             {/* Add Admin Sub-view */}
             {showAdminPanel && showAddAdminModal && (
-              <div className="flex flex-col h-full text-white">
-                <div className="px-4 py-3 border-b border-gray-700">
+              <div className="flex flex-col h-full text-gray-900">
+                <div className="px-4 py-3 border-b border-gray-200">
                   <div className="relative">
                     <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                     <input
@@ -722,7 +722,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                       value={adminSearchQuery}
                       onChange={(e) => setAdminSearchQuery(e.target.value)}
                       placeholder="Tìm kiếm thành viên"
-                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-900 placeholder-gray-500 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -731,13 +731,13 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                     .filter(m => m.role === 'member' && m.userID !== currentUserID &&
                       (!adminSearchQuery || m.name?.toLowerCase().includes(adminSearchQuery.toLowerCase())))
                     .map(m => (
-                      <div key={m.userID} className="flex items-center gap-3 py-2.5 border-b border-gray-700/50">
+                      <div key={m.userID} className="flex items-center gap-3 py-2.5 border-b border-gray-200/50">
                         <img
                           src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
                           alt={m.name}
                           className="w-10 h-10 rounded-full object-cover shrink-0"
                         />
-                        <span className="flex-1 text-sm text-white font-medium truncate">{m.name || m.userID}</span>
+                        <span className="flex-1 text-sm text-gray-900 font-medium truncate">{m.name || m.userID}</span>
                         <button
                           onClick={() => handlePromoteAdmin(m)}
                           className="px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold transition-colors shrink-0"
@@ -751,16 +751,16 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
             )}
 
             {/* Block Panel */}
-            {!showAddBlockModal && showBlockPanel && (              <div className="text-white">
+            {!showAddBlockModal && showBlockPanel && (              <div className="text-gray-900">
                 {/* Mô tả */}
-                <div className="px-4 py-4 border-b border-gray-700">
-                  <p className="text-sm text-gray-400 leading-relaxed">
+                <div className="px-4 py-4 border-b border-gray-200">
+                  <p className="text-sm text-gray-600 leading-relaxed">
                     Những người đã bị chặn không thể tham gia lại nhóm, trừ khi được trưởng, phó nhóm bỏ chặn hoặc thêm lại vào nhóm.
                   </p>
                 </div>
 
                 {/* Nút thêm vào danh sách chặn */}
-                <div className="px-4 py-3 border-b border-gray-700">
+                <div className="px-4 py-3 border-b border-gray-200">
                   <button
                     onClick={() => { setShowAddBlockModal(true); setSelectedToBlock([]); setBlockSearchQuery(''); }}
                     className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-semibold text-sm hover:bg-red-500/20 transition-colors"
@@ -777,14 +777,14 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                     </div>
                   ) : blockedMembersInfo.length === 0 ? (
                     <div className="flex flex-col items-center py-10 gap-3">
-                      <div className="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center">
-                        <FaUsers className="text-gray-500 text-2xl" />
+                      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                        <FaUsers className="text-gray-600 text-2xl" />
                       </div>
-                      <p className="text-sm text-gray-500">Chưa có thành viên nào bị chặn</p>
+                      <p className="text-sm text-gray-600">Chưa có thành viên nào bị chặn</p>
                     </div>
                   ) : (
                     <>
-                      <p className="text-xs text-gray-400 font-semibold mb-3">
+                      <p className="text-xs text-gray-600 font-semibold mb-3">
                         Thành viên bị chặn ({blockedMembersInfo.length})
                       </p>
                       <div className="space-y-2">
@@ -795,10 +795,10 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                               alt={m.name}
                               className="w-10 h-10 rounded-full object-cover shrink-0"
                             />
-                            <span className="flex-1 text-sm text-white font-medium truncate">{m.name}</span>
+                            <span className="flex-1 text-sm text-gray-900 font-medium truncate">{m.name}</span>
                             <button
                               onClick={() => handleUnblock(m.userID, m.name)}
-                              className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-white transition-colors shrink-0"
+                              className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm text-gray-900 transition-colors shrink-0"
                             >
                               Bỏ chặn
                             </button>
@@ -811,85 +811,85 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
               </div>
             )}
             {!showBlockPanel && !showAdminPanel && tab === 'settings' && (
-              <div className="text-white">
+              <div className="text-gray-900">
                 {/* Thông báo chỉ dành cho quản trị viên */}
                 {!isOwner && !isAdmin && (
-                  <div className="mx-4 mt-4 mb-3 px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl flex items-start gap-3">
-                    <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                  <div className="mx-4 mt-4 mb-3 px-4 py-3 bg-gray-100/50 border border-gray-300 rounded-xl flex items-start gap-3">
+                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-lg">🔒</span>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-white mb-1">Tính năng chỉ dành cho quản trị viên</p>
-                      <p className="text-xs text-gray-400">Chỉ trưởng nhóm và phó nhóm mới có thể thay đổi các cài đặt này</p>
+                      <p className="text-sm font-semibold text-gray-900 mb-1">Tính năng chỉ dành cho quản trị viên</p>
+                      <p className="text-xs text-gray-600">Chỉ trưởng nhóm và phó nhóm mới có thể thay đổi các cài đặt này</p>
                     </div>
                   </div>
                 )}
 
                 {/* Cho phép các thành viên trong nhóm */}
-                <div className="px-4 py-3 border-b border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-400 mb-3">Cho phép các thành viên trong nhóm:</h3>
+                <div className="px-4 py-3 border-b border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-600 mb-3">Cho phép các thành viên trong nhóm:</h3>
                   
                   <div className="space-y-3">
                     <label className={`flex items-center justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
-                      <span className="text-sm text-white">Thay đổi tên & ảnh đại diện của nhóm</span>
+                      <span className="text-sm text-gray-900">Thay đổi tên & ảnh đại diện của nhóm</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.changeNameAvatar}
                         onChange={() => handleTogglePermission('changeNameAvatar')}
                         disabled={!isOwner && !isAdmin}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
+                        className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
                     </label>
 
                     <label className={`flex items-start justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
-                      <span className="text-sm text-white flex-1 pr-3">Ghim tin nhắn, ghi chú, bình chọn lên đầu hội thoại</span>
+                      <span className="text-sm text-gray-900 flex-1 pr-3">Ghim tin nhắn, ghi chú, bình chọn lên đầu hội thoại</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.pinMessages}
                         onChange={() => handleTogglePermission('pinMessages')}
                         disabled={!isOwner && !isAdmin}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
+                        className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
                     </label>
 
                     <label className={`flex items-center justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
-                      <span className="text-sm text-white">Tạo mới ghi chú, nhắc hẹn</span>
+                      <span className="text-sm text-gray-900">Tạo mới ghi chú, nhắc hẹn</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.createNotes}
                         onChange={() => handleTogglePermission('createNotes')}
                         disabled={!isOwner && !isAdmin}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
+                        className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
                     </label>
 
                     <label className={`flex items-center justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
-                      <span className="text-sm text-white">Tạo mới bình chọn</span>
+                      <span className="text-sm text-gray-900">Tạo mới bình chọn</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.createPolls}
                         onChange={() => handleTogglePermission('createPolls')}
                         disabled={!isOwner && !isAdmin}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
+                        className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
                     </label>
 
                     <label className={`flex items-center justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
-                      <span className="text-sm text-white">Gửi tin nhắn</span>
+                      <span className="text-sm text-gray-900">Gửi tin nhắn</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.sendMessages}
                         onChange={() => handleTogglePermission('sendMessages')}
                         disabled={!isOwner && !isAdmin}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
+                        className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
@@ -898,21 +898,21 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 </div>
 
                 {/* Chế độ phê duyệt thành viên mới */}
-                <div className="px-4 py-4 border-b border-gray-700">
+                <div className="px-4 py-4 border-b border-gray-200">
                   <label className={`flex items-start justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <div className="flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-white">Chế độ phê duyệt thành viên mới</span>
-                        <FaInfoCircle className="text-gray-400 text-xs" />
+                        <span className="text-sm font-medium text-gray-900">Chế độ phê duyệt thành viên mới</span>
+                        <FaInfoCircle className="text-gray-600 text-xs" />
                       </div>
-                      <p className="text-xs text-gray-400">Yêu cầu phê duyệt từ trưởng/phó nhóm khi có người xin vào nhóm</p>
+                      <p className="text-xs text-gray-600">Yêu cầu phê duyệt từ trưởng/phó nhóm khi có người xin vào nhóm</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={settings.requireApproval}
                       onChange={() => handleToggleSetting('requireApproval')}
                       disabled={!isOwner && !isAdmin}
-                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
+                      className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                         before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                         checked:before:translate-x-5"
                     />
@@ -920,21 +920,21 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 </div>
 
                 {/* Đánh dấu tin nhắn từ trưởng/phó nhóm */}
-                <div className="px-4 py-4 border-b border-gray-700">
+                <div className="px-4 py-4 border-b border-gray-200">
                   <label className={`flex items-start justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <div className="flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-white">Đánh dấu tin nhắn từ trưởng/phó nhóm</span>
-                        <FaInfoCircle className="text-gray-400 text-xs" />
+                        <span className="text-sm font-medium text-gray-900">Đánh dấu tin nhắn từ trưởng/phó nhóm</span>
+                        <FaInfoCircle className="text-gray-600 text-xs" />
                       </div>
-                      <p className="text-xs text-gray-400">Tin nhắn từ trưởng/phó nhóm sẽ được đánh dấu đặc biệt</p>
+                      <p className="text-xs text-gray-600">Tin nhắn từ trưởng/phó nhóm sẽ được đánh dấu đặc biệt</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={settings.highlightAdminMessages}
                       onChange={() => handleToggleSetting('highlightAdminMessages')}
                       disabled={!isOwner && !isAdmin}
-                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
+                      className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                         before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                         checked:before:translate-x-5"
                     />
@@ -942,21 +942,21 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 </div>
 
                 {/* Cho phép thành viên mới đọc tin nhắn gần nhất */}
-                <div className="px-4 py-4 border-b border-gray-700">
+                <div className="px-4 py-4 border-b border-gray-200">
                   <label className={`flex items-start justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <div className="flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-white">Cho phép thành viên mới đọc tin nhắn gần nhất</span>
-                        <FaInfoCircle className="text-gray-400 text-xs" />
+                        <span className="text-sm font-medium text-gray-900">Cho phép thành viên mới đọc tin nhắn gần nhất</span>
+                        <FaInfoCircle className="text-gray-600 text-xs" />
                       </div>
-                      <p className="text-xs text-gray-400">Thành viên mới có thể xem lịch sử tin nhắn trước khi tham gia</p>
+                      <p className="text-xs text-gray-600">Thành viên mới có thể xem lịch sử tin nhắn trước khi tham gia</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={settings.allowNewMembersReadHistory}
                       onChange={() => handleToggleSetting('allowNewMembersReadHistory')}
                       disabled={!isOwner && !isAdmin}
-                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
+                      className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                         before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                         checked:before:translate-x-5"
                     />
@@ -964,39 +964,39 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 </div>
 
                 {/* Cho phép dùng link tham gia nhóm */}
-                <div className="px-4 py-4 border-b border-gray-700">
+                <div className="px-4 py-4 border-b border-gray-200">
                   <label className={`flex items-start justify-between mb-3 ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <div className="flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-white">Cho phép dùng link tham gia nhóm</span>
-                        <FaInfoCircle className="text-gray-400 text-xs" />
+                        <span className="text-sm font-medium text-gray-900">Cho phép dùng link tham gia nhóm</span>
+                        <FaInfoCircle className="text-gray-600 text-xs" />
                       </div>
-                      <p className="text-xs text-gray-400">Mọi người có link đều có thể tham gia nhóm</p>
+                      <p className="text-xs text-gray-600">Mọi người có link đều có thể tham gia nhóm</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={settings.allowInviteLink}
                       onChange={() => handleToggleSetting('allowInviteLink')}
                       disabled={!isOwner && !isAdmin}
-                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
+                      className="w-11 h-6 bg-gray-200 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                         before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                         checked:before:translate-x-5"
                     />
                   </label>
 
                   {settings.allowInviteLink && (
-                    <div className="flex items-center gap-2 bg-gray-700/50 rounded-lg px-3 py-2.5">
+                    <div className="flex items-center gap-2 bg-gray-100/50 rounded-lg px-3 py-2.5">
                       <span className="flex-1 text-sm text-blue-400 truncate font-mono">{groupInviteLink}</span>
                       <button
                         onClick={handleCopyLink}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-600 transition-colors text-white"
+                        className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors text-gray-900"
                         title="Sao chép"
                       >
                         <FaCopy className="text-sm" />
                       </button>
                       <button
                         onClick={handleShareLink}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-600 transition-colors text-white"
+                        className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors text-gray-900"
                         title="Chia sẻ"
                       >
                         <FaShare className="text-sm" />
@@ -1009,10 +1009,10 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 {(isOwner || isAdmin) && (
                   <button
                     onClick={handleOpenBlockPanel}
-                    className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-700/50 transition-colors border-b border-gray-700"
+                    className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-100/50 transition-colors border-b border-gray-200"
                   >
-                    <FaUsers className="text-white text-lg" />
-                    <span className="text-sm text-white">Chặn khỏi nhóm</span>
+                    <FaUsers className="text-gray-700 text-lg" />
+                    <span className="text-sm text-gray-900">Chặn khỏi nhóm</span>
                   </button>
                 )}
 
@@ -1020,10 +1020,10 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 {(isOwner || isAdmin) && (
                   <button
                     onClick={() => setShowAdminPanel(true)}
-                    className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-700/50 transition-colors border-b border-gray-700"
+                    className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-100/50 transition-colors border-b border-gray-200"
                   >
-                    <FaKey className="text-white text-lg" />
-                    <span className="text-sm text-white">Trưởng & phó nhóm</span>
+                    <FaKey className="text-gray-700 text-lg" />
+                    <span className="text-sm text-gray-900">Trưởng & phó nhóm</span>
                   </button>
                 )}
 
@@ -1044,13 +1044,13 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
               <div className="p-4 space-y-4">
                 {/* Search */}
                 <div className="relative">
-                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Tìm kiếm thành viên..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
                   />
                 </div>
 
@@ -1063,7 +1063,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                     return (
                       <div
                         key={member.userID}
-                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-700/50 transition-colors group relative"
+                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100/50 transition-colors group relative"
                       >
                         <img
                           src={member.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.userID}`}
@@ -1071,7 +1071,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                           className="w-12 h-12 rounded-full object-cover"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">{member.name || member.userID}</p>
+                          <p className="text-sm font-semibold text-gray-900 truncate">{member.name || member.userID}</p>
                           <div className="flex items-center gap-2">
                             {member.role === 'owner' && (
                               <span className="inline-flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-medium">
@@ -1084,7 +1084,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                               </span>
                             )}
                             {member.role === 'member' && (
-                              <span className="text-xs text-gray-400">Thành viên</span>
+                              <span className="text-xs text-gray-600">Thành viên</span>
                             )}
                           </div>
                         </div>
@@ -1097,14 +1097,14 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                                 e.stopPropagation();
                                 setShowMemberMenu(showMemberMenu === member.userID ? null : member.userID);
                               }}
-                              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-600 text-gray-400 transition-colors opacity-0 group-hover:opacity-100"
+                              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-600 transition-colors opacity-0 group-hover:opacity-100"
                             >
                               <FaEllipsisV className="text-xs" />
                             </button>
 
                             {showMemberMenu === member.userID && (
                               <div
-                                className="absolute right-0 top-full mt-1 z-10 bg-gray-800 rounded-xl shadow-xl border border-gray-700 py-1 min-w-[200px]"
+                                className="absolute right-0 top-full mt-1 z-10 bg-white rounded-xl shadow-xl border border-gray-200 py-1 min-w-[200px]"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {isOwner && (
@@ -1115,7 +1115,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                                           setSelectedMember(member);
                                           setShowConfirmPromote(true);
                                         }}
-                                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white hover:bg-gray-700 transition-colors"
+                                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-900 hover:bg-gray-100 transition-colors"
                                       >
                                         <FaUserShield className="text-xs text-blue-400" />
                                         Thêm làm phó nhóm
@@ -1127,7 +1127,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                                           setSelectedMember(member);
                                           setShowConfirmDemote(true);
                                         }}
-                                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white hover:bg-gray-700 transition-colors"
+                                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-900 hover:bg-gray-100 transition-colors"
                                       >
                                         <FaUserShield className="text-xs text-orange-400" />
                                         Gỡ quyền phó nhóm
@@ -1138,7 +1138,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                                         setSelectedMember(member);
                                         setShowConfirmTransferOwner(true);
                                       }}
-                                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white hover:bg-gray-700 transition-colors"
+                                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-900 hover:bg-gray-100 transition-colors"
                                     >
                                       <FaCrown className="text-xs text-yellow-400" />
                                       Chuyển quyền trưởng nhóm
@@ -1151,7 +1151,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                                     setSelectedMember(member);
                                     setShowConfirmKick(true);
                                   }}
-                                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors border-t border-gray-700"
+                                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors border-t border-gray-200"
                                 >
                                   <FaTrash className="text-xs" />
                                   Xóa khỏi nhóm

@@ -362,6 +362,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [pendingApprovalModal, setPendingApprovalModal] = useState<{ requestID: string; inviteeName: string; inviterName: string } | null>(null);
   const [socketConnected, setSocketConnected] = useState(socket.connected);
+  const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -690,6 +691,17 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Close pinned menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pinnedMenuId) {
+        setPinnedMenuId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [pinnedMenuId]);
+
   const handleSendMessage = () => {
     if (!inputText.trim()) return;
 
@@ -960,6 +972,43 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     }
     
     setActionMsgId(null);
+  };
+
+  const handleMoveToTop = (msg: Message) => {
+    if (!msg.messageID) return;
+    // Unpin then re-pin to move to top
+    socket.emit('unghim_group_message', {
+      messageID: msg.messageID,
+      groupID,
+      senderID: userID
+    });
+    setTimeout(() => {
+      socket.emit('ghim_group_message', {
+        messageID: msg.messageID,
+        groupID,
+        senderID: userID
+      });
+    }, 100);
+    setPinnedMenuId(null);
+    toast.success('Đã đưa lên đầu');
+  };
+
+  const handleCopyPinned = (msg: Message) => {
+    if (msg.content) {
+      navigator.clipboard.writeText(msg.content);
+      toast.success('Đã sao chép');
+    }
+    setPinnedMenuId(null);
+  };
+
+  const handleUnpinFromMenu = (msg: Message) => {
+    if (!msg.messageID) return;
+    socket.emit('unghim_group_message', {
+      messageID: msg.messageID,
+      groupID,
+      senderID: userID
+    });
+    setPinnedMenuId(null);
   };
 
   const handleUnsend = (msg: Message) => {
@@ -1387,7 +1436,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                       <FaTimes />
                     </button>
                   </div>
-                  {pinnedMessages.slice().reverse().map((msg) => (
+                  {pinnedMessages.slice().reverse().map((msg, idx) => (
                     <div
                       key={msg.messageID}
                       className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
@@ -1419,16 +1468,57 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                           {formatTime(msg.timestamp)}
                         </div>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePin(msg);
-                        }}
-                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                        title="Bỏ ghim"
-                      >
-                        <FaTimes className="text-sm" />
-                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPinnedMenuId(pinnedMenuId === msg.messageID ? null : msg.messageID || null);
+                          }}
+                          className="text-gray-400 hover:text-gray-700 transition-colors p-1"
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                          </svg>
+                        </button>
+
+                        {/* Menu dropdown - show above if last item */}
+                        {pinnedMenuId === msg.messageID && (
+                          <div
+                            className={`absolute right-0 ${idx >= pinnedMessages.length - 1 ? 'bottom-full mb-1' : 'top-full mt-1'} bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] z-20`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              onClick={() => handleMoveToTop(msg)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                              </svg>
+                              Đưa lên đầu
+                            </button>
+                            {(msg.type === 'text' || msg.type === 'emoji') && (
+                              <button
+                                onClick={() => handleCopyPinned(msg)}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                Copy
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleUnpinFromMenu(msg)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] text-red-600 hover:bg-gray-50 transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              Bỏ ghim
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

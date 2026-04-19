@@ -27,6 +27,7 @@ import AddFriendModal from '../components/AddFriendModal';
 import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
 import { Swipeable } from 'react-native-gesture-handler';
 import { CreateGroupModal } from '../components/CreateGroupModal';
+import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
 
 import { StackScreenProps } from '@react-navigation/stack';
 
@@ -141,12 +142,17 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   // Chat info panel state
   const [showChatInfo, setShowChatInfo] = useState(false);
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
 
   // Pinned messages states
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
   const [showPinnedList, setShowPinnedList] = useState(false);
+  // Quyền ghim tin nhắn trong group
+  const [canPinMessages, setCanPinMessages] = useState(true);
+  // Quyền gửi tin nhắn trong group
+  const [canSendMessages, setCanSendMessages] = useState(true);
 
   // Forward message states
   const [showForwardModal, setShowForwardModal] = useState(false);
@@ -760,6 +766,32 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
     };
 
+    // Group chat pin/unpin events
+    const onGhimGroupNotification = (updated: Message) => {
+      console.log("📌 Received ghim_group_notification:", updated);
+      if (updated.groupID === chatID || updated.chatID === chatID) {
+        setMessages((prev) =>
+          prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m))
+        );
+        setPinnedMessages((prev) => {
+          const exists = prev.find((m) => m.messageID === updated.messageID);
+          return exists
+            ? prev.map((m) => (m.messageID === updated.messageID ? { ...m, ...updated } : m))
+            : [...prev, updated];
+        });
+      }
+    };
+
+    const onUnghimGroupNotification = (updated: Message) => {
+      console.log("📌 Received unghim_group_notification:", updated);
+      if (updated.groupID === chatID || updated.chatID === chatID) {
+        setMessages((prev) =>
+          prev.map((m) => (m.messageID === updated.messageID ? { ...m, pinnedInfo: undefined } : m))
+        );
+        setPinnedMessages((prev) => prev.filter((m) => m.messageID !== updated.messageID));
+      }
+    };
+
     socket.on('new_message', onNewMessage);
     socket.on(chatID, onNewMessage);
     socket.on('unsend_notification', onUnsend);
@@ -768,6 +800,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     socket.on('typing_stop', onTypingStop);
     socket.on('ghim_notification', onGhimNotification);
     socket.on('unghim_notification', onUnghimNotification);
+    socket.on('ghim_group_notification', onGhimGroupNotification);
+    socket.on('unghim_group_notification', onUnghimGroupNotification);
 
     return () => {
       socket.off('new_message', onNewMessage);
@@ -778,6 +812,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       socket.off('typing_stop', onTypingStop);
       socket.off('ghim_notification', onGhimNotification);
       socket.off('unghim_notification', onUnghimNotification);
+      socket.off('ghim_group_notification', onGhimGroupNotification);
+      socket.off('unghim_group_notification', onUnghimGroupNotification);
       setTypingUsers([]);
     };
   }, [selectedChat?.chatID, user?.userID]);
@@ -854,6 +890,30 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         setPinnedMessages(pinnedFromAPI);
       }
     } catch { /* fallback to lastMessage */ }
+
+    // Fetch quyền cho group chat (ghim + gửi tin nhắn)
+    if (chat.type === 'group') {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const settingsRes = await fetch(`${API_URL}/api/groups/${chat.chatID}/settings`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          const userStored = await AsyncStorage.getItem('user');
+          const me = userStored ? JSON.parse(userStored) : null;
+          const myMember = chat.members.find((m: any) => m.userID === me?.userID);
+          const isOwnerOrAdmin = myMember?.role === 'owner' || myMember?.role === 'admin';
+          const perms = settingsData.settings?.memberPermissions;
+          // owner/admin luôn có quyền; member thường phụ thuộc setting
+          setCanPinMessages(isOwnerOrAdmin || (perms?.pinMessages ?? true));
+          setCanSendMessages(isOwnerOrAdmin || (perms?.sendMessages ?? true));
+        }
+      } catch { /* fallback: cho phép tất cả */ }
+    } else {
+      setCanPinMessages(true);
+      setCanSendMessages(true);
+    }
   };
 
   const buildMsg = (extra: Partial<Message>): Message => ({
@@ -1216,18 +1276,17 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const handleMoveToTop = (msg: Message) => {
     if (!msg.messageID || !selectedChat) return;
+    const isGroup = selectedChat.type === 'group';
+    const pinEvent = isGroup ? 'ghim_group_message' : 'ghim_message';
+    const unpinEvent = isGroup ? 'unghim_group_message' : 'unghim_message';
+    const payload = isGroup
+      ? { messageID: msg.messageID, groupID: selectedChat.chatID, senderID: user!.userID }
+      : { messageID: msg.messageID, chatID: selectedChat.chatID, senderID: user!.userID };
+
     // Bỏ ghim rồi ghim lại để đưa lên đầu
-    socket.emit("unghim_message", {
-      messageID: msg.messageID,
-      chatID: selectedChat.chatID,
-      senderID: user!.userID
-    });
+    socket.emit(unpinEvent, payload);
     setTimeout(() => {
-      socket.emit("ghim_message", {
-        messageID: msg.messageID,
-        chatID: selectedChat.chatID,
-        senderID: user!.userID,
-      });
+      socket.emit(pinEvent, payload);
     }, 100);
     setPinnedMenuId(null);
     Alert.alert("Thành công", "Đã đưa lên đầu");
@@ -1243,11 +1302,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const handleUnpinFromMenu = (msg: Message) => {
     if (!msg.messageID || !selectedChat) return;
-    socket.emit("unghim_message", {
-      messageID: msg.messageID,
-      chatID: selectedChat.chatID,
-      senderID: user!.userID
-    });
+    const isGroup = selectedChat.type === 'group';
+    const unpinEvent = isGroup ? 'unghim_group_message' : 'unghim_message';
+    const payload = isGroup
+      ? { messageID: msg.messageID, groupID: selectedChat.chatID, senderID: user!.userID }
+      : { messageID: msg.messageID, chatID: selectedChat.chatID, senderID: user!.userID };
+    socket.emit(unpinEvent, payload);
     setPinnedMenuId(null);
     Alert.alert("Thành công", "Đã bỏ ghim");
   };
@@ -1819,12 +1879,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         {/* Add Friend Modal */}
         <AddFriendModal
           visible={showAddFriend}
-          onClose={() => setShowAddFriend(false)}
-          targetUser={addFriendTarget}
-          onSuccess={() => {
+          onClose={() => {
             setShowAddFriend(false);
             setAddFriendTarget(null);
           }}
+          currentUser={user ? { userID: user.userID, name: user.name } : null}
+          initialUser={addFriendTarget}
         />
 
         {/* Create Group Modal */}
@@ -1845,6 +1905,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   }
 
   const handleHeaderPress = () => {
+    if (selectedChat?.type === 'group') {
+      setShowEditGroupModal(true);
+      return;
+    }
     if (selectedChat?.type !== 'private') return;
     openOtherProfile(selectedChat);
   };
@@ -2179,6 +2243,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       )}
 
       {/* Input */}
+      {!canSendMessages ? (
+        <View style={[styles.noSendPermissionBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+          <Ionicons name="lock-closed" size={16} color="#9ca3af" />
+          <Text style={styles.noSendPermissionText}>
+            Chỉ trưởng nhóm và phó nhóm mới có thể gửi tin nhắn
+          </Text>
+        </View>
+      ) : (
       <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 6) }]}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => setShowEmoji(!showEmoji)}>
           <MaterialCommunityIcons name="emoticon-outline" size={26} color="#555" />
@@ -2228,6 +2300,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           </TouchableOpacity>
         )}
       </View>
+      )}
 
       {/* Loading overlay */}
       {isUploading && (
@@ -2249,7 +2322,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             </TouchableOpacity>
 
             {/* Nút Ghim tin nhắn */}
-            {selectedMessage?.messageID && (
+            {selectedMessage?.messageID && (selectedMessage?.pinnedInfo || canPinMessages) && (
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
@@ -2258,15 +2331,24 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                     return;
                   }
 
+                  const isGroup = selectedChat.type === 'group';
+                  const pinEvent = isGroup ? 'ghim_group_message' : 'ghim_message';
+                  const unpinEvent = isGroup ? 'unghim_group_message' : 'unghim_message';
+                  const payload = isGroup
+                    ? { messageID: selectedMessage.messageID, groupID: selectedChat.chatID, senderID: user.userID }
+                    : { messageID: selectedMessage.messageID, chatID: selectedChat.chatID, senderID: user.userID };
+
                   if (selectedMessage.pinnedInfo) {
                     // Bỏ ghim
-                    socket.emit("unghim_message", {
-                      messageID: selectedMessage.messageID,
-                      chatID: selectedChat.chatID,
-                      senderID: user.userID,
-                    });
+                    socket.emit(unpinEvent, payload);
                     Alert.alert("Thành công", "Đã bỏ ghim tin nhắn");
                   } else {
+                    // Kiểm tra quyền ghim
+                    if (!canPinMessages) {
+                      Alert.alert("Thông báo", "Bạn không có quyền ghim tin nhắn trong nhóm này");
+                      setShowMenu(false);
+                      return;
+                    }
                     // Kiểm tra giới hạn 3 tin nhắn ghim
                     const pinnedCount = pinnedMessages.length;
                     if (pinnedCount >= 3) {
@@ -2275,11 +2357,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                       return;
                     }
                     // Ghim tin nhắn
-                    socket.emit("ghim_message", {
-                      messageID: selectedMessage.messageID,
-                      chatID: selectedChat.chatID,
-                      senderID: user.userID,
-                    });
+                    socket.emit(pinEvent, payload);
                     Alert.alert("Thành công", "Đã ghim tin nhắn");
                   }
                   setShowMenu(false);
@@ -2596,6 +2674,20 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         />
       )}
 
+      {/* Edit Group Info Modal — mở khi nhấn avatar nhóm trên header */}
+      {selectedChat && selectedChat.type === 'group' && (
+        <EditGroupInfoModal
+          visible={showEditGroupModal}
+          groupID={selectedChat.chatID}
+          currentName={selectedChat.name}
+          currentAvatar={selectedChat.avatar}
+          onClose={() => setShowEditGroupModal(false)}
+          onSuccess={() => {
+            setShowEditGroupModal(false);
+          }}
+        />
+      )}
+
       {/* Global Modals — Dùng chung cho cả Chat List & Chat Window */}
       {incomingCall && (
         <IncomingCallModal
@@ -2908,6 +3000,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-end',
     backgroundColor: '#fff', paddingHorizontal: 6, paddingTop: 6, gap: 2,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#ddd',
+  },
+  // Thanh thông báo khi không có quyền gửi tin nhắn
+  noSendPermissionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: '#f9fafb',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
+  noSendPermissionText: {
+    fontSize: 13,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    flex: 1,
   },
   iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   input: {

@@ -10,9 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
 } from 'react-native';
 import axiosInstance from '../utils/axios';
 import socket from '../utils/socket';
+import { GroupInfoScreen } from './GroupInfoScreen';
 
 interface Message {
   messageID: string;
@@ -48,6 +50,7 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
   const [loading, setLoading] = useState(true);
   const [inputValue, setInputValue] = useState('');
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set<string>());
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const hasFetchedRef = useRef(false); // Đảm bảo chỉ fetch 1 lần
@@ -348,6 +351,9 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
           <Text style={styles.btnBack}>← Quay lại</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Nhóm Chat</Text>
+        <TouchableOpacity onPress={() => setShowGroupInfo(true)}>
+          <Text style={styles.btnInfo}>ℹ️</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -388,6 +394,24 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
           <Text style={styles.btnSendText}>➤</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Group Info Modal */}
+      <Modal
+        visible={showGroupInfo}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowGroupInfo(false)}
+      >
+        <GroupInfoScreen
+          groupID={groupID}
+          userID={userID}
+          onClose={() => setShowGroupInfo(false)}
+          onLeaveGroup={() => {
+            setShowGroupInfo(false);
+            onBack();
+          }}
+        />
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -415,6 +439,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     flex: 1,
+  },
+  btnInfo: {
+    fontSize: 20,
+    marginLeft: 16,
   },
   messagesList: {
     paddingHorizontal: 12,
