@@ -532,14 +532,42 @@ export default function chatRoutes(io: Server) {
         query.timestamp = { $gt: historyDeletedAt.toISOString() };
       }
 
-      const msgs = await Message.find(query).sort({ timestamp: 1 }).lean();
+      // Hỗ trợ phân trang: nếu client gửi page và limit
+      const { page, limit } = req.body;
+      const isPagination = page && limit;
+      
+      let msgs;
+      if (isPagination) {
+        const skip = (Number(page) - 1) * Number(limit);
+        msgs = await Message.find(query)
+          .sort({ timestamp: -1 })
+          .skip(skip)
+          .limit(Number(limit))
+          .lean();
+        msgs.reverse(); // Đảo ngược để gửi về mảng thứ tự: [cũ nhất của page -> mới nhất của page]
+      } else {
+        // Fallback cho logic cũ không có phân trang
+        msgs = await Message.find(query).sort({ timestamp: 1 }).lean();
+      }
+
       const senderIDs = [...new Set(msgs.map((m) => m.senderID))];
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const enriched = msgs.map((msg) => {
         const s = senders.find((u) => u.userID === msg.senderID);
         return { ...msg, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : null };
       });
-      res.json(enriched);
+
+      if (isPagination) {
+        const total = await Message.countDocuments(query);
+        res.json({
+          messages: enriched,
+          page: Number(page),
+          total,
+          limit: Number(limit)
+        });
+      } else {
+        res.json(enriched); // Tương thích ngược
+      }
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

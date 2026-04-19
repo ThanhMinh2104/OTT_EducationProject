@@ -23,14 +23,36 @@ export const GroupHomeScreen: React.FC = () => {
   const loadUserData = async () => {
     try {
       const id = await AsyncStorage.getItem('userID');
-      const name = await AsyncStorage.getItem('userName');
-      const avatar = await AsyncStorage.getItem('userAvatar');
+      // Lấy thông tin user từ object user (vì userName/userAvatar không được lưu riêng)
+      const userStr = await AsyncStorage.getItem('user');
+      let name = 'User';
+      let avatar = '';
+      
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          name = user.name || user.hoTen || 'User';
+          avatar = user.anhDaiDien || user.avatar || '';
+        } catch { /* ignore */ }
+      }
       
       console.log('👤 Loaded user data:', { id, name, avatar });
       
       setUserID(id || '');
-      setUserName(name || 'User');
-      setUserAvatar(avatar || '');
+      setUserName(name);
+      setUserAvatar(avatar);
+
+      // Emit join_user để socket biết userID
+      if (id) {
+        const socketModule = require('../utils/socket').default;
+        if (socketModule.connected) {
+          socketModule.emit('join_user', id);
+        } else {
+          socketModule.once('connect', () => {
+            socketModule.emit('join_user', id);
+          });
+        }
+      }
     } catch (error) {
       console.error('Error loading user data:', error);
     } finally {

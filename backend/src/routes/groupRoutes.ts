@@ -6,6 +6,7 @@ import GroupMember from '../models/GroupMember';
 import GroupMessage from '../models/GroupMessage';
 import GroupJoinRequest from '../models/GroupJoinRequest';
 import Users from '../models/User';
+import GroupNote from '../models/GroupNote';
 
 const router = Router();
 
@@ -703,6 +704,52 @@ router.post('/groups/:groupID/messages/:messageID/unpin', authMiddleware, async 
   }
 });
 
+// 13.5. Lấy danh sách tin nhắn đã ghim
+router.get('/groups/:groupID/pinned-messages', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID;
+
+    // Kiểm tra member
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    // Lấy tất cả tin nhắn đã ghim
+    const pinnedMessages = await GroupMessage.find({
+      groupID,
+      'pinnedInfo.pinnedBy': { $exists: true, $ne: null }
+    }).sort({ 'pinnedInfo.pinnedAt': -1 });
+
+    // Lấy thông tin người gửi cho mỗi tin nhắn
+    const messagesWithSenderInfo = await Promise.all(
+      pinnedMessages.map(async (msg) => {
+        try {
+          const sender = await Users.findOne({ userID: msg.senderID });
+          return {
+            ...msg.toObject(),
+            senderInfo: sender ? {
+              name: sender.name,
+              avatar: sender.anhDaiDien
+            } : null
+          };
+        } catch {
+          return {
+            ...msg.toObject(),
+            senderInfo: null
+          };
+        }
+      })
+    );
+
+    res.json({ pinnedMessages: messagesWithSenderInfo });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi lấy tin nhắn ghim', error: error.message });
+  }
+});
+
 // 14. Tìm kiếm tin nhắn
 router.get('/groups/:groupID/search', authMiddleware, async (req: AuthRequest, res) => {
   try {
@@ -1028,6 +1075,292 @@ router.post('/groups/:groupID/private-notification', authMiddleware, async (req:
     res.json({ message: 'OK', messageID });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi lưu thông báo', error: error.message });
+  }
+});
+
+// ============= GROUP NOTES API =============
+
+// Tạo ghi chú mới
+router.post('/groups/:groupID/notes', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const { content } = req.body;
+    const userID = req.userID;
+
+    // Kiểm tra member
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const noteID = `note_${uuidv4()}`;
+    const newNote = new GroupNote({
+      noteID,
+      groupID,
+      creatorID: userID,
+      content,
+      isPinned: false,
+    });
+
+    await newNote.save();
+
+    // Lấy thông tin creator
+    const creator = await Users.findOne({ userID });
+    const noteWithCreator = {
+      ...newNote.toObject(),
+      creatorInfo: creator ? {
+        name: creator.name,
+        avatar: creator.anhDaiDien
+      } : null
+    };
+
+    // Tạo notification message (purple bubble)
+    const notifMessageID = `gmsg_${uuidv4()}`;
+    const contentPreview = content.length > 50 ? content.substring(0, 50) + '...' : content;
+    const notificationMsg = new GroupMessage({
+      messageID: notifMessageID,
+      groupID,
+      senderID: userID,
+      content: `${creator?.name || 'Người dùng'} đã tạo ghi chú: "${contentPreview}"`,
+      type: 'notification',
+      timestamp: new Date(),
+      media_url: [],
+      status: 'sent',
+    });
+    await notificationMsg.save();
+
+    // Emit socket events
+    const io = req.app.get('io');
+    if (io) {
+      // Emit note created event
+      io.to(groupID).emit('note_created', noteWithCreator);
+      
+      // Emit notification message
+      io.to(groupID).emit('new_group_message', {
+        ...notificationMsg.toObject(),
+        senderInfo: { name: creator?.name || 'Người dùng', avatar: creator?.anhDaiDien || null },
+      });
+    }
+
+    res.status(201).json({ note: noteWithCreator });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi tạo ghi chú', error: error.message });
+  }
+});
+
+// Lấy danh sách ghi chú
+router.get('/groups/:groupID/notes', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID;
+
+    // Kiểm tra member
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const notes = await GroupNote.find({ groupID }).sort({ isPinned: -1, createdAt: -1 });
+
+    // Lấy thông tin creator cho mỗi note
+    const notesWithCreator = await Promise.all(
+      notes.map(async (note) => {
+        try {
+          const creator = await Users.findOne({ userID: note.creatorID });
+          return {
+            ...note.toObject(),
+            creatorInfo: creator ? {
+              name: creator.name,
+              avatar: creator.anhDaiDien
+            } : null
+          };
+        } catch {
+          return {
+            ...note.toObject(),
+            creatorInfo: null
+          };
+        }
+      })
+    );
+
+    res.json({ notes: notesWithCreator });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi lấy danh sách ghi chú', error: error.message });
+  }
+});
+
+// Cập nhật ghi chú
+router.put('/groups/:groupID/notes/:noteID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, noteID } = req.params;
+    const { content } = req.body;
+    const userID = req.userID;
+
+    const note = await GroupNote.findOne({ noteID, groupID });
+    if (!note) {
+      res.status(404).json({ message: 'Không tìm thấy ghi chú' });
+      return;
+    }
+
+    // Chỉ creator mới được sửa
+    if (note.creatorID !== userID) {
+      res.status(403).json({ message: 'Bạn không có quyền sửa ghi chú này' });
+      return;
+    }
+
+    note.content = content;
+    await note.save();
+
+    // Lấy thông tin creator
+    const creator = await Users.findOne({ userID: note.creatorID });
+    const noteWithCreator = {
+      ...note.toObject(),
+      creatorInfo: creator ? {
+        name: creator.name,
+        avatar: creator.anhDaiDien
+      } : null
+    };
+
+    // Tạo notification message (purple bubble)
+    const notifMessageID = `gmsg_${uuidv4()}`;
+    const contentPreview = content.length > 50 ? content.substring(0, 50) + '...' : content;
+    const notificationMsg = new GroupMessage({
+      messageID: notifMessageID,
+      groupID,
+      senderID: userID,
+      content: `${creator?.name || 'Người dùng'} đã chỉnh sửa ghi chú: "${contentPreview}"`,
+      type: 'notification',
+      timestamp: new Date(),
+      media_url: [],
+      status: 'sent',
+    });
+    await notificationMsg.save();
+
+    // Emit socket events
+    const io = req.app.get('io');
+    if (io) {
+      // Emit note updated event
+      io.to(groupID).emit('note_updated', noteWithCreator);
+      
+      // Emit notification message
+      io.to(groupID).emit('new_group_message', {
+        ...notificationMsg.toObject(),
+        senderInfo: { name: creator?.name || 'Người dùng', avatar: creator?.anhDaiDien || null },
+      });
+    }
+
+    res.json({ note: noteWithCreator });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi cập nhật ghi chú', error: error.message });
+  }
+});
+
+// Xóa ghi chú
+router.delete('/groups/:groupID/notes/:noteID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, noteID } = req.params;
+    const userID = req.userID;
+
+    const note = await GroupNote.findOne({ noteID, groupID });
+    if (!note) {
+      res.status(404).json({ message: 'Không tìm thấy ghi chú' });
+      return;
+    }
+
+    // Chỉ creator hoặc admin/owner mới được xóa
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (note.creatorID !== userID && !['owner', 'admin'].includes(member?.role || '')) {
+      res.status(403).json({ message: 'Bạn không có quyền xóa ghi chú này' });
+      return;
+    }
+
+    await GroupNote.deleteOne({ noteID, groupID });
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('note_deleted', { noteID, groupID });
+    }
+
+    res.json({ message: 'Xóa ghi chú thành công' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi xóa ghi chú', error: error.message });
+  }
+});
+
+// Ghim/bỏ ghim ghi chú
+router.post('/groups/:groupID/notes/:noteID/toggle-pin', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, noteID } = req.params;
+    const userID = req.userID;
+
+    // Kiểm tra quyền
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const note = await GroupNote.findOne({ noteID, groupID });
+    if (!note) {
+      res.status(404).json({ message: 'Không tìm thấy ghi chú' });
+      return;
+    }
+
+    // Toggle pin
+    const wasPinned = note.isPinned;
+    note.isPinned = !note.isPinned;
+    note.pinnedAt = note.isPinned ? new Date() : undefined;
+    await note.save();
+
+    // Lấy thông tin creator và user
+    const creator = await Users.findOne({ userID: note.creatorID });
+    const user = await Users.findOne({ userID });
+    const noteWithCreator = {
+      ...note.toObject(),
+      creatorInfo: creator ? {
+        name: creator.name,
+        avatar: creator.anhDaiDien
+      } : null
+    };
+
+    // Tạo notification message (purple bubble) khi ghim
+    if (note.isPinned) {
+      const notifMessageID = `gmsg_${uuidv4()}`;
+      const contentPreview = note.content.length > 50 ? note.content.substring(0, 50) + '...' : note.content;
+      const notificationMsg = new GroupMessage({
+        messageID: notifMessageID,
+        groupID,
+        senderID: userID,
+        content: `${user?.name || 'Người dùng'} đã ghim ghi chú: "${contentPreview}"`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      await notificationMsg.save();
+
+      // Emit notification message
+      const io = req.app.get('io');
+      if (io) {
+        io.to(groupID).emit('new_group_message', {
+          ...notificationMsg.toObject(),
+          senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
+        });
+      }
+    }
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('note_pin_toggled', noteWithCreator);
+    }
+
+    res.json({ note: noteWithCreator });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi ghim/bỏ ghim ghi chú', error: error.message });
   }
 });
 
