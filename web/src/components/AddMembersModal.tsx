@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import axiosInstance from '../utils/axios';
+import toast from 'react-hot-toast';
 import './AddMembersModal.css';
-
 interface Contact {
   userID: string;
   name: string;
@@ -10,69 +10,66 @@ interface Contact {
 
 interface AddMembersModalProps {
   groupID: string;
+  currentUserID: string;
   onClose: () => void;
   onSuccess: () => void;
+  onBlockedNotification?: (message: string) => void;
 }
 
 export const AddMembersModal: React.FC<AddMembersModalProps> = ({
   groupID,
   onClose,
   onSuccess,
+  onBlockedNotification,
 }) => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchContacts();
-  }, []);
-
-  const fetchContacts = async () => {
+  const fetchContacts = useCallback(async () => {
     try {
       setLoading(true);
-      // Lấy danh sách bạn bè và thông tin nhóm
       const [friendsRes, groupRes] = await Promise.all([
         axiosInstance.post('/contacts/friends', {}),
-        axiosInstance.get(`/groups/${groupID}`)
+        axiosInstance.get(`/groups/${groupID}`),
       ]);
-      
+
       const existingMemberIDs = new Set(
-        groupRes.data.members?.map((m: any) => m.userID) || []
+        groupRes.data.members?.map((m: { userID: string }) => m.userID) || []
       );
-      
-      // Lọc bạn bè chưa trong nhóm
+
       const availableFriends = friendsRes.data.filter(
-        (friend: any) => !existingMemberIDs.has(friend.userID)
+        (friend: { userID: string }) => !existingMemberIDs.has(friend.userID)
       );
-      
-      // Map sang format Contact
-      const contactsList = availableFriends.map((friend: any) => ({
-        userID: friend.userID,
-        name: friend.alias || friend.name,
-        anhDaiDien: friend.anhDaiDien
-      }));
-      
-      setContacts(contactsList);
+
+      setContacts(
+        availableFriends.map((friend: { userID: string; alias?: string; name: string; anhDaiDien?: string }) => ({
+          userID: friend.userID,
+          name: friend.alias || friend.name,
+          anhDaiDien: friend.anhDaiDien,
+        }))
+      );
     } catch (error) {
       console.error('Error fetching contacts:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupID]);
 
-  const filteredContacts = contacts.filter((contact) =>
-    contact.name.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    fetchContacts();
+  }, [fetchContacts]);
+
+  const filteredContacts = contacts.filter((c) =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleToggleMember = (userID: string) => {
-    const newSelected = new Set(selectedMembers);
-    if (newSelected.has(userID)) {
-      newSelected.delete(userID);
-    } else {
-      newSelected.add(userID);
-    }
-    setSelectedMembers(newSelected);
+    const next = new Set(selectedMembers);
+    if (next.has(userID)) next.delete(userID);
+    else next.add(userID);
+    setSelectedMembers(next);
   };
 
   const handleAddMembers = async () => {
@@ -81,17 +78,31 @@ export const AddMembersModal: React.FC<AddMembersModalProps> = ({
       return;
     }
 
-    try {
-      // Thêm từng thành viên một
-      for (const userID of selectedMembers) {
-        await axiosInstance.post(`/groups/${groupID}/members`, { userID });
+    let addedCount = 0;
+
+    for (const uid of selectedMembers) {
+      try {
+        const res = await axiosInstance.post(`/groups/${groupID}/members`, { userID: uid });
+        if (res.data?.requireApproval) {
+          // Người mời thấy toast, không thêm vào addedCount
+          toast.success('Cần được phê duyệt từ Trưởng nhóm');
+        } else {
+          addedCount++;
+        }
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { errorCode?: string } } };
+        if (err.response?.data?.errorCode === 'USER_BLOCKED') {
+          const name = contacts.find((c) => c.userID === uid)?.name || uid;
+          await axiosInstance.post(`/groups/${groupID}/private-notification`, {
+            content: `${name} đã bị trưởng/phó nhóm chặn tham gia nhóm`,
+          });
+          onBlockedNotification?.(`${name} đã bị trưởng/phó nhóm chặn tham gia nhóm`);
+        }
       }
-      onSuccess();
-      onClose();
-    } catch (error: any) {
-      console.error('Error adding members:', error);
-      alert(error.response?.data?.message || 'Lỗi thêm thành viên');
     }
+
+    if (addedCount > 0) onSuccess();
+    onClose();
   };
 
   return (
@@ -110,14 +121,11 @@ export const AddMembersModal: React.FC<AddMembersModalProps> = ({
         {selectedMembers.size > 0 && (
           <div className="selected-members">
             {Array.from(selectedMembers).map((userID) => {
-              const contact = contacts.find(c => c.userID === userID);
+              const contact = contacts.find((c) => c.userID === userID);
               return (
                 <div key={userID} className="member-tag">
                   {contact?.name || userID}
-                  <span
-                    className="member-tag-remove"
-                    onClick={() => handleToggleMember(userID)}
-                  >
+                  <span className="member-tag-remove" onClick={() => handleToggleMember(userID)}>
                     ✕
                   </span>
                 </div>

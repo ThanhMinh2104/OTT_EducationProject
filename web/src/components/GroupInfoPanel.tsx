@@ -9,6 +9,7 @@ import { BsPin, BsPinFill } from 'react-icons/bs';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
+import EditGroupInfoModal from './EditGroupInfoModal';
 import './GroupInfoPanel.css';
 
 interface GroupMember {
@@ -29,6 +30,19 @@ interface GroupInfo {
   ownerID: string;
   members: GroupMember[];
   memberCount: number;
+  settings?: {
+    requireApproval: boolean;
+    highlightAdminMessages: boolean;
+    allowNewMembersReadHistory: boolean;
+    allowInviteLink: boolean;
+    memberPermissions: {
+      changeNameAvatar: boolean;
+      pinMessages: boolean;
+      createNotes: boolean;
+      createPolls: boolean;
+      sendMessages: boolean;
+    };
+  };
 }
 
 interface Message {
@@ -157,10 +171,15 @@ const GroupInfoPanel = ({
   const [isPinned, setIsPinned] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const currentMember = groupInfo.members.find(m => m.userID === currentUserID);
   const isOwner = currentMember?.role === 'owner';
   const isAdmin = currentMember?.role === 'admin';
+  
+  // Kiểm tra quyền chỉnh sửa: Owner/Admin luôn có quyền, Member kiểm tra setting
+  const canEditGroupInfo = isOwner || isAdmin || 
+    (groupInfo.settings?.memberPermissions?.changeNameAvatar ?? true);
 
   // Media từ messages
   const mediaImages = messages
@@ -235,14 +254,32 @@ const GroupInfoPanel = ({
         <div className="flex-1 overflow-y-auto content-scroll [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-600">
           {/* Avatar + tên nhóm */}
           <div className="flex flex-col items-center py-5 px-4 border-b border-gray-700 gap-3">
-            <div className="relative">
-              <img src={groupAvatar} alt="avatar" className="w-20 h-20 rounded-full object-cover border-2 border-blue-400" />
+            <div 
+              className={`relative ${canEditGroupInfo ? 'cursor-pointer group' : ''}`}
+              onClick={() => canEditGroupInfo && setShowEditModal(true)}
+              title={canEditGroupInfo ? 'Click để chỉnh sửa thông tin nhóm' : ''}
+            >
+              <img 
+                src={groupAvatar} 
+                alt="avatar" 
+                className="w-20 h-20 rounded-full object-cover border-2 border-blue-400 transition-opacity group-hover:opacity-80" 
+              />
+              {canEditGroupInfo && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 rounded-full transition-all">
+                  <FaImage className="text-white opacity-0 group-hover:opacity-100 text-xl transition-opacity" />
+                </div>
+              )}
             </div>
             <div className="text-center">
               <p className="font-bold text-white text-[16px] mb-1">{groupInfo.name}</p>
-              <button className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1 mx-auto">
-                ✏️ Đổi tên
-              </button>
+              {canEditGroupInfo && (
+                <button 
+                  onClick={() => setShowEditModal(true)}
+                  className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1 mx-auto transition-colors"
+                >
+                  ✏️ Đổi tên
+                </button>
+              )}
             </div>
           </div>
 
@@ -537,6 +574,20 @@ const GroupInfoPanel = ({
           onCancel={() => setShowDeleteConfirm(false)}
           isDanger
           confirmText="Giải tán"
+        />
+      )}
+
+      {/* Edit Group Info Modal */}
+      {showEditModal && canEditGroupInfo && (
+        <EditGroupInfoModal
+          groupID={groupInfo.groupID}
+          currentName={groupInfo.name}
+          currentAvatar={groupInfo.avatar}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            // Reload group data
+            window.location.reload();
+          }}
         />
       )}
     </>

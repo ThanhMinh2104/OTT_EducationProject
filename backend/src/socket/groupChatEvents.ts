@@ -3,13 +3,17 @@ import GroupMessage from '../models/GroupMessage';
 import GroupMember from '../models/GroupMember';
 import MessageReaction from '../models/MessageReaction';
 import Users from '../models/User';
+import Group from '../models/Group';
 import { v4 as uuidv4 } from 'uuid';
+import { 
+  processBotAction, 
+  getChatHistory, 
+  isBotMention 
+} from '../services/botService';
 
-const generateMessageID = async (): Promise<string> => {
-  const last = await GroupMessage.findOne().sort({ messageID: -1 }).limit(1);
-  if (!last) return 'gmsg001';
-  const n = parseInt(last.messageID.replace('gmsg', ''), 10);
-  return `gmsg${(n + 1).toString().padStart(3, '0')}`;
+// Generate unique messageID using UUID
+const generateMessageID = (): string => {
+  return `gmsg_${uuidv4()}`;
 };
 
 export const registerGroupChatEvents = (io: Server, socket: Socket) => {
@@ -19,6 +23,8 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
     try {
       const { groupID, userID } = data;
 
+      console.log('🚪 join_group request:', { groupID, userID, socketID: socket.id });
+
       // Kiểm tra user có trong group không
       const member = await GroupMember.findOne({
         groupID,
@@ -27,6 +33,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       });
 
       if (!member) {
+        console.error('❌ Member not found for join_group:', { groupID, userID });
         socket.emit('error_notification', {
           message: 'Bạn không có quyền truy cập nhóm này',
         });
@@ -36,6 +43,13 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       socket.join(groupID);
       socket.join(`user_${userID}`);
 
+      console.log('✅ Socket joined group:', { 
+        groupID, 
+        userID, 
+        socketID: socket.id,
+        rooms: Array.from(socket.rooms)
+      });
+
       // Thông báo user khác
       socket.to(groupID).emit('member_online', {
         groupID,
@@ -43,7 +57,14 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         timestamp: new Date(),
       });
     } catch (error) {
-      console.error('Error joining group:', error);
+      console.error('❌ Error joining group:', error);
+    }
+  });
+
+  // Debug: Log tất cả events
+  socket.onAny((eventName, ...args) => {
+    if (eventName.includes('group') || eventName.includes('join')) {
+      console.log('📡 Socket event received:', eventName, args);
     }
   });
 
@@ -61,9 +82,16 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
   // ==================== SEND MESSAGE ====================
 
-  socket.on('send_group_message', async (data: any) => {
+  socket.on('send_group_message', async (data: any, callback?: Function) => {
     try {
-      const messageID = await generateMessageID();
+      console.log('📨 Backend received send_group_message:', {
+        groupID: data.groupID,
+        senderID: data.senderID,
+        content: data.content?.substring(0, 50),
+        type: data.type,
+      });
+
+      const messageID = generateMessageID();
       const { groupID, senderID, content, type, media_url, replyTo, groupId } = data;
 
       // Kiểm tra quyền
@@ -73,11 +101,33 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         isActive: true,
       });
 
+      console.log('👤 Member check:', {
+        found: !!member,
+        role: member?.role,
+        isActive: member?.isActive,
+      });
+
       if (!member) {
+        console.error('❌ Member not found or not active');
         socket.emit('error_notification', {
           message: 'Bạn không có quyền gửi tin nhắn trong nhóm này',
         });
+        if (callback) callback({ error: 'Không có quyền gửi tin nhắn' });
         return;
+      }
+
+      // Kiểm tra quyền gửi tin nhắn
+      const group = await Group.findOne({ groupID });
+      if (group?.settings?.memberPermissions?.sendMessages === false) {
+        // Nếu tắt quyền gửi tin nhắn, chỉ owner và admin mới được gửi
+        if (member.role !== 'owner' && member.role !== 'admin') {
+          console.error('❌ Member does not have permission to send messages');
+          socket.emit('error_notification', {
+            message: 'Chỉ trưởng nhóm và phó nhóm mới có thể gửi tin nhắn',
+          });
+          if (callback) callback({ error: 'Không có quyền gửi tin nhắn' });
+          return;
+        }
       }
 
       const newMsg = new GroupMessage({
@@ -115,7 +165,19 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       };
 
       // Gửi tới tất cả trong group
+      console.log('✅ Broadcasting message to group:', groupID);
+      console.log('📊 Rooms in server:', Array.from(io.sockets.adapter.rooms.keys()));
+      console.log('📊 Sockets in group room:', io.sockets.adapter.rooms.get(groupID)?.size || 0);
+      
       io.to(groupID).emit('new_group_message', fullMessage);
+      
+      console.log('📤 Message broadcasted to room:', groupID);
+
+      // Acknowledge callback nếu có
+      if (callback) {
+        console.log('✅ Sending callback acknowledgment');
+        callback({ success: true, message: fullMessage });
+      }
 
       // Update status sau 1s
       setTimeout(async () => {
@@ -128,8 +190,118 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
           status: 'delivered',
         });
       }, 1000);
+
+      // ==================== BOT INTEGRATION FOR GROUP ====================
+      // Kiểm tra xem có gọi bot không
+      if (content && isBotMention(content)) {
+        console.log('🤖 Bot mentioned in group, processing...');
+        
+        // Lấy danh sách thành viên
+        const members = await GroupMember.find({ groupID, isActive: true });
+        const memberIDs = members.map(m => m.userID);
+
+        // Emit typing indicator
+        io.to(groupID).emit('group_typing_start', { 
+          groupID, 
+          userID: 'bot',
+          userName: 'AI Bot'
+        });
+
+        try {
+          // Lấy lịch sử chat group
+          const messages = await GroupMessage.find({ groupID })
+            .sort({ timestamp: -1 })
+            .limit(50);
+
+          messages.reverse();
+
+          const formattedHistory: string[] = [];
+          for (const msg of messages) {
+            // Bỏ qua tin nhắn notification
+            if (msg.type === 'notification') continue;
+            
+            let senderName = 'Người dùng';
+            if (msg.senderID !== 'system' && msg.senderID !== 'bot') {
+              const user = await Users.findOne({ userID: msg.senderID });
+              senderName = user?.name || 'Người dùng';
+            } else if (msg.senderID === 'bot') {
+              senderName = 'AI Bot';
+            }
+
+            let msgContent = msg.content;
+            if (!msgContent || msgContent.trim() === '') {
+              const mediaTypes: Record<string, string> = {
+                image: '[Hình ảnh]',
+                video: '[Video]',
+                audio: '[Tin nhắn thoại]',
+                file: '[File]',
+                sticker: '[Sticker]',
+                gif: '[GIF]',
+              };
+              msgContent = mediaTypes[msg.type] || '[Media]';
+            }
+
+            formattedHistory.push(`${senderName}: ${msgContent}`);
+          }
+
+          const chatHistory = formattedHistory.join('\n') || 'Chưa có tin nhắn nào trong nhóm này.';
+
+          // Xử lý với bot
+          const botResponse = await processBotAction(
+            'group',
+            chatHistory,
+            content
+          );
+
+          // Tạo tin nhắn bot
+          const botMessageID = generateMessageID();
+          const botMsg = new GroupMessage({
+            messageID: botMessageID,
+            groupID,
+            senderID: 'bot',
+            content: botResponse.content,
+            type: 'text',
+            timestamp: new Date(),
+            media_url: [],
+            status: 'sent',
+          });
+
+          await botMsg.save();
+
+          // Lấy thông tin bot user
+          const botUser = await Users.findOne({ userID: 'bot' });
+
+          // Gửi tin nhắn bot tới group
+          const botMessageData = {
+            messageID: botMsg.messageID,
+            groupID,
+            senderID: 'bot',
+            content: botMsg.content,
+            type: 'text',
+            timestamp: botMsg.timestamp,
+            status: 'sent',
+            metadata: { intent: botResponse.intent },
+            senderInfo: {
+              name: botUser?.name || 'AI Bot',
+              avatar: botUser?.anhDaiDien || null,
+            },
+          };
+
+          io.to(groupID).emit('new_group_message', botMessageData);
+
+          console.log('✅ Bot response sent to group:', botResponse.intent);
+        } catch (error) {
+          console.error('❌ Bot processing failed in group:', error);
+        } finally {
+          // Tắt typing indicator
+          io.to(groupID).emit('group_typing_stop', { 
+            groupID, 
+            userID: 'bot'
+          });
+        }
+      }
     } catch (error: any) {
-      console.error('Error sending group message:', error);
+      console.error('❌ Error sending group message:', error);
       socket.emit('error_notification', {
         message: 'Lỗi gửi tin nhắn',
       });
@@ -334,6 +506,335 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       });
     } catch (error) {
       console.error('Error mentioning user:', error);
+    }
+  });
+
+  // ==================== PIN MESSAGE ====================
+
+  socket.on('ghim_group_message', async (data: any) => {
+    try {
+      const { messageID, groupID, senderID } = data;
+
+      console.log('📌 Pin group message:', { messageID, groupID, senderID });
+
+      // Kiểm tra quyền ghim
+      const member = await GroupMember.findOne({ groupID, userID: senderID });
+      if (!member) {
+        socket.emit('error_notification', { message: 'Bạn không có quyền ghim tin nhắn' });
+        return;
+      }
+
+      // Kiểm tra permission nếu là member thường
+      if (member.role === 'member') {
+        const group = await Group.findOne({ groupID });
+        if (!group?.settings?.memberPermissions?.pinMessages) {
+          socket.emit('error_notification', { message: 'Bạn không có quyền ghim tin nhắn' });
+          return;
+        }
+      }
+
+      // Update message với pinnedInfo
+      const msg = await GroupMessage.findOneAndUpdate(
+        { messageID, groupID },
+        { pinnedInfo: { pinnedBy: senderID, pinnedAt: new Date() } },
+        { new: true }
+      );
+
+      if (!msg) {
+        socket.emit('error_notification', { message: 'Tin nhắn không tồn tại' });
+        return;
+      }
+
+      // Lấy thông tin người ghim
+      const user = await Users.findOne({ userID: senderID });
+      const userName = user?.name || 'Người dùng';
+
+      // Tạo notification message
+      const notifMessageID = generateMessageID();
+      let displayContent = '';
+      
+      if (msg.content) {
+        displayContent = msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content;
+      } else {
+        const mediaTypes: Record<string, string> = {
+          'image': 'hình ảnh',
+          'video': 'video',
+          'audio': 'tin nhắn thoại',
+          'file': 'file',
+          'sticker': 'sticker',
+          'gif': 'GIF',
+        };
+        displayContent = mediaTypes[msg.type] || 'tin nhắn';
+      }
+      
+      const notificationMsg = new GroupMessage({
+        messageID: notifMessageID,
+        groupID,
+        senderID,
+        content: `${userName} đã ghim ${displayContent}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      
+      await notificationMsg.save();
+
+      console.log('✅ Message pinned successfully');
+
+      // Emit to all members in group
+      io.to(groupID).emit('ghim_group_notification', msg);
+      io.to(groupID).emit('new_group_message', {
+        ...notificationMsg.toObject(),
+        senderInfo: { name: userName, avatar: user?.anhDaiDien || null },
+      });
+    } catch (error) {
+      console.error('❌ Error pinning group message:', error);
+      socket.emit('error_notification', { message: 'Lỗi khi ghim tin nhắn' });
+    }
+  });
+
+  socket.on('unghim_group_message', async (data: any) => {
+    try {
+      const { messageID, groupID, senderID } = data;
+
+      console.log('📌 Unpin group message:', { messageID, groupID, senderID });
+
+      // Kiểm tra quyền bỏ ghim
+      const member = await GroupMember.findOne({ groupID, userID: senderID });
+      if (!member) {
+        socket.emit('error_notification', { message: 'Bạn không có quyền bỏ ghim tin nhắn' });
+        return;
+      }
+
+      // Kiểm tra permission nếu là member thường
+      if (member.role === 'member') {
+        const group = await Group.findOne({ groupID });
+        if (!group?.settings?.memberPermissions?.pinMessages) {
+          socket.emit('error_notification', { message: 'Bạn không có quyền bỏ ghim tin nhắn' });
+          return;
+        }
+      }
+
+      // Remove pinnedInfo from message
+      const msg = await GroupMessage.findOneAndUpdate(
+        { messageID, groupID },
+        { $unset: { pinnedInfo: '' } },
+        { new: true }
+      );
+
+      if (!msg) {
+        socket.emit('error_notification', { message: 'Tin nhắn không tồn tại' });
+        return;
+      }
+
+      // Lấy thông tin người bỏ ghim
+      const user = await Users.findOne({ userID: senderID });
+      const userName = user?.name || 'Người dùng';
+
+      // Tạo notification message
+      const notifMessageID = generateMessageID();
+      let displayContent = '';
+      
+      if (msg.content) {
+        displayContent = msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content;
+      } else {
+        const mediaTypes: Record<string, string> = {
+          'image': 'hình ảnh',
+          'video': 'video',
+          'audio': 'tin nhắn thoại',
+          'file': 'file',
+          'sticker': 'sticker',
+          'gif': 'GIF',
+        };
+        displayContent = mediaTypes[msg.type] || 'tin nhắn';
+      }
+      
+      const notificationMsg = new GroupMessage({
+        messageID: notifMessageID,
+        groupID,
+        senderID,
+        content: `${userName} đã bỏ ghim ${displayContent}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      
+      await notificationMsg.save();
+
+      console.log('✅ Message unpinned successfully');
+
+      // Emit to all members in group
+      io.to(groupID).emit('unghim_group_notification', msg);
+      io.to(groupID).emit('new_group_message', {
+        ...notificationMsg.toObject(),
+        senderInfo: { name: userName, avatar: user?.anhDaiDien || null },
+      });
+    } catch (error) {
+      console.error('❌ Error unpinning group message:', error);
+      socket.emit('error_notification', { message: 'Lỗi khi bỏ ghim tin nhắn' });
+    }
+  });
+
+  // ==================== UNSEND MESSAGE ====================
+
+  socket.on('unsend_group_message', async (data: any) => {
+    try {
+      const { messageID, groupID, senderID } = data;
+
+      console.log('🔄 Unsend group message:', { messageID, groupID, senderID });
+
+      const message = await GroupMessage.findOne({ messageID, groupID });
+      if (!message) {
+        socket.emit('error_notification', { message: 'Tin nhắn không tồn tại' });
+        return;
+      }
+
+      // Chỉ người gửi mới được thu hồi
+      if (message.senderID !== senderID) {
+        socket.emit('error_notification', { message: 'Bạn chỉ có thể thu hồi tin nhắn của mình' });
+        return;
+      }
+
+      // Update message thành unsend
+      await GroupMessage.findOneAndUpdate(
+        { messageID },
+        {
+          type: 'notification',
+          content: 'Tin nhắn đã bị thu hồi',
+          media_url: [],
+        }
+      );
+
+      // Nếu là image group, thu hồi tất cả ảnh trong group
+      if (message.groupId) {
+        await GroupMessage.updateMany(
+          { groupId: message.groupId, senderID },
+          {
+            type: 'notification',
+            content: 'Tin nhắn đã bị thu hồi',
+            media_url: [],
+          }
+        );
+      }
+
+      // Emit to all members in group
+      io.to(groupID).emit('unsend_group_notification', {
+        messageID,
+        groupID,
+        senderID,
+      });
+
+      console.log('✅ Message unsent successfully');
+    } catch (error) {
+      console.error('❌ Error unsending group message:', error);
+      socket.emit('error_notification', { message: 'Lỗi khi thu hồi tin nhắn' });
+    }
+  });
+
+  // ==================== DELETE MESSAGE LOCAL ====================
+
+  socket.on('delete_group_message_local', async (data: any) => {
+    try {
+      const { messageID, userID, groupID } = data;
+
+      console.log('🗑️ Delete group message local:', { messageID, userID, groupID });
+
+      const message = await GroupMessage.findOne({ messageID, groupID });
+      if (!message) {
+        socket.emit('error_notification', { message: 'Tin nhắn không tồn tại' });
+        return;
+      }
+
+      // Thêm userID vào deletedFor array
+      await GroupMessage.findOneAndUpdate(
+        { messageID },
+        { $addToSet: { deletedFor: userID } }
+      );
+
+      // Emit chỉ cho user này
+      socket.emit('message_deleted_local', {
+        messageID,
+        userID,
+        groupID,
+      });
+
+      console.log('✅ Message deleted locally for user:', userID);
+    } catch (error) {
+      console.error('❌ Error deleting group message locally:', error);
+      socket.emit('error_notification', { message: 'Lỗi khi xóa tin nhắn' });
+    }
+  });
+
+  // ==================== FORWARD MESSAGE ====================
+
+  socket.on('forward_group_message', async (data: any) => {
+    try {
+      const { originalMessageID, originalChatID, originalGroupID, targetGroupID, senderID, senderInfo } = data;
+
+      console.log('📤 Forward message to group:', { originalMessageID, targetGroupID, senderID });
+
+      // Lấy tin nhắn gốc
+      let originalMessage: any;
+      if (originalGroupID) {
+        originalMessage = await GroupMessage.findOne({ messageID: originalMessageID, groupID: originalGroupID });
+      } else if (originalChatID) {
+        // Import Messages model nếu cần
+        const Messages = (await import('../models/Messages')).default;
+        originalMessage = await Messages.findOne({ messageID: originalMessageID, chatID: originalChatID });
+      }
+
+      if (!originalMessage) {
+        socket.emit('error_notification', { message: 'Tin nhắn gốc không tồn tại' });
+        return;
+      }
+
+      // Kiểm tra quyền gửi tin nhắn trong group
+      const member = await GroupMember.findOne({
+        groupID: targetGroupID,
+        userID: senderID,
+        isActive: true,
+      });
+
+      if (!member) {
+        socket.emit('error_notification', { message: 'Bạn không có quyền gửi tin nhắn trong nhóm này' });
+        return;
+      }
+
+      // Tạo tin nhắn mới
+      const newMessageID = generateMessageID();
+      const forwardedMessage = new GroupMessage({
+        messageID: newMessageID,
+        groupID: targetGroupID,
+        senderID,
+        content: originalMessage.content,
+        type: originalMessage.type,
+        media_url: originalMessage.media_url || [],
+        timestamp: new Date(),
+        forwardedFrom: originalMessageID,
+      });
+
+      await forwardedMessage.save();
+
+      // Emit to all members in target group
+      io.to(targetGroupID).emit('new_group_message', {
+        messageID: newMessageID,
+        groupID: targetGroupID,
+        senderID,
+        content: originalMessage.content,
+        type: originalMessage.type,
+        media_url: originalMessage.media_url || [],
+        timestamp: forwardedMessage.timestamp,
+        status: 'sent',
+        forwardedFrom: originalMessageID,
+        senderInfo,
+      });
+
+      console.log('✅ Message forwarded to group successfully');
+    } catch (error) {
+      console.error('❌ Error forwarding message to group:', error);
+      socket.emit('error_notification', { message: 'Lỗi khi chuyển tiếp tin nhắn' });
     }
   });
 };

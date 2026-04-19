@@ -56,6 +56,11 @@ app.use('/api/reminders', reminderRoutes);
 app.use('/api', groupRoutes);
 app.use('/api', groupMediaRoutes);
 
+
+// Lưu io vào app để các routes có thể truy cập
+app.set('io', io);
+
+
 // Debug route để xem active calls
 app.get('/api/debug/active-calls', (req, res) => {
   const calls = Array.from(getActiveCallsMap().entries()).map(([userID, info]) => ({

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  FaTimes, FaUserShield, FaTrash, FaSearch, FaCrown, FaUserPlus,
-  FaEdit, FaImage, FaCheck, FaEllipsisV, FaInfoCircle, FaCopy, FaShare,
-  FaUsers,
+  FaTimes, FaUserShield, FaTrash, FaSearch, FaCrown, FaEllipsisV, FaInfoCircle, FaCopy, FaShare,
+  FaUsers, FaKey,
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -18,6 +17,12 @@ interface GroupMember {
   isActive: boolean;
 }
 
+interface BlockedMemberInfo {
+  userID: string;
+  name: string;
+  avatar?: string;
+}
+
 interface GroupInfo {
   groupID: string;
   name: string;
@@ -26,6 +31,20 @@ interface GroupInfo {
   ownerID: string;
   members: GroupMember[];
   memberCount: number;
+  blockedMembers?: string[];
+  settings?: {
+    requireApproval: boolean;
+    highlightAdminMessages: boolean;
+    allowNewMembersReadHistory: boolean;
+    allowInviteLink: boolean;
+    memberPermissions: {
+      changeNameAvatar: boolean;
+      pinMessages: boolean;
+      createNotes: boolean;
+      createPolls: boolean;
+      sendMessages: boolean;
+    };
+  };
 }
 
 interface Props {
@@ -59,7 +78,25 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
   const [newGroupName, setNewGroupName] = useState(groupInfo.name);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [newDescription, setNewDescription] = useState(groupInfo.description || '');
-  
+
+  // Block panel states
+  const [showBlockPanel, setShowBlockPanel] = useState(false);
+  const [showAddBlockModal, setShowAddBlockModal] = useState(false);
+  const [blockedMembersInfo, setBlockedMembersInfo] = useState<BlockedMemberInfo[]>([]);
+  const [selectedToBlock, setSelectedToBlock] = useState<string[]>([]);
+  const [blockSearchQuery, setBlockSearchQuery] = useState('');
+  const [isLoadingBlocked, setIsLoadingBlocked] = useState(false);
+
+  // Admin panel
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showAddAdminModal, setShowAddAdminModal] = useState(false);
+  const [showTransferOwnerModal, setShowTransferOwnerModal] = useState(false);
+  const [selectedNewOwner, setSelectedNewOwner] = useState<GroupMember | null>(null);
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  // 'select' = chọn người, 'confirm' = xác nhận
+  type TransferStep = 'select' | 'confirm';
+  const [transferStep, setTransferStep] = useState<TransferStep>('select');
+
   // Group settings
   const [settings, setSettings] = useState<GroupSettings>({
     requireApproval: false,
@@ -81,6 +118,40 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
   const isAdmin = currentMember?.role === 'admin';
   
   const groupInviteLink = `zalo.me/g/${groupInfo.groupID.substring(0, 10)}`;
+
+  // Load settings từ groupInfo khi component mount HOẶC khi groupInfo thay đổi
+  useEffect(() => {
+    console.log('🔄 Loading settings from groupInfo:', {
+      hasSettings: !!groupInfo.settings,
+      settings: groupInfo.settings,
+      memberPermissions: groupInfo.settings?.memberPermissions
+    });
+    
+    if (groupInfo.settings) {
+      const newSettings = {
+        requireApproval: groupInfo.settings.requireApproval ?? false,
+        highlightAdminMessages: groupInfo.settings.highlightAdminMessages ?? false,
+        allowNewMembersReadHistory: groupInfo.settings.allowNewMembersReadHistory ?? false,
+        allowInviteLink: groupInfo.settings.allowInviteLink ?? true,
+      };
+      
+      console.log('📝 Setting state - settings:', newSettings);
+      setSettings(newSettings);
+      
+      if (groupInfo.settings.memberPermissions) {
+        const newPermissions = {
+          changeNameAvatar: groupInfo.settings.memberPermissions.changeNameAvatar ?? true,
+          pinMessages: groupInfo.settings.memberPermissions.pinMessages ?? true,
+          createNotes: groupInfo.settings.memberPermissions.createNotes ?? true,
+          createPolls: groupInfo.settings.memberPermissions.createPolls ?? true,
+          sendMessages: groupInfo.settings.memberPermissions.sendMessages ?? true,
+        };
+        
+        console.log('📝 Setting state - memberPermissions:', newPermissions);
+        setMemberPermissions(newPermissions);
+      }
+    }
+  }, [groupInfo.settings]); // Thêm dependency để re-run khi settings thay đổi
 
   const filteredMembers = groupInfo.members.filter(m =>
     m?.name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -125,11 +196,9 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
     }
   };
 
-  const handleTransferOwner = async (member: GroupMember) => {
+  const handleTransferOwnerOld = async (member: GroupMember) => {
     try {
-      // Chuyển quyền owner cho member mới
       await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'owner' });
-      // Tự động hạ quyền owner hiện tại xuống admin
       await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${currentUserID}/role`, { role: 'admin' });
       toast.success(`Đã chuyển quyền trưởng nhóm cho ${member.name || 'thành viên'}`);
       setShowConfirmTransferOwner(false);
@@ -167,14 +236,81 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
     }
   };
 
-  const handleToggleSetting = (key: keyof GroupSettings) => {
-    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
-    toast.success('Đã cập nhật cài đặt');
+  const handleToggleSetting = async (key: keyof GroupSettings) => {
+    const newValue = !settings[key];
+    const newSettings = { ...settings, [key]: newValue };
+    setSettings(newSettings);
+    
+    try {
+      console.log('📤 Sending settings update:', {
+        settings: {
+          ...newSettings,
+          memberPermissions
+        }
+      });
+
+      const response = await axiosInstance.put(`/groups/${groupInfo.groupID}/settings`, {
+        settings: {
+          ...newSettings,
+          memberPermissions
+        }
+      });
+
+      console.log('✅ Settings updated:', response.data);
+      toast.success('Đã cập nhật cài đặt');
+      onUpdate(); // Gọi onUpdate để fetch lại data
+    } catch (error: any) {
+      console.error('❌ Error updating settings:', error.response?.data || error);
+      // Rollback nếu lỗi
+      setSettings(prev => ({ ...prev, [key]: !newValue }));
+      toast.error(error.response?.data?.message || 'Lỗi khi cập nhật cài đặt');
+    }
   };
 
-  const handleTogglePermission = (key: keyof typeof memberPermissions) => {
-    setMemberPermissions(prev => ({ ...prev, [key]: !prev[key] }));
-    toast.success('Đã cập nhật quyền');
+  const handleTogglePermission = async (key: keyof typeof memberPermissions) => {
+    const oldValue = memberPermissions[key];
+    const newValue = !oldValue;
+    const newPermissions = { ...memberPermissions, [key]: newValue };
+    
+    console.log('🔄 Toggle permission:', {
+      key,
+      oldValue,
+      newValue,
+      newPermissions
+    });
+    
+    setMemberPermissions(newPermissions);
+    
+    try {
+      console.log('📤 Sending settings update:', {
+        settings: {
+          ...settings,
+          memberPermissions: newPermissions
+        }
+      });
+
+      const response = await axiosInstance.put(`/groups/${groupInfo.groupID}/settings`, {
+        settings: {
+          ...settings,
+          memberPermissions: newPermissions
+        }
+      });
+
+      console.log('✅ Settings updated:', response.data);
+      toast.success('Đã cập nhật quyền');
+      
+      // Đợi 500ms rồi mới fetch để đảm bảo DB đã lưu
+      setTimeout(() => {
+        console.log('🔄 Fetching updated group data...');
+        onUpdate();
+      }, 500);
+    } catch (error: any) {
+      console.error('❌ Error updating settings:', error.response?.data || error);
+      // Rollback nếu lỗi
+      console.log('↩️ Rolling back to:', oldValue);
+      setMemberPermissions(prev => ({ ...prev, [key]: oldValue }));
+      toast.error(error.response?.data?.message || 'Lỗi khi cập nhật quyền');
+    }
   };
 
   const handleCopyLink = () => {
@@ -194,6 +330,105 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
     }
   };
 
+  // Fetch blocked members info khi mở block panel
+  const fetchBlockedMembers = async () => {
+    setIsLoadingBlocked(true);
+    try {
+      // Fetch trực tiếp từ group API để luôn có data mới nhất
+      const groupRes = await axiosInstance.get(`/groups/${groupInfo.groupID}`);
+      const blockedIDs: string[] = groupRes.data.blockedMembers || [];
+      if (blockedIDs.length === 0) {
+        setBlockedMembersInfo([]);
+        return;
+      }
+      const results = await Promise.all(
+        blockedIDs.map(async (uid) => {
+          try {
+            const res = await axiosInstance.post('/usersID', { userID: uid });
+            return { userID: uid, name: res.data.name || uid, avatar: res.data.anhDaiDien };
+          } catch {
+            return { userID: uid, name: uid, avatar: undefined };
+          }
+        })
+      );
+      setBlockedMembersInfo(results);
+    } finally {
+      setIsLoadingBlocked(false);
+    }
+  };
+
+  const handleOpenBlockPanel = () => {
+    setShowBlockPanel(true);
+    fetchBlockedMembers();
+  };
+
+  const handleBlockMembers = async () => {
+    if (!selectedToBlock.length) return;
+    try {
+      await Promise.all(
+        selectedToBlock.map((uid) =>
+          axiosInstance.post(`/groups/${groupInfo.groupID}/block/${uid}`)
+        )
+      );
+      toast.success(`Đã chặn ${selectedToBlock.length} thành viên`);
+      setSelectedToBlock([]);
+      setBlockSearchQuery('');
+      setShowAddBlockModal(false); // quay lại danh sách chặn
+      onUpdate();
+      fetchBlockedMembers();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Lỗi khi chặn thành viên');
+    }
+  };
+
+  const handleUnblock = async (uid: string, name: string) => {
+    try {
+      await axiosInstance.post(`/groups/${groupInfo.groupID}/unblock/${uid}`);
+      toast.success(`Đã bỏ chặn ${name}`);
+      setBlockedMembersInfo((prev) => prev.filter((m) => m.userID !== uid));
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Lỗi khi bỏ chặn');
+    }
+  };
+
+  const handlePromoteAdmin = async (member: GroupMember) => {
+    try {
+      await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'admin' });
+      toast.success(`Đã thêm ${member.name} làm phó nhóm`);
+      setShowAddAdminModal(false);
+      setAdminSearchQuery('');
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Lỗi khi thêm phó nhóm');
+    }
+  };
+
+  const handleDemoteAdmin = async (member: GroupMember) => {
+    try {
+      await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'member' });
+      toast.success(`Đã xóa quyền phó nhóm của ${member.name}`);
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Lỗi khi xóa quyền');
+    }
+  };
+
+  const handleTransferOwner = async () => {
+    if (!selectedNewOwner) return;
+    try {
+      // Backend tự hạ owner hiện tại xuống admin khi set role: 'owner' cho người khác
+      await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${selectedNewOwner.userID}/role`, { role: 'owner' });
+      toast.success(`Đã chuyển quyền trưởng nhóm cho ${selectedNewOwner.name}`);
+      setShowTransferOwnerModal(false);
+      setSelectedNewOwner(null);
+      setAdminSearchQuery('');
+      onUpdate();
+    } catch (error: unknown) {
+      toast.error(error.response?.data?.message || 'Lỗi khi chuyển quyền');
+    }
+  };
+
   return (
     <>
       <div
@@ -206,79 +441,455 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
         >
           {/* Header */}
           <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-700">
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
-            >
-              <FaTimes />
-            </button>
-            <h2 className="text-lg font-bold text-white flex-1">Quản lý nhóm</h2>
+            {showAddBlockModal ? (
+              <button
+                onClick={() => { setShowAddBlockModal(false); setSelectedToBlock([]); setBlockSearchQuery(''); }}
+                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <FaTimes />
+              </button>
+            ) : showBlockPanel ? (
+              <button
+                onClick={() => setShowBlockPanel(false)}
+                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <FaTimes />
+              </button>
+            ) : showAdminPanel ? (
+              <button
+                onClick={() => {
+                  if (showAddAdminModal) { setShowAddAdminModal(false); setAdminSearchQuery(''); }
+                  else if (showTransferOwnerModal) {
+                    if (transferStep === 'confirm') { setTransferStep('select'); setSelectedNewOwner(null); }
+                    else { setShowTransferOwnerModal(false); setAdminSearchQuery(''); }
+                  }
+                  else setShowAdminPanel(false);
+                }}
+                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <FaTimes />
+              </button>
+            ) : (
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <FaTimes />
+              </button>
+            )}
+            <h2 className="text-lg font-bold text-white flex-1">
+              {showAddBlockModal
+                ? 'Thêm vào danh sách chặn'
+                : showBlockPanel
+                  ? 'Chặn khỏi nhóm'
+                  : showAdminPanel
+                    ? showAddAdminModal
+                      ? 'Thêm phó nhóm'
+                      : showTransferOwnerModal
+                        ? transferStep === 'confirm'
+                          ? 'Xác nhận chuyển quyền'
+                          : 'Chuyển quyền trưởng nhóm'
+                        : 'Trưởng & phó nhóm'
+                    : 'Quản lý nhóm'}
+            </h2>
           </div>
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto">
-            {tab === 'settings' && (
+            {/* Add Block View (inline, không phải modal) */}
+            {showAddBlockModal && (
+              <div className="flex flex-col h-full text-white">
+                {/* Search */}
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                    <input
+                      type="text"
+                      value={blockSearchQuery}
+                      onChange={(e) => setBlockSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm thành viên"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Member list */}
+                <div className="flex-1 overflow-y-auto px-4 py-2">
+                  {groupInfo.members
+                    .filter((m) => {
+                      if (m.userID === currentUserID) return false;
+                      if (m.role === 'owner') return false;
+                      if (groupInfo.blockedMembers?.includes(m.userID)) return false;
+                      if (blockSearchQuery && !m.name?.toLowerCase().includes(blockSearchQuery.toLowerCase())) return false;
+                      return true;
+                    })
+                    .map((m) => (
+                      <label
+                        key={m.userID}
+                        className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-gray-700/50 rounded-xl px-2 -mx-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedToBlock.includes(m.userID)}
+                          onChange={() =>
+                            setSelectedToBlock((prev) =>
+                              prev.includes(m.userID)
+                                ? prev.filter((id) => id !== m.userID)
+                                : [...prev, m.userID]
+                            )
+                          }
+                          className="w-4 h-4 accent-blue-500 shrink-0"
+                        />
+                        <img
+                          src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                          alt={m.name}
+                          className="w-10 h-10 rounded-full object-cover shrink-0"
+                        />
+                        <span className="text-sm text-white font-medium">{m.name || m.userID}</span>
+                      </label>
+                    ))}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-700">
+                  <button
+                    onClick={() => { setShowAddBlockModal(false); setSelectedToBlock([]); setBlockSearchQuery(''); }}
+                    className="px-4 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-700 transition-colors font-medium"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={handleBlockMembers}
+                    disabled={!selectedToBlock.length}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-blue-500 hover:bg-blue-600 text-white"
+                  >
+                    Chặn thành viên
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Admin Panel — Transfer Owner: Select */}
+            {showAdminPanel && showTransferOwnerModal && transferStep === 'select' && (
+              <div className="flex flex-col text-white">
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <p className="text-xs text-gray-400 mb-3">Chọn thành viên để chuyển quyền trưởng nhóm:</p>
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                    <input
+                      type="text"
+                      value={adminSearchQuery}
+                      onChange={(e) => setAdminSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm thành viên"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="overflow-y-auto px-4 py-2">
+                  {groupInfo.members
+                    .filter(m => m.userID !== currentUserID &&
+                      (!adminSearchQuery || m.name?.toLowerCase().includes(adminSearchQuery.toLowerCase())))
+                    .map(m => (
+                      <div
+                        key={m.userID}
+                        className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-gray-700/50 rounded-xl px-2 -mx-2"
+                        onClick={() => { setSelectedNewOwner(m); setTransferStep('confirm'); }}
+                      >
+                        <img
+                          src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                          alt={m.name}
+                          className="w-10 h-10 rounded-full object-cover shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
+                          <p className="text-xs text-gray-400">{m.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Admin Panel — Transfer Owner: Confirm */}
+            {showAdminPanel && showTransferOwnerModal && transferStep === 'confirm' && selectedNewOwner && (
+              <div className="text-white px-5 py-5">
+                <div className="flex items-center gap-3 mb-4 p-3 bg-gray-700/50 rounded-xl">
+                  <img
+                    src={selectedNewOwner.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedNewOwner.userID}`}
+                    alt={selectedNewOwner.name}
+                    className="w-10 h-10 rounded-full object-cover shrink-0"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-white">{selectedNewOwner.name}</p>
+                    <p className="text-xs text-gray-400">{selectedNewOwner.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</p>
+                  </div>
+                </div>
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-4">
+                  <p className="text-sm text-red-400 font-semibold mb-1">⚠️ Cảnh báo quan trọng</p>
+                  <p className="text-xs text-red-300 leading-relaxed">
+                    Đây là quyết định <b>không thể hoàn tác</b>. Sau khi chuyển quyền, bạn sẽ trở thành phó nhóm và không thể lấy lại quyền trưởng nhóm trừ khi người mới chuyển lại cho bạn.
+                  </p>
+                </div>
+                <p className="text-xs text-gray-400 text-center mb-4">
+                  Bạn có chắc chắn muốn chuyển quyền trưởng nhóm cho <b className="text-white">{selectedNewOwner.name}</b>?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setTransferStep('select'); setSelectedNewOwner(null); }}
+                    className="flex-1 py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                  >
+                    Quay lại
+                  </button>
+                  <button
+                    onClick={handleTransferOwner}
+                    className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-sm text-white font-bold transition-colors"
+                  >
+                    Xác nhận chuyển
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Admin Panel — main view */}
+            {showAdminPanel && !showAddAdminModal && !showTransferOwnerModal && (
               <div className="text-white">
+                {/* Owner */}
+                {groupInfo.members.filter(m => m.role === 'owner').map(m => (
+                  <div key={m.userID} className="flex items-center gap-3 px-4 py-3 border-b border-gray-700">
+                    <img
+                      src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                      alt={m.name}
+                      className="w-11 h-11 rounded-full object-cover shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
+                      <p className="text-xs text-gray-400">Trưởng nhóm</p>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Admins */}
+                {groupInfo.members.filter(m => m.role === 'admin').map(m => (
+                  <div key={m.userID} className="flex items-center gap-3 px-4 py-3 border-b border-gray-700">
+                    <img
+                      src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                      alt={m.name}
+                      className="w-11 h-11 rounded-full object-cover shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{m.name || m.userID}</p>
+                      <p className="text-xs text-gray-400">Phó nhóm</p>
+                    </div>
+                    {isOwner && (
+                      <button
+                        onClick={() => handleDemoteAdmin(m)}
+                        className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-medium transition-colors shrink-0"
+                      >
+                        Xóa
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {/* Action buttons */}
+                {isOwner && (
+                  <div className="px-4 py-3 space-y-2 mt-1">
+                    <button
+                      onClick={() => { setShowAddAdminModal(true); setAdminSearchQuery(''); }}
+                      className="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                    >
+                      Thêm phó nhóm
+                    </button>
+                    <button
+                      onClick={() => setShowTransferOwnerModal(true)}
+                      className="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-white font-medium transition-colors"
+                    >
+                      Chuyển quyền trưởng nhóm
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Add Admin Sub-view */}
+            {showAdminPanel && showAddAdminModal && (
+              <div className="flex flex-col h-full text-white">
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                    <input
+                      type="text"
+                      value={adminSearchQuery}
+                      onChange={(e) => setAdminSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm thành viên"
+                      className="w-full pl-9 pr-4 py-2 bg-gray-700 rounded-full text-sm text-white placeholder-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto px-4 py-2">
+                  {groupInfo.members
+                    .filter(m => m.role === 'member' && m.userID !== currentUserID &&
+                      (!adminSearchQuery || m.name?.toLowerCase().includes(adminSearchQuery.toLowerCase())))
+                    .map(m => (
+                      <div key={m.userID} className="flex items-center gap-3 py-2.5 border-b border-gray-700/50">
+                        <img
+                          src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                          alt={m.name}
+                          className="w-10 h-10 rounded-full object-cover shrink-0"
+                        />
+                        <span className="flex-1 text-sm text-white font-medium truncate">{m.name || m.userID}</span>
+                        <button
+                          onClick={() => handlePromoteAdmin(m)}
+                          className="px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold transition-colors shrink-0"
+                        >
+                          Thêm
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Block Panel */}
+            {!showAddBlockModal && showBlockPanel && (              <div className="text-white">
+                {/* Mô tả */}
+                <div className="px-4 py-4 border-b border-gray-700">
+                  <p className="text-sm text-gray-400 leading-relaxed">
+                    Những người đã bị chặn không thể tham gia lại nhóm, trừ khi được trưởng, phó nhóm bỏ chặn hoặc thêm lại vào nhóm.
+                  </p>
+                </div>
+
+                {/* Nút thêm vào danh sách chặn */}
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <button
+                    onClick={() => { setShowAddBlockModal(true); setSelectedToBlock([]); setBlockSearchQuery(''); }}
+                    className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-semibold text-sm hover:bg-red-500/20 transition-colors"
+                  >
+                    Thêm vào danh sách chặn
+                  </button>
+                </div>
+
+                {/* Danh sách bị chặn */}
+                <div className="px-4 py-3">
+                  {isLoadingBlocked ? (
+                    <div className="flex justify-center py-8">
+                      <div className="w-6 h-6 border-2 border-gray-500 border-t-white rounded-full animate-spin" />
+                    </div>
+                  ) : blockedMembersInfo.length === 0 ? (
+                    <div className="flex flex-col items-center py-10 gap-3">
+                      <div className="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center">
+                        <FaUsers className="text-gray-500 text-2xl" />
+                      </div>
+                      <p className="text-sm text-gray-500">Chưa có thành viên nào bị chặn</p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-400 font-semibold mb-3">
+                        Thành viên bị chặn ({blockedMembersInfo.length})
+                      </p>
+                      <div className="space-y-2">
+                        {blockedMembersInfo.map((m) => (
+                          <div key={m.userID} className="flex items-center gap-3 py-2">
+                            <img
+                              src={m.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}`}
+                              alt={m.name}
+                              className="w-10 h-10 rounded-full object-cover shrink-0"
+                            />
+                            <span className="flex-1 text-sm text-white font-medium truncate">{m.name}</span>
+                            <button
+                              onClick={() => handleUnblock(m.userID, m.name)}
+                              className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-white transition-colors shrink-0"
+                            >
+                              Bỏ chặn
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            {!showBlockPanel && !showAdminPanel && tab === 'settings' && (
+              <div className="text-white">
+                {/* Thông báo chỉ dành cho quản trị viên */}
+                {!isOwner && !isAdmin && (
+                  <div className="mx-4 mt-4 mb-3 px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl flex items-start gap-3">
+                    <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-lg">🔒</span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-white mb-1">Tính năng chỉ dành cho quản trị viên</p>
+                      <p className="text-xs text-gray-400">Chỉ trưởng nhóm và phó nhóm mới có thể thay đổi các cài đặt này</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Cho phép các thành viên trong nhóm */}
                 <div className="px-4 py-3 border-b border-gray-700">
                   <h3 className="text-sm font-semibold text-gray-400 mb-3">Cho phép các thành viên trong nhóm:</h3>
                   
                   <div className="space-y-3">
-                    <label className="flex items-center justify-between cursor-pointer">
+                    <label className={`flex items-center justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                       <span className="text-sm text-white">Thay đổi tên & ảnh đại diện của nhóm</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.changeNameAvatar}
                         onChange={() => handleTogglePermission('changeNameAvatar')}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors
+                        disabled={!isOwner && !isAdmin}
+                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
                     </label>
 
-                    <label className="flex items-start justify-between cursor-pointer">
+                    <label className={`flex items-start justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                       <span className="text-sm text-white flex-1 pr-3">Ghim tin nhắn, ghi chú, bình chọn lên đầu hội thoại</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.pinMessages}
                         onChange={() => handleTogglePermission('pinMessages')}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0
+                        disabled={!isOwner && !isAdmin}
+                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
                     </label>
 
-                    <label className="flex items-center justify-between cursor-pointer">
+                    <label className={`flex items-center justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                       <span className="text-sm text-white">Tạo mới ghi chú, nhắc hẹn</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.createNotes}
                         onChange={() => handleTogglePermission('createNotes')}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors
+                        disabled={!isOwner && !isAdmin}
+                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
                     </label>
 
-                    <label className="flex items-center justify-between cursor-pointer">
+                    <label className={`flex items-center justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                       <span className="text-sm text-white">Tạo mới bình chọn</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.createPolls}
                         onChange={() => handleTogglePermission('createPolls')}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors
+                        disabled={!isOwner && !isAdmin}
+                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
                     </label>
 
-                    <label className="flex items-center justify-between cursor-pointer">
+                    <label className={`flex items-center justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                       <span className="text-sm text-white">Gửi tin nhắn</span>
                       <input
                         type="checkbox"
                         checked={memberPermissions.sendMessages}
                         onChange={() => handleTogglePermission('sendMessages')}
-                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors
+                        disabled={!isOwner && !isAdmin}
+                        className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50
                           before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                           checked:before:translate-x-5"
                       />
@@ -288,7 +899,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
                 {/* Chế độ phê duyệt thành viên mới */}
                 <div className="px-4 py-4 border-b border-gray-700">
-                  <label className="flex items-start justify-between cursor-pointer">
+                  <label className={`flex items-start justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <div className="flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium text-white">Chế độ phê duyệt thành viên mới</span>
@@ -300,7 +911,8 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                       type="checkbox"
                       checked={settings.requireApproval}
                       onChange={() => handleToggleSetting('requireApproval')}
-                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0
+                      disabled={!isOwner && !isAdmin}
+                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                         before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                         checked:before:translate-x-5"
                     />
@@ -309,7 +921,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
                 {/* Đánh dấu tin nhắn từ trưởng/phó nhóm */}
                 <div className="px-4 py-4 border-b border-gray-700">
-                  <label className="flex items-start justify-between cursor-pointer">
+                  <label className={`flex items-start justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <div className="flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium text-white">Đánh dấu tin nhắn từ trưởng/phó nhóm</span>
@@ -321,7 +933,8 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                       type="checkbox"
                       checked={settings.highlightAdminMessages}
                       onChange={() => handleToggleSetting('highlightAdminMessages')}
-                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0
+                      disabled={!isOwner && !isAdmin}
+                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                         before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                         checked:before:translate-x-5"
                     />
@@ -330,7 +943,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
                 {/* Cho phép thành viên mới đọc tin nhắn gần nhất */}
                 <div className="px-4 py-4 border-b border-gray-700">
-                  <label className="flex items-start justify-between cursor-pointer">
+                  <label className={`flex items-start justify-between ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <div className="flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium text-white">Cho phép thành viên mới đọc tin nhắn gần nhất</span>
@@ -342,7 +955,8 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                       type="checkbox"
                       checked={settings.allowNewMembersReadHistory}
                       onChange={() => handleToggleSetting('allowNewMembersReadHistory')}
-                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0
+                      disabled={!isOwner && !isAdmin}
+                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                         before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                         checked:before:translate-x-5"
                     />
@@ -351,7 +965,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
                 {/* Cho phép dùng link tham gia nhóm */}
                 <div className="px-4 py-4 border-b border-gray-700">
-                  <label className="flex items-start justify-between cursor-pointer mb-3">
+                  <label className={`flex items-start justify-between mb-3 ${isOwner || isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <div className="flex-1 pr-3">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium text-white">Cho phép dùng link tham gia nhóm</span>
@@ -363,7 +977,8 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                       type="checkbox"
                       checked={settings.allowInviteLink}
                       onChange={() => handleToggleSetting('allowInviteLink')}
-                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0
+                      disabled={!isOwner && !isAdmin}
+                      className="w-11 h-6 bg-gray-600 rounded-full relative appearance-none cursor-pointer checked:bg-blue-500 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50
                         before:content-[''] before:absolute before:w-5 before:h-5 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform
                         checked:before:translate-x-5"
                     />
@@ -391,13 +1006,26 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                 </div>
 
                 {/* Chặn khỏi nhóm */}
-                <button
-                  onClick={() => toast('Tính năng đang phát triển')}
-                  className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-700/50 transition-colors border-b border-gray-700"
-                >
-                  <FaUsers className="text-white text-lg" />
-                  <span className="text-sm text-white">Chặn khỏi nhóm</span>
-                </button>
+                {(isOwner || isAdmin) && (
+                  <button
+                    onClick={handleOpenBlockPanel}
+                    className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-700/50 transition-colors border-b border-gray-700"
+                  >
+                    <FaUsers className="text-white text-lg" />
+                    <span className="text-sm text-white">Chặn khỏi nhóm</span>
+                  </button>
+                )}
+
+                {/* Trưởng & phó nhóm */}
+                {(isOwner || isAdmin) && (
+                  <button
+                    onClick={() => setShowAdminPanel(true)}
+                    className="w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-700/50 transition-colors border-b border-gray-700"
+                  >
+                    <FaKey className="text-white text-lg" />
+                    <span className="text-sm text-white">Trưởng & phó nhóm</span>
+                  </button>
+                )}
 
                 {/* Giải tán nhóm - chỉ hiện với owner */}
                 {isOwner && onDeleteGroup && (
@@ -412,7 +1040,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
               </div>
             )}
 
-            {tab === 'members' && (
+            {!showBlockPanel && !showAdminPanel && tab === 'members' && (
               <div className="p-4 space-y-4">
                 {/* Search */}
                 <div className="relative">
@@ -586,7 +1214,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
             show={showConfirmTransferOwner}
             title="Chuyển quyền trưởng nhóm"
             message={`Bạn có chắc muốn chuyển quyền trưởng nhóm cho ${selectedMember.name || 'thành viên này'}? Bạn sẽ trở thành phó nhóm.`}
-            onConfirm={() => handleTransferOwner(selectedMember)}
+            onConfirm={() => handleTransferOwnerOld(selectedMember)}
             onCancel={() => {
               setShowConfirmTransferOwner(false);
               setSelectedMember(null);
@@ -611,6 +1239,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
         isDanger
         confirmText="Giải tán nhóm"
       />
+
     </>
   );
 };

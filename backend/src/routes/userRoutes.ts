@@ -281,6 +281,22 @@ router.post('/usersID', async (req: Request, res: Response) => {
   }
 });
 
+// Lấy nhiều users cùng lúc (batch)
+router.post('/users/batch', async (req: Request, res: Response) => {
+  const { userIDs } = req.body;
+  
+  if (!Array.isArray(userIDs) || userIDs.length === 0) {
+    return res.status(400).json({ message: 'userIDs must be a non-empty array' }) as any;
+  }
+
+  try {
+    const users = await Users.find({ userID: { $in: userIDs } }).select('userID name anhDaiDien email sdt');
+    res.json(users);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Cập nhật thông tin người dùng (yêu cầu JWT)
 router.put('/users/:userID', authMiddleware, async (req: AuthRequest, res: Response) => {
   const { userID } = req.params;
