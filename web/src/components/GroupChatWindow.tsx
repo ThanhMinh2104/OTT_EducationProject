@@ -40,6 +40,8 @@ import GroupInfoPanel from './GroupInfoPanel';
 import GroupManagementModal from './GroupManagementModal';
 import EditGroupInfoModal from './EditGroupInfoModal';
 import { groupMessages, isMessageGroup, MessageGroup } from '../utils/messageGrouping';
+import GroupCallModal from './GroupCallModal';
+import GroupIncomingCallModal from './GroupIncomingCallModal';
 
 const API = 'http://localhost:5000/api';
 
@@ -357,6 +359,33 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [showGroupInfoPanel, setShowGroupInfoPanel] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [showEditGroupInfoModal, setShowEditGroupInfoModal] = useState(false);
+  const [showGroupCall, setShowGroupCall] = useState(false);
+  const [joinExistingCall, setJoinExistingCall] = useState(false);
+  const [groupCallIsCallee, setGroupCallIsCallee] = useState(false);
+  const [groupCallWithVideo, setGroupCallWithVideo] = useState(true);
+  const [groupCallInitialParticipants, setGroupCallInitialParticipants] = useState<{ userID: string; name: string; avatar?: string }[]>([]);
+
+  const getMyInfo = () => ({
+    userID,
+    name: members.find(m => m.userID === userID)?.name || groupInfo?.members.find(m => m.userID === userID)?.name || userID,
+    anhDaiDien: groupInfo?.members.find(m => m.userID === userID)?.avatar,
+  });
+
+  const openNewCall = () => setShowGroupCall(true);
+
+  const joinCall = () => {
+    setGroupCallIsCallee(true);
+    setGroupCallWithVideo(true);
+    setGroupCallInitialParticipants([]);
+    setJoinExistingCall(true);
+  };
+  const [incomingGroupCall, setIncomingGroupCall] = useState<{
+    callerInfo: { name: string; avatar?: string };
+    groupName: string;
+    invitedNames: string[];
+    groupID: string;
+  } | null>(null);
+  const [groupCallAccepted, setGroupCallAccepted] = useState<{ withVideo: boolean } | null>(null);
 
   interface JoinRequest { requestID: string; userID: string; name: string; avatar?: string; requestedByName: string; }
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
@@ -659,7 +688,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     });
     socket.on('new_join_request_notification', (data: { groupID: string; message: Message }) => {
       if (data.groupID !== groupID) return;
-      // Chỉ owner/admin mới thêm vào messages
       const currentRole = groupInfo?.members?.find(m => m.userID === userID)?.role;
       if (currentRole === 'owner' || currentRole === 'admin') {
         setMessages((prev) => [...prev, data.message]);
@@ -1251,18 +1279,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  toast('Tính năng gọi thoại nhóm đang phát triển');
-                }}
-                title="Gọi thoại"
-                className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]"
-              >
-                <FaPhone />
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toast('Tính năng gọi video nhóm đang phát triển');
+                  openNewCall();
                 }}
                 title="Gọi video"
                 className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]"
@@ -1641,6 +1658,38 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                               </span>
                             );
                           })()}
+                        </div>
+                      </div>
+                    ) : msg.type === 'group-call' ? (
+                      /* Tin nhắn cuộc gọi nhóm */
+                      <div className="w-full flex justify-center my-2">
+                        <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3 max-w-[320px]">
+                          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
+                            <FaVideo className="text-white text-sm" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800">Cuộc gọi nhóm</p>
+                            <p className="text-xs text-gray-500">{msg.senderInfo?.name} đã bắt đầu</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              // Kiểm tra call còn active không trước khi join
+                              socket.emit('group-call-check', { groupID }, (active: boolean) => {
+                                if (active) {
+                                  joinCall();
+                                } else {
+                                  toast('Cuộc gọi đã kết thúc', {
+                                    icon: '📵',
+                                    style: { fontSize: '14px' },
+                                    duration: 2500,
+                                  });
+                                }
+                              });
+                            }}
+                            className="shrink-0 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-colors"
+                          >
+                            Tham gia
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -2535,6 +2584,23 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* Incoming Group Call Modal — handled globally in HomePage */}
+
+      {/* Group Call Modal — floating window */}
+      {(showGroupCall || joinExistingCall) && (
+        <GroupCallModal
+          user={{ userID, name: getMyInfo().name, anhDaiDien: getMyInfo().anhDaiDien }}
+          groupID={groupID}
+          groupName={groupInfo?.name || 'Nhóm'}
+          groupAvatar={groupInfo?.avatar}
+          members={members.filter(m => m.userID !== userID).map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar }))}
+          isCallee={groupCallIsCallee}
+          initialWithVideo={groupCallWithVideo}
+          initialParticipants={groupCallInitialParticipants}
+          onClose={() => { setShowGroupCall(false); setJoinExistingCall(false); setGroupCallIsCallee(false); }}
+        />
       )}
     </div>
   );
