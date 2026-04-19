@@ -11,10 +11,16 @@ import {
   Platform,
   Alert,
   Modal,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axiosInstance from '../utils/axios';
 import socket from '../utils/socket';
 import { GroupInfoScreen } from './GroupInfoScreen';
+import { API_URL } from '../utils/config';
 
 interface Message {
   messageID: string;
@@ -51,22 +57,25 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set<string>());
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const hasFetchedRef = useRef(false); // Đảm bảo chỉ fetch 1 lần
 
   useEffect(() => {
-    console.log('🔌 GroupChatScreen mounted:', { groupID, userID, userName });
+    console.log('🔌 GroupChatScreen mounted/groupID changed:', { groupID, userID, userName });
     console.log('🔌 Socket initial status:', { connected: socket.connected, id: socket.id });
     
-    // Fetch messages chỉ 1 lần
-    if (!hasFetchedRef.current) {
-      console.log('📥 First time fetching messages...');
-      fetchMessages();
-      hasFetchedRef.current = true;
-    }
+    // Reset và fetch messages mỗi khi groupID thay đổi
+    hasFetchedRef.current = false;
+    setMessages([]);
+    setLoading(true);
     
-    // Đợi socket kết nối trước khi join group
+    console.log('📥 Fetching messages for group:', groupID);
+    fetchMessages();
+    hasFetchedRef.current = true;
+    
+    // Join group room
     const joinGroup = () => {
       if (socket.connected) {
         console.log('✅ Socket already connected, joining group...');
@@ -89,6 +98,12 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
 
     joinGroup();
 
+    // Rejoin khi socket reconnect
+    const handleReconnect = () => {
+      console.log('🔄 Socket reconnected, rejoining group:', groupID);
+      socket.emit('join_group', { groupID, userID });
+    };
+
     // Listen for socket events
     console.log('👂 Setting up event listeners for group:', groupID);
     socket.on('new_group_message', handleNewMessage);
@@ -96,6 +111,7 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
     socket.on('group_typing_stop', handleTypingStop);
     socket.on('message_deleted', handleMessageDeleted);
     socket.on('error_notification', handleError);
+    socket.on('connect', handleReconnect);
 
     return () => {
       console.log('🔌 Leaving group:', { groupID, userID });
@@ -104,6 +120,7 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
       socket.off('group_typing_stop', handleTypingStop);
       socket.off('message_deleted', handleMessageDeleted);
       socket.off('error_notification', handleError);
+      socket.off('connect', handleReconnect);
       socket.emit('leave_group', { groupID, userID });
     };
   }, [groupID, userID]);
@@ -224,12 +241,20 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
     // Clear input ngay lập tức
     setInputValue('');
 
-    const message = {
-      groupID,
-      senderID: userID,
+    sendGroupMessage({
       content: messageContent,
       type: 'text',
       media_url: [],
+    });
+  };
+
+  const sendGroupMessage = (msgData: { content: string; type: string; media_url: string[] }) => {
+    const message = {
+      groupID,
+      senderID: userID,
+      content: msgData.content,
+      type: msgData.type,
+      media_url: msgData.media_url,
       senderInfo: {
         name: userName,
         avatar: userAvatar,
@@ -237,9 +262,16 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
     };
 
     // Emit socket event
-    console.log('📡 Emitting send_group_message event...');
-    socket.emit('send_group_message', message);
-    console.log('✅ Event emitted');
+    console.log('📡 Emitting send_group_message event:', {
+      type: msgData.type,
+      hasMedia: msgData.media_url.length > 0,
+    });
+    socket.emit('send_group_message', message, (ack: any) => {
+      console.log('✅ Received callback:', {
+        success: ack?.success,
+        hasMessage: !!ack?.message,
+      });
+    });
 
     // Optimistic update - hiển thị tin nhắn tạm thời
     const tempMessageID = `temp_${Date.now()}_${Math.random()}`;
@@ -247,9 +279,9 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
       messageID: tempMessageID,
       groupID,
       senderID: userID,
-      content: messageContent,
-      type: 'text',
-      media_url: [],
+      content: msgData.content,
+      type: msgData.type,
+      media_url: msgData.media_url,
       timestamp: new Date(),
       status: 'sending',
       senderInfo: {
@@ -264,6 +296,120 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
+  };
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    
+    if (!result.canceled && result.assets.length > 0) {
+      await uploadFiles(result.assets.map(a => ({ 
+        uri: a.uri, 
+        type: 'image', 
+        name: a.fileName || 'image.jpg' 
+      })));
+    }
+  };
+
+  const handlePickVideo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      allowsMultipleSelection: false,
+      quality: 0.8,
+    });
+    
+    if (!result.canceled && result.assets.length > 0) {
+      await uploadFiles(result.assets.map(a => ({ 
+        uri: a.uri, 
+        type: 'video', 
+        name: a.fileName || `video_${Date.now()}.mp4` 
+      })));
+    }
+  };
+
+  const handlePickFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true });
+    
+    if (!result.canceled && result.assets.length > 0) {
+      await uploadFiles(result.assets.map(a => ({ 
+        uri: a.uri, 
+        type: 'file', 
+        name: a.name 
+      })));
+    }
+  };
+
+  const uploadFiles = async (files: { uri: string; type: string; name?: string }[]) => {
+    console.log('📤 uploadFiles called:', {
+      fileCount: files.length,
+      groupID,
+    });
+
+    setIsUploading(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const formData = new FormData();
+      
+      files.forEach(file => {
+        formData.append('files', {
+          uri: file.uri,
+          name: file.name || `file_${Date.now()}`,
+          type: file.type === 'image'
+            ? 'image/jpeg'
+            : file.type === 'video'
+              ? 'video/mp4'
+              : 'application/octet-stream',
+        } as any);
+      });
+
+      console.log('⬆️ Uploading files to server...');
+      const res = await fetch(`${API_URL}/api/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+
+      console.log('✅ Upload response:', {
+        status: res.status,
+        urlCount: data.urls?.length,
+      });
+
+      if (data.urls?.length > 0) {
+        const msgType = files[0].type === 'image'
+          ? 'image'
+          : files[0].type === 'video'
+            ? 'video'
+            : 'file';
+
+        console.log('📨 Sending', data.urls.length, 'messages with type:', msgType);
+
+        // Gửi từng file riêng biệt
+        for (let i = 0; i < data.urls.length; i++) {
+          sendGroupMessage({
+            content: msgType === 'file' ? (files[i]?.name || '') : '',
+            type: msgType,
+            media_url: [data.urls[i]],
+          });
+
+          // Delay nhỏ giữa các lần gửi
+          if (i < data.urls.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+      } else {
+        console.error('❌ No URLs in upload response');
+        Alert.alert('Lỗi', 'Không nhận được URL từ server');
+      }
+    } catch (error) {
+      console.error('❌ Upload error:', error);
+      Alert.alert('Lỗi', 'Không thể tải file lên');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleTyping = () => {
@@ -302,6 +448,55 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwn = item.senderID === userID;
 
+    const renderContent = () => {
+      // Image
+      if (item.type === 'image' && item.media_url?.length > 0) {
+        return (
+          <View>
+            {item.media_url.map((url, idx) => (
+              <Image
+                key={idx}
+                source={{ uri: url }}
+                style={styles.messageImage}
+                resizeMode="cover"
+              />
+            ))}
+          </View>
+        );
+      }
+
+      // Video
+      if (item.type === 'video' && item.media_url?.length > 0) {
+        return (
+          <View style={styles.videoContainer}>
+            <Ionicons name="play-circle" size={48} color="#fff" />
+            <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
+              [Video]
+            </Text>
+          </View>
+        );
+      }
+
+      // File
+      if (item.type === 'file' && item.media_url?.length > 0) {
+        return (
+          <View style={styles.fileContainer}>
+            <Ionicons name="document" size={24} color={isOwn ? '#fff' : '#000'} />
+            <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
+              {item.content || 'File'}
+            </Text>
+          </View>
+        );
+      }
+
+      // Text
+      return (
+        <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
+          {item.content}
+        </Text>
+      );
+    };
+
     return (
       <View style={[styles.messageGroup, isOwn && styles.messageGroupOwn]}>
         {!isOwn && (
@@ -310,9 +505,7 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
           </View>
         )}
         <View style={[styles.messageBubble, isOwn && styles.messageBubbleOwn]}>
-          <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
-            {item.content}
-          </Text>
+          {renderContent()}
           <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
             {new Date(item.timestamp).toLocaleTimeString('vi-VN', {
               hour: '2-digit',
@@ -376,6 +569,20 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
       )}
 
       <View style={styles.inputArea}>
+        <TouchableOpacity
+          style={styles.btnAttach}
+          onPress={handlePickImage}
+          disabled={isUploading}
+        >
+          <Ionicons name="image" size={24} color="#0084ff" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.btnAttach}
+          onPress={handlePickFile}
+          disabled={isUploading}
+        >
+          <Ionicons name="attach" size={24} color="#0084ff" />
+        </TouchableOpacity>
         <TextInput
           style={styles.messageInput}
           placeholder="Nhập tin nhắn..."
@@ -385,13 +592,18 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
             handleTyping();
           }}
           multiline
+          editable={!isUploading}
         />
         <TouchableOpacity
-          style={[styles.btnSend, !inputValue.trim() && styles.btnSendDisabled]}
+          style={[styles.btnSend, (!inputValue.trim() || isUploading) && styles.btnSendDisabled]}
           onPress={handleSendMessage}
-          disabled={!inputValue.trim()}
+          disabled={!inputValue.trim() || isUploading}
         >
-          <Text style={styles.btnSendText}>➤</Text>
+          {isUploading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.btnSendText}>➤</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -540,5 +752,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  btnAttach: {
+    padding: 8,
+  },
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  videoContainer: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  fileContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });

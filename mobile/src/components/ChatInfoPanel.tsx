@@ -23,6 +23,7 @@ import GroupManagementModal from './GroupManagementModal';
 import GroupMembersModal from './GroupMembersModal';
 import AddMembersModal from './AddMembersModal';
 import { EditGroupInfoModal } from './EditGroupInfoModal';
+import { GroupBoardModal } from './GroupBoardModal';
 
 const { width } = Dimensions.get('window');
 
@@ -131,6 +132,7 @@ const ChatInfoPanel = ({
     avatar?: string;
   }>>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+  const [showGroupBoard, setShowGroupBoard] = useState(false);
 
   // Fetch current user ID
   React.useEffect(() => {
@@ -258,6 +260,19 @@ const ChatInfoPanel = ({
     }
   }, [visible, chat.type, memberInfo?.userID]);
 
+  // Fetch current user ID
+  React.useEffect(() => {
+    const fetchUserID = async () => {
+      try {
+        const userID = await AsyncStorage.getItem('userID');
+        if (userID) setCurrentUserID(userID);
+      } catch (error) {
+        console.error('Error fetching userID:', error);
+      }
+    };
+    fetchUserID();
+  }, []);
+
   // Extract media from messages
   const mediaImages = messages
     .filter((m) => m.type === 'image' && m.media_url?.length)
@@ -295,7 +310,7 @@ const ChatInfoPanel = ({
     .map((m) => ({
       url: m.content || '',
       timestamp: m.timestamp,
-      id: m.messageID || `link_${typeof m.timestamp === 'string' ? m.timestamp : m.timestamp.toISOString()}`,
+      id: m.messageID || (typeof m.timestamp === 'string' ? m.timestamp : m.timestamp.toISOString()),
     }));
 
   const allImageUrls = mediaImages.map((i) => i.url);
@@ -646,7 +661,7 @@ const ChatInfoPanel = ({
                       styles.boardTabButton,
                       boardTab === 'notes' && styles.boardTabButtonActive,
                     ]}
-                    onPress={() => setBoardTab('notes')}
+                    onPress={() => setShowGroupBoard(true)}
                   >
                     <Ionicons
                       name="document-text-outline"
@@ -664,7 +679,6 @@ const ChatInfoPanel = ({
                   </TouchableOpacity>
 
                   {boardTab === 'reminders' && <EmptyState text="Chưa có nhắc hẹn" />}
-                  {boardTab === 'notes' && <EmptyState text="Chưa có ghi chú" />}
                 </View>
               )}
             </View>
@@ -1154,6 +1168,16 @@ const ChatInfoPanel = ({
             }}
           />
         )}
+
+        {/* Group Board Modal */}
+        {chat.type === 'group' && (
+          <GroupBoardModal
+            visible={showGroupBoard}
+            onClose={() => setShowGroupBoard(false)}
+            groupID={chat.chatID}
+            userID={currentUserID}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -1362,7 +1386,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 8,
   },
-  // Board section
+  // Board section (HEAD styles)
   boardSection: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#e0e0e0',
@@ -1401,6 +1425,36 @@ const styles = StyleSheet.create({
     color: '#888',
   },
   boardTabTextActive: {
+    color: '#111',
+  },
+  // Board section (tantai styles)
+  boardSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+    marginBottom: 12,
+  },
+  boardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    gap: 12,
+  },
+  boardButtonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#e3f2fd',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  boardButtonText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
     color: '#111',
   },
   tabs: {

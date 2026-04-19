@@ -312,7 +312,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [showEmoji, setShowEmoji] = useState(false);
   const [showReminder, setShowReminder] = useState(false);
 
-
+  // Pagination states
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -404,6 +408,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     });
 
     setMessages(selectedChat.lastMessage || []);
+    setPage(1);
+    setHasMore((selectedChat.lastMessage || []).length >= 50);
+    setIsLoadingMore(false);
+    
     setPinnedMessages(
       (selectedChat.lastMessage || []).filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
     );
@@ -708,9 +716,63 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   // Cleanup loop debug log
 
 
+  const loadMoreMessages = async () => {
+    if (isLoadingMore || !hasMore || !selectedChat) return;
+    setIsLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await fetch(`${API}/messages/id`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ chatID: selectedChat.chatID, page: nextPage, limit: 50 }),
+      });
+      const data = await res.json();
+      
+      const messageArray = Array.isArray(data) ? data : (data.messages || []);
+      if (messageArray && Array.isArray(messageArray)) {
+         
+         const previousScrollHeight = scrollRef.current?.scrollHeight || 0;
+
+         setMessages(prev => {
+            const seen = new Set(prev.map(m => m.messageID || m.tempID));
+            const filtered = messageArray.filter((m: Message) => {
+               const k = m.messageID || m.tempID;
+               if (seen.has(k)) return false;
+               seen.add(k); return true;
+            });
+            return [...filtered, ...prev];
+         });
+         
+         setPage(nextPage);
+         setHasMore(Array.isArray(data) ? false : (data.page * 50 < data.total));
+
+         // Giữ vị trí cuộn
+         setTimeout(() => {
+           if (scrollRef.current) {
+             scrollRef.current.scrollTop = scrollRef.current.scrollHeight - previousScrollHeight;
+           }
+         }, 0);
+      }
+    } catch (e) {
+      console.error('Error loading more messages:', e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (e.currentTarget.scrollTop === 0) {
+      loadMoreMessages();
+    }
+  };
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    // Chỉ cuộn xuống end nếu đang ở trang 1 
+    // Tránh bị đẩy xuống cuối khi load trang cũ
+    if (page === 1) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, page]);
 
   // Close pinned menu when clicking outside
   useEffect(() => {
@@ -1828,7 +1890,15 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             )}
 
             {/* Messages */}
-            <div className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-[#eef0f3] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded">
+            <div 
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-[#eef0f3] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded">
+              {isLoadingMore && (
+                <div className="flex justify-center my-3">
+                  <div className="w-5 h-5 border-2 border-[#0068ff] border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
               {timeline.map((item) => {
                 // ── Reminder event ──────────────────────────────────────────
                 if (item.kind === 'reminder') {
