@@ -8,8 +8,7 @@ const API = 'http://localhost:5000/api';
 
 interface Message {
   messageID?: string;
-  chatID?: string;
-  groupID?: string; // Thêm groupID cho group chat
+  chatID: string;
   senderID: string;
   content?: string;
   type: string;
@@ -25,8 +24,7 @@ interface Member {
 }
 
 interface Chat {
-  chatID?: string;
-  groupID?: string; // Thêm groupID
+  chatID: string;
   name: string;
   avatar?: string;
   type: 'private' | 'group';
@@ -61,31 +59,12 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
     const fetchChats = async () => {
       try {
         setIsLoading(true);
-        
-        // Fetch both chats and groups
-        const [chatsRes, groupsRes] = await Promise.all([
-          axiosInstance.post('/chats/userID'),
-          axiosInstance.get('/groups')
-        ]);
-        
-        const chatsData: Chat[] = Array.isArray(chatsRes.data) ? chatsRes.data : [];
-        const groupsData: any[] = Array.isArray(groupsRes.data) ? groupsRes.data : [];
-        
-        // Convert groups to Chat format
-        const groupChats: Chat[] = groupsData.map(g => ({
-          groupID: g.groupID,
-          name: g.name,
-          avatar: g.avatar,
-          type: 'group' as const,
-          members: g.members || []
-        }));
-        
-        // Combine chats and groups
-        const allChats = [...chatsData, ...groupChats];
-        setChats(allChats);
+        const response = await axiosInstance.post('/chats/userID');
+        const data: Chat[] = Array.isArray(response.data) ? response.data : [];
+        setChats(data);
 
         // Fetch tên thật cho các chat private
-        const privateChats = chatsData.filter((c) => c.type === 'private');
+        const privateChats = data.filter((c) => c.type === 'private');
         await Promise.all(
           privateChats.map(async (c) => {
             const otherId = c.members.find((m) => m.userID !== user?.userID)?.userID;
@@ -127,8 +106,7 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
       const otherId = chat.members.find((m) => m.userID !== user?.userID)?.userID;
       if (otherId && memberCache[otherId]?.anhDaiDien) return memberCache[otherId].anhDaiDien!;
     }
-    const id = chat.chatID || chat.groupID || 'default';
-    return chat.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${id}`;
+    return chat.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.chatID}`;
   };
 
   const handleForward = async () => {
@@ -136,35 +114,15 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
 
     setIsSending(true);
     try {
-      const targetChat = chats.find(c => (c.chatID || c.groupID) === selectedChatID);
-      
-      if (targetChat?.type === 'group') {
-        // Forward to group chat
-        socket.emit('forward_group_message', {
-          originalMessageID: message.messageID,
-          originalChatID: message.chatID,
-          originalGroupID: message.groupID,
-          targetGroupID: selectedChatID,
-          senderID: user.userID,
-          senderInfo: {
-            name: user.name || 'Người dùng',
-            avatar: null,
-          },
-        });
-      } else {
-        // Forward to private chat
-        socket.emit('forward_message', {
-          originalMessageID: message.messageID,
-          originalChatID: message.chatID,
-          originalGroupID: message.groupID,
-          targetChatID: selectedChatID,
-          senderID: user.userID,
-          senderInfo: {
-            name: user.name || 'Người dùng',
-            avatar: null,
-          },
-        });
-      }
+      socket.emit('forward_message', {
+        originalMessageID: message.messageID,
+        targetChatID: selectedChatID,
+        senderID: user.userID,
+        senderInfo: {
+          name: user.name || 'Người dùng',
+          avatar: null,
+        },
+      });
       onClose();
     } catch (error) {
       console.error('Error forwarding message:', error);
@@ -210,37 +168,34 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
             <p className="text-center text-gray-400 text-sm">Không có cuộc trò chuyện nào</p>
           ) : (
             <div className="space-y-2">
-              {chats.map((chat) => {
-                const chatId = chat.chatID || chat.groupID || '';
-                return (
-                  <button
-                    key={chatId}
-                    onClick={() => setSelectedChatID(chatId)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
-                      selectedChatID === chatId
-                        ? 'bg-blue-50 border border-[#0e9de8]'
-                        : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <img
-                      src={getDisplayAvatar(chat)}
-                      alt={getDisplayName(chat)}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                    <div className="flex-1 text-left">
-                      <p className="text-sm font-medium text-gray-900">{getDisplayName(chat)}</p>
-                      <p className="text-xs text-gray-500">
-                        {chat.type === 'private' ? 'Tin nhắn riêng' : 'Nhóm'}
-                      </p>
+              {chats.map((chat) => (
+                <button
+                  key={chat.chatID}
+                  onClick={() => setSelectedChatID(chat.chatID)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                    selectedChatID === chat.chatID
+                      ? 'bg-blue-50 border border-[#0e9de8]'
+                      : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  <img
+                    src={getDisplayAvatar(chat)}
+                    alt={getDisplayName(chat)}
+                    className="w-10 h-10 rounded-full object-cover"
+                  />
+                  <div className="flex-1 text-left">
+                    <p className="text-sm font-medium text-gray-900">{getDisplayName(chat)}</p>
+                    <p className="text-xs text-gray-500">
+                      {chat.type === 'private' ? 'Tin nhắn riêng' : 'Nhóm'}
+                    </p>
+                  </div>
+                  {selectedChatID === chat.chatID && (
+                    <div className="w-5 h-5 rounded-full bg-[#0e9de8] flex items-center justify-center">
+                      <span className="text-white text-xs">✓</span>
                     </div>
-                    {selectedChatID === chatId && (
-                      <div className="w-5 h-5 rounded-full bg-[#0e9de8] flex items-center justify-center">
-                        <span className="text-white text-xs">✓</span>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
+                  )}
+                </button>
+              ))}
             </div>
           )}
         </div>
