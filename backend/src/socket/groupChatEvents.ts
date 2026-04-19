@@ -61,6 +61,13 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
     }
   });
 
+  // Debug: Log tất cả events
+  socket.onAny((eventName, ...args) => {
+    if (eventName.includes('group') || eventName.includes('join')) {
+      console.log('📡 Socket event received:', eventName, args);
+    }
+  });
+
   socket.on('leave_group', (data: { groupID: string; userID: string }) => {
     const { groupID, userID } = data;
     socket.leave(groupID);
@@ -75,7 +82,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
   // ==================== SEND MESSAGE ====================
 
-  socket.on('send_group_message', async (data: any) => {
+  socket.on('send_group_message', async (data: any, callback?: Function) => {
     try {
       console.log('📨 Backend received send_group_message:', {
         groupID: data.groupID,
@@ -105,6 +112,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         socket.emit('error_notification', {
           message: 'Bạn không có quyền gửi tin nhắn trong nhóm này',
         });
+        if (callback) callback({ error: 'Không có quyền gửi tin nhắn' });
         return;
       }
 
@@ -117,6 +125,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
           socket.emit('error_notification', {
             message: 'Chỉ trưởng nhóm và phó nhóm mới có thể gửi tin nhắn',
           });
+          if (callback) callback({ error: 'Không có quyền gửi tin nhắn' });
           return;
         }
       }
@@ -157,7 +166,18 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
       // Gửi tới tất cả trong group
       console.log('✅ Broadcasting message to group:', groupID);
+      console.log('📊 Rooms in server:', Array.from(io.sockets.adapter.rooms.keys()));
+      console.log('📊 Sockets in group room:', io.sockets.adapter.rooms.get(groupID)?.size || 0);
+      
       io.to(groupID).emit('new_group_message', fullMessage);
+      
+      console.log('📤 Message broadcasted to room:', groupID);
+
+      // Acknowledge callback nếu có
+      if (callback) {
+        console.log('✅ Sending callback acknowledgment');
+        callback({ success: true, message: fullMessage });
+      }
 
       // Update status sau 1s
       setTimeout(async () => {

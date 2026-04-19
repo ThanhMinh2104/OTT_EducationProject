@@ -517,8 +517,20 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   }, [groupID]);
 
   const handleNewMessage = useCallback((message: Message) => {
+    console.log('📨 Web received new_group_message:', {
+      messageID: message.messageID,
+      groupID: message.groupID,
+      content: message.content,
+      senderID: message.senderID,
+    });
+    console.log('🔍 Current groupID:', groupID);
+    console.log('🔍 Match:', message.groupID === groupID);
+    
     if (message.groupID === groupID) {
+      console.log('✅ Adding message to web');
       setMessages((prev) => [...prev, message]);
+    } else {
+      console.log('❌ GroupID mismatch, not adding message');
     }
   }, [groupID]);
 
@@ -609,6 +621,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     // Monitor socket connection
     const handleConnect = () => {
       console.log('✅ Socket connected');
+      console.log('🔌 Joining group:', { groupID, userID });
       setSocketConnected(true);
       socket.emit('join_group', { groupID, userID });
     };
@@ -1531,14 +1544,14 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                               onClick={(e) => e.stopPropagation()}
                             >
                               <button
-                                onClick={() => handleForwardMessage(firstMsg as unknown)}
+                                onClick={() => handleForwardMessage(firstMsg as unknown as Message)}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                               >
                                 <FaForward className="text-xs" />
                                 Chuyển tiếp
                               </button>
                               <button
-                                onClick={() => handlePin(firstMsg as unknown)}
+                                onClick={() => handlePin(firstMsg as unknown as Message)}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                               >
                                 <BsPin className="text-xs" />
@@ -1548,7 +1561,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                 <>
                                   <button
                                     onClick={() => {
-                                      handleDeleteLocal(firstMsg as unknown);
+                                      handleDeleteLocal(firstMsg as unknown as Message);
                                       setActionMsgId(null);
                                     }}
                                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 transition-colors"
@@ -1558,7 +1571,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                   </button>
                                   <button
                                     onClick={() => {
-                                      handleUnsend(firstMsg as unknown);
+                                      handleUnsend(firstMsg as unknown as Message);
                                       setActionMsgId(null);
                                     }}
                                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
@@ -2160,7 +2173,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
           <GroupInfoPanel
             groupInfo={groupInfo}
             currentUserID={userID}
-            messages={messages as unknown}
+            messages={messages}
             onClose={() => setShowGroupInfoPanel(false)}
             onAddMembers={() => {
               setShowAddMembersModal(true);
@@ -2175,7 +2188,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 await axiosInstance.post(`/groups/${groupID}/leave`);
                 toast.success('Đã rời khỏi nhóm');
                 window.location.href = '/home';
-              } catch (error: unknown) {
+              } catch (error: any) {
                 toast.error(error.response?.data?.message || 'Lỗi khi rời nhóm');
               }
             }}
@@ -2184,7 +2197,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 await axiosInstance.delete(`/groups/${groupID}`);
                 toast.success('Đã giải tán nhóm');
                 window.location.href = '/home';
-              } catch (error: unknown) {
+              } catch (error: any) {
                 toast.error(error.response?.data?.message || 'Lỗi khi giải tán nhóm');
               }
             }}
@@ -2373,9 +2386,9 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       {/* Forward Message Modal */}
       {forwardingMessage && (
         <ForwardMessageModal
-          message={forwardingMessage as unknown}
+          message={{ ...forwardingMessage, chatID: forwardingMessage.groupID } as any}
           onClose={() => setForwardingMessage(null)}
-          user={{ userID, name: groupInfo?.members?.find(m => m.userID === userID)?.name || 'User' } as unknown}
+          user={{ userID, name: groupInfo?.members?.find(m => m.userID === userID)?.name || 'User' }}
         />
       )}
 
@@ -2431,7 +2444,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               await axiosInstance.delete(`/groups/${groupID}`);
               toast.success('Đã giải tán nhóm');
               window.location.href = '/home';
-            } catch (error: unknown) {
+            } catch (error: any) {
               toast.error(error.response?.data?.message || 'Lỗi khi giải tán nhóm');
             }
           }}

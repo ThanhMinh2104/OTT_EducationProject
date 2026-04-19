@@ -5,42 +5,56 @@ import socket from './socket';
  * Thêm các event listeners để theo dõi kết nối
  */
 
+let debugInitialized = false;
+
 export const initSocketDebug = () => {
-  socket.on('connect', () => {
-    console.log('✅ Socket connected:', socket.id);
-    console.log('🔌 Transport:', socket.io.engine.transport.name);
-  });
+  if (debugInitialized) {
+    console.log('🔧 Socket debug already initialized');
+    return;
+  }
 
-  socket.on('disconnect', (reason) => {
-    console.log('❌ Socket disconnected:', reason);
-  });
+  try {
+    socket.on('connect', () => {
+      console.log('✅ Socket connected:', socket.id);
+      console.log('🔌 Transport:', socket.io?.engine?.transport?.name || 'unknown');
+    });
 
-  socket.on('connect_error', (error) => {
-    console.error('❌ Socket connection error:', error.message);
-  });
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Socket disconnected:', reason);
+    });
 
-  socket.on('reconnect', (attemptNumber) => {
-    console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
-  });
+    socket.on('connect_error', (error) => {
+      console.error('❌ Socket connection error:', error.message);
+    });
 
-  socket.on('reconnect_attempt', (attemptNumber) => {
-    console.log('🔄 Socket reconnection attempt:', attemptNumber);
-  });
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+    });
 
-  socket.on('reconnect_error', (error) => {
-    console.error('❌ Socket reconnection error:', error.message);
-  });
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('🔄 Socket reconnection attempt:', attemptNumber);
+    });
 
-  socket.on('reconnect_failed', () => {
-    console.error('❌ Socket reconnection failed');
-  });
+    socket.on('reconnect_error', (error) => {
+      console.error('❌ Socket reconnection error:', error.message);
+    });
 
-  // Log tất cả events
-  socket.onAny((eventName, ...args) => {
-    console.log('📡 Socket event:', eventName, args);
-  });
+    socket.on('reconnect_failed', () => {
+      console.error('❌ Socket reconnection failed');
+    });
 
-  console.log('🔧 Socket debug initialized');
+    // Log tất cả events (có thể gây nhiều logs)
+    if (socket.onAny) {
+      socket.onAny((eventName, ...args) => {
+        console.log('📡 Socket event:', eventName, args);
+      });
+    }
+
+    debugInitialized = true;
+    console.log('🔧 Socket debug initialized');
+  } catch (error) {
+    console.error('❌ Error initializing socket debug:', error);
+  }
 };
 
 export const testSocketConnection = () => {

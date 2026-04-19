@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import axiosInstance from '../utils/axios';
 import socket from '../utils/socket';
-import { initSocketDebug, testSocketConnection } from '../utils/socketDebug';
 
 interface Message {
   messageID: string;
@@ -51,20 +50,44 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set<string>());
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const hasFetchedRef = useRef(false); // Đảm bảo chỉ fetch 1 lần
 
   useEffect(() => {
-    console.log('🔌 Joining group:', { groupID, userID });
+    console.log('🔌 GroupChatScreen mounted:', { groupID, userID, userName });
+    console.log('🔌 Socket initial status:', { connected: socket.connected, id: socket.id });
     
-    // Initialize socket debug (chỉ chạy 1 lần)
-    initSocketDebug();
-    testSocketConnection();
+    // Fetch messages chỉ 1 lần
+    if (!hasFetchedRef.current) {
+      console.log('📥 First time fetching messages...');
+      fetchMessages();
+      hasFetchedRef.current = true;
+    }
     
-    fetchMessages();
-    
-    // Join group room
-    socket.emit('join_group', { groupID, userID });
+    // Đợi socket kết nối trước khi join group
+    const joinGroup = () => {
+      if (socket.connected) {
+        console.log('✅ Socket already connected, joining group...');
+        console.log('📡 Emitting join_group:', { groupID, userID });
+        socket.emit('join_group', { groupID, userID });
+      } else {
+        console.log('⏳ Socket not connected, waiting...');
+        socket.once('connect', () => {
+          console.log('✅ Socket connected, now joining group...');
+          console.log('📡 Emitting join_group:', { groupID, userID });
+          socket.emit('join_group', { groupID, userID });
+        });
+        // Thử kết nối nếu chưa connect
+        if (!socket.connected) {
+          console.log('🔄 Attempting to connect socket...');
+          socket.connect();
+        }
+      }
+    };
+
+    joinGroup();
 
     // Listen for socket events
+    console.log('👂 Setting up event listeners for group:', groupID);
     socket.on('new_group_message', handleNewMessage);
     socket.on('group_typing_start', handleTypingStart);
     socket.on('group_typing_stop', handleTypingStop);
@@ -82,41 +105,83 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
     };
   }, [groupID, userID]);
 
+  // Debug: Log khi messages thay đổi
+  useEffect(() => {
+    console.log('📊 Messages updated, count:', messages.length);
+    if (messages.length > 0) {
+      console.log('📊 Last message:', messages[messages.length - 1]);
+    }
+  }, [messages]);
+
   const fetchMessages = async () => {
     try {
       setLoading(true);
+      console.log('📥 Fetching messages for group:', groupID);
       const response = await axiosInstance.get(`/groups/${groupID}/messages?page=1&limit=50`);
-      setMessages(response.data.messages);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.log('✅ Messages loaded:', response.data.messages?.length || 0);
+      
+      if (response.data.messages && Array.isArray(response.data.messages)) {
+        setMessages(response.data.messages);
+        console.log('📊 Set messages, count:', response.data.messages.length);
+      } else {
+        console.warn('⚠️ No messages array in response');
+        setMessages([]);
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching messages:', error.response?.data || error.message);
       Alert.alert('Lỗi', 'Không thể tải tin nhắn');
+      setMessages([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
-  const handleNewMessage = (message: Message) => {
-    console.log('📨 Received new_group_message:', message);
+  const handleNewMessage = useCallback((message: Message) => {
+    console.log('📨 Received new_group_message:', {
+      messageID: message.messageID,
+      groupID: message.groupID,
+      content: message.content?.substring(0, 30),
+      senderID: message.senderID,
+    });
+    console.log('🔍 Current groupID:', groupID);
+    console.log('🔍 Match:', message.groupID === groupID);
+    
     if (message.groupID === groupID) {
-      setMessages((prev) => [...prev, message]);
+      setMessages((prev) => {
+        // Kiểm tra xem tin nhắn đã tồn tại chưa (tránh duplicate)
+        const exists = prev.some(msg => msg.messageID === message.messageID);
+        if (exists) {
+          console.log('⚠️ Message already exists, skipping:', message.messageID);
+          return prev;
+        }
+        
+        // Xóa tin nhắn tạm nếu có (optimistic update)
+        const filtered = prev.filter(msg => !msg.messageID.startsWith('temp_'));
+        console.log('✅ Adding new message:', message.messageID);
+        console.log('📊 Messages count after add:', filtered.length + 1);
+        return [...filtered, message];
+      });
+      
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
+    } else {
+      console.log('❌ GroupID mismatch, not adding message');
     }
-  };
+  }, [groupID]);
 
-  const handleError = (data: any) => {
+  const handleError = useCallback((data: any) => {
     console.error('❌ Socket error:', data);
     Alert.alert('Lỗi', data.message || 'Có lỗi xảy ra');
-  };
+  }, []);
 
-  const handleTypingStart = (data: any) => {
+  const handleTypingStart = useCallback((data: any) => {
     if (data.groupID === groupID && data.userID !== userID) {
       setTypingUsers((prev) => new Set([...prev, data.userID]));
     }
-  };
+  }, [groupID, userID]);
 
-  const handleTypingStop = (data: any) => {
+  const handleTypingStop = useCallback((data: any) => {
     if (data.groupID === groupID) {
       setTypingUsers((prev) => {
         const newSet = new Set(prev);
@@ -124,9 +189,9 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
         return newSet;
       });
     }
-  };
+  }, [groupID]);
 
-  const handleMessageDeleted = (data: any) => {
+  const handleMessageDeleted = useCallback((data: any) => {
     if (data.deleteForAll) {
       setMessages((prev) =>
         prev.map((msg) =>
@@ -136,21 +201,30 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
         )
       );
     }
-  };
+  }, []);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
+    const messageContent = inputValue.trim();
     console.log('📤 Sending message:', {
       groupID,
       senderID: userID,
-      content: inputValue,
+      content: messageContent,
+      userName,
     });
+    console.log('🔌 Socket status:', {
+      connected: socket.connected,
+      id: socket.id,
+    });
+
+    // Clear input ngay lập tức
+    setInputValue('');
 
     const message = {
       groupID,
       senderID: userID,
-      content: inputValue,
+      content: messageContent,
       type: 'text',
       media_url: [],
       senderInfo: {
@@ -159,25 +233,31 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
       },
     };
 
+    // Emit socket event
+    console.log('📡 Emitting send_group_message event...');
     socket.emit('send_group_message', message);
-    setInputValue('');
+    console.log('✅ Event emitted');
 
-    // Optimistic update - hiển thị tin nhắn ngay lập tức
+    // Optimistic update - hiển thị tin nhắn tạm thời
+    const tempMessageID = `temp_${Date.now()}_${Math.random()}`;
     const optimisticMessage: Message = {
-      messageID: `temp_${Date.now()}`,
+      messageID: tempMessageID,
       groupID,
       senderID: userID,
-      content: inputValue,
+      content: messageContent,
       type: 'text',
       media_url: [],
       timestamp: new Date(),
-      status: 'sent',
+      status: 'sending',
       senderInfo: {
         name: userName,
         avatar: userAvatar,
       },
     };
+    
+    console.log('⏳ Adding optimistic message:', tempMessageID);
     setMessages((prev) => [...prev, optimisticMessage]);
+    
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
@@ -275,8 +355,12 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.messageID}
+        extraData={messages}
         contentContainerStyle={styles.messagesList}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        initialNumToRender={20}
+        maxToRenderPerBatch={10}
+        windowSize={10}
       />
 
       {typingUsers.size > 0 && (

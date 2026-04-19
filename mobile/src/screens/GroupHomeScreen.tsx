@@ -12,8 +12,13 @@ export const GroupHomeScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🏠 GroupHomeScreen mounted');
     loadUserData();
   }, []);
+
+  useEffect(() => {
+    console.log('🏠 Selected group changed:', selectedGroupID);
+  }, [selectedGroupID]);
 
   const loadUserData = async () => {
     try {
@@ -42,13 +47,22 @@ export const GroupHomeScreen: React.FC = () => {
   }
 
   if (selectedGroupID) {
+    console.log('🏠 Rendering GroupChatScreen with:', {
+      groupID: selectedGroupID,
+      userID,
+      userName,
+      userAvatar,
+    });
     return (
       <GroupChatScreen
         groupID={selectedGroupID}
         userID={userID}
         userName={userName}
         userAvatar={userAvatar}
-        onBack={() => setSelectedGroupID(null)}
+        onBack={() => {
+          console.log('🏠 Back to group list');
+          setSelectedGroupID(null);
+        }}
       />
     );
   }
