@@ -9,6 +9,8 @@ import { GroupChatWindow } from '../components/GroupChatWindow';
 import IncomingCallModal from '../components/IncomingCallModal';
 import VideoCallModal from '../components/VideoCallModal';
 import CallNotification from '../components/CallNotification';
+import GroupCallModal from '../components/GroupCallModal';
+import GroupIncomingCallModal from '../components/GroupIncomingCallModal';
 import { showZaloToast } from '../components/ZaloToast';
 import { getToken } from '../utils/auth';
 import axiosInstance from '../utils/axios';
@@ -82,6 +84,22 @@ const HomePage = () => {
   const [callNotification, setCallNotification] = useState<{
     type: 'rejected' | 'missed';
     callerName: string;
+  } | null>(null);
+
+  // Group call state
+  const [incomingGroupCall, setIncomingGroupCall] = useState<{
+    groupID: string;
+    callerID: string;
+    callerInfo: { name: string; avatar?: string };
+    groupName: string;
+    invitedUserIDs: string[];
+    allMemberInfos: { userID: string; name: string; avatar?: string }[];
+  } | null>(null);
+  const [activeGroupCall, setActiveGroupCall] = useState<{
+    groupID: string;
+    groupName: string;
+    withVideo: boolean;
+    initialParticipants: { userID: string; name: string; avatar?: string }[];
   } | null>(null);
 
   useEffect(() => {
@@ -164,6 +182,27 @@ const HomePage = () => {
       setIncomingCall(null);
     });
 
+    // Global group call incoming listener
+    socket.on('group-call-incoming', (data: {
+      groupID: string;
+      callerID: string;
+      callerInfo: { name: string; avatar?: string };
+      groupName: string;
+      invitedUserIDs: string[];
+      allMemberInfos?: { userID: string; name: string; avatar?: string }[];
+    }) => {
+      if (data.callerID === user?.userID) return;
+      console.log('📞 Incoming group call:', data);
+      setIncomingGroupCall({
+        groupID: data.groupID,
+        callerID: data.callerID,
+        callerInfo: data.callerInfo,
+        groupName: data.groupName,
+        invitedUserIDs: data.invitedUserIDs,
+        allMemberInfos: data.allMemberInfos || [],
+      });
+    });
+
     const checkSession = async () => {
       try {
         await axiosInstance.get('/sessions');
@@ -181,6 +220,7 @@ const HomePage = () => {
       socket.off('call-rejected');
       socket.off('call-missed');
       socket.off('call-cancelled');
+      socket.off('group-call-incoming');
       clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -315,6 +355,45 @@ const HomePage = () => {
           type={callNotification.type}
           callerName={callNotification.callerName}
           onClose={() => setCallNotification(null)}
+        />
+      )}
+
+      {/* Incoming group call - global, không phụ thuộc vào group đang mở */}
+      {incomingGroupCall && user && (
+        <GroupIncomingCallModal
+          callerInfo={incomingGroupCall.callerInfo}
+          groupName={incomingGroupCall.groupName}
+          invitedNames={incomingGroupCall.allMemberInfos
+            .filter(m => m.userID !== user.userID && m.userID !== incomingGroupCall.callerID)
+            .map(m => m.name)
+          }
+          onAccept={(withVideo) => {
+            setIncomingGroupCall(null);
+            setActiveGroupCall({
+              groupID: incomingGroupCall.groupID,
+              groupName: incomingGroupCall.groupName,
+              withVideo,
+              initialParticipants: incomingGroupCall.allMemberInfos,
+            });
+          }}
+          onReject={() => {
+            socket.emit('group-call-reject', { groupID: incomingGroupCall.groupID, userID: user.userID });
+            setIncomingGroupCall(null);
+          }}
+        />
+      )}
+
+      {/* Active group call — floating window khi nhận cuộc gọi */}
+      {activeGroupCall && user && (
+        <GroupCallModal
+          user={{ userID: user.userID, name: user.name, anhDaiDien: user.anhDaiDien }}
+          groupID={activeGroupCall.groupID}
+          groupName={activeGroupCall.groupName}
+          members={[]}
+          isCallee={true}
+          initialWithVideo={activeGroupCall.withVideo}
+          initialParticipants={activeGroupCall.initialParticipants}
+          onClose={() => setActiveGroupCall(null)}
         />
       )}
     </div>

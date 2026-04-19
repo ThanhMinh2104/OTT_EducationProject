@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-type MessageType = 'text' | 'image' | 'video' | 'file' | 'audio' | 'emoji' | 'sticker' | 'notification';
+type MessageType = 'text' | 'image' | 'video' | 'file' | 'audio' | 'emoji' | 'sticker' | 'notification' | 'group-call';
 
 export interface IGroupMessage extends Document {
   messageID: string;
@@ -38,7 +38,7 @@ const GroupMessageSchema = new Schema<IGroupMessage>(
     content: { type: String },
     type: {
       type: String,
-      enum: ['text', 'image', 'video', 'file', 'audio', 'emoji', 'sticker', 'notification'],
+      enum: ['text', 'image', 'video', 'file', 'audio', 'emoji', 'sticker', 'notification', 'group-call'],
       default: 'text',
     },
     media_url: { type: [String], default: [] },

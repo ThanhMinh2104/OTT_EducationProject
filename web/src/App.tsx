@@ -9,6 +9,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import VerifyCode from './pages/VerifyCode';
 import ConfirmPassword from './pages/ConfirmPassword';
 import { GroupChatPage } from './pages/GroupChatPage';
+import GroupCallPage from './pages/GroupCallPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 function App() {
@@ -40,6 +41,14 @@ function App() {
           element={
             <ProtectedRoute>
               <GroupChatPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/group-call/:groupID" 
+          element={
+            <ProtectedRoute>
+              <GroupCallPage />
             </ProtectedRoute>
           } 
         />
