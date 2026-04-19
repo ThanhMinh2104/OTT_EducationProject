@@ -35,9 +35,28 @@ const OtherProfileModal = ({
   const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const [showUnfriendConfirm, setShowUnfriendConfirm] = useState(false);
   const [showRecallConfirm, setShowRecallConfirm] = useState(false);
+  const [mutualGroups, setMutualGroups] = useState<any[]>([]);
+  const [loadingMutual, setLoadingMutual] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const requestMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (user.userID && user.friendStatus !== 'self') {
+      const fetchMutualGroups = async () => {
+        setLoadingMutual(true);
+        try {
+          const res = await axiosInstance.get(`/groups/mutual/${user.userID}`);
+          setMutualGroups(res.data);
+        } catch (error) {
+          console.error('Error fetching mutual groups:', error);
+        } finally {
+          setLoadingMutual(false);
+        }
+      };
+      fetchMutualGroups();
+    }
+  }, [user.userID, user.friendStatus]);
 
   if (!user.friendStatus) {
     user.friendStatus = 'none';
@@ -270,7 +289,7 @@ const OtherProfileModal = ({
             <div className="py-2 mb-4 flex-1">
               <div className="flex items-center gap-4 px-5 py-3 hover:bg-gray-50 cursor-pointer text-[15px] font-medium text-gray-600 transition-colors">
                 <FaUserFriends className="text-xl text-gray-500" />
-                <span>Nhóm chung</span>
+                <span>Nhóm chung ({loadingMutual ? '...' : mutualGroups.length})</span>
               </div>
               <div className="flex items-center gap-4 px-5 py-3 hover:bg-gray-50 cursor-pointer text-[15px] font-medium text-gray-600 transition-colors">
                 <FaShareAlt className="text-xl text-gray-500" />

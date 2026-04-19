@@ -426,6 +426,13 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       );
     });
 
+    socket.on('friend_unfriended', (data: { userID: string; friendID: string }) => {
+      console.log('📥 Web received friend_unfriended:', data);
+      // Khi hủy kết bạn → refetch để phân loại lại chat (có thể thành người lạ)
+      socket.emit('getChat', user.userID);
+      fetchStrangerSummary();
+    });
+
     socket.on('updatee_user', (updatedUser: User) => {
       setMemberCache((prev) => ({ ...prev, [updatedUser.userID]: updatedUser }));
     });
@@ -466,6 +473,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.off('friend_status_update');
       socket.off('unsend_notification');
       socket.off('updatee_user');
+      socket.off('friend_unfriended');
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
     };

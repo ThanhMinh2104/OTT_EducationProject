@@ -237,7 +237,7 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
 
             {/* Badge thông báo số lượng lời mời kết bạn */}
             {requestCount > 0 && (
-              <div className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-gray-900 text-[10px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-[#0e9de8] shadow-sm animate-pulse">
+              <div className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-white shadow-sm">
                 {requestCount > 99 ? '99+' : requestCount}
               </div>
             )}
@@ -361,11 +361,10 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                 <div className="space-y-1">
                   <button
                     onClick={() => setSettingsTab('account')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${
-                      settingsTab === 'account'
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${settingsTab === 'account'
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'text-gray-700 hover:bg-gray-100'
+                      }`}
                   >
                     <FaShieldAlt className="text-lg" />
                     <span className="font-medium">Tài khoản & Bảo mật</span>
@@ -375,11 +374,10 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                       setSettingsTab('devices');
                       fetchSessions();
                     }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${
-                      settingsTab === 'devices'
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${settingsTab === 'devices'
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'text-gray-700 hover:bg-gray-100'
+                      }`}
                   >
                     <FaMobileAlt className="text-lg" />
                     <span className="font-medium">Quản lý thiết bị</span>
@@ -389,22 +387,20 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                       setSettingsTab('history');
                       fetchLoginHistory();
                     }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${
-                      settingsTab === 'history'
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${settingsTab === 'history'
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'text-gray-700 hover:bg-gray-100'
+                      }`}
                   >
                     <FaHistory className="text-lg" />
                     <span className="font-medium">Lịch sử đăng nhập</span>
                   </button>
                   <button
                     onClick={() => setSettingsTab('deactivate')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${
-                      settingsTab === 'deactivate'
-                        ? 'bg-red-50 text-red-600'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${settingsTab === 'deactivate'
+                      ? 'bg-red-50 text-red-600'
+                      : 'text-gray-700 hover:bg-gray-100'
+                      }`}
                   >
                     <FaUserSlash className="text-lg" />
                     <span className="font-medium">Vô hiệu hóa tài khoản</span>
@@ -503,11 +499,10 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                         {sessions.map((session) => (
                           <div
                             key={session.sessionId}
-                            className={`p-4 rounded-xl border-2 ${
-                              session.isCurrent
-                                ? 'border-green-500 bg-green-50'
-                                : 'border-gray-200 bg-white'
-                            }`}
+                            className={`p-4 rounded-xl border-2 ${session.isCurrent
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 bg-white'
+                              }`}
                           >
                             <div className="flex items-start justify-between">
                               <div className="flex items-start gap-3">
@@ -586,13 +581,12 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
                                   <div className="flex items-center gap-2">
                                     <p className="font-semibold text-gray-800">{item.deviceName}</p>
                                     <span
-                                      className={`text-xs px-2 py-1 rounded-full ${
-                                        item.status === 'active'
-                                          ? 'bg-green-100 text-green-700'
-                                          : item.status === 'logged_out'
-                                            ? 'bg-gray-100 text-gray-600'
-                                            : 'bg-yellow-100 text-yellow-700'
-                                      }`}
+                                      className={`text-xs px-2 py-1 rounded-full ${item.status === 'active'
+                                        ? 'bg-green-100 text-green-700'
+                                        : item.status === 'logged_out'
+                                          ? 'bg-gray-100 text-gray-600'
+                                          : 'bg-yellow-100 text-yellow-700'
+                                        }`}
                                     >
                                       {item.status === 'active'
                                         ? 'Đang hoạt động'

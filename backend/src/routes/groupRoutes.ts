@@ -1364,4 +1364,40 @@ router.post('/groups/:groupID/notes/:noteID/toggle-pin', authMiddleware, async (
   }
 });
 
+// 17. Lấy danh sách nhóm chung giữa 2 user
+router.get('/groups/mutual/:targetUserID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const userID = req.userID;
+    const { targetUserID } = req.params;
+
+    if (!targetUserID) {
+      res.status(400).json({ message: 'TargetUserID là bắt buộc' });
+      return;
+    }
+
+    // Lấy danh sách groupID của user hiện tại
+    const user1Groups = await GroupMember.find({ userID, isActive: true }).select('groupID');
+    const user1GroupIDs = user1Groups.map(m => m.groupID);
+
+    // Lấy danh sách groupID của user mục tiêu nằm trong tập groupID của user hiện tại
+    const mutualMembers = await GroupMember.find({
+      userID: targetUserID,
+      groupID: { $in: user1GroupIDs },
+      isActive: true
+    }).select('groupID');
+    
+    const mutualGroupIDs = mutualMembers.map(m => m.groupID);
+
+    // Fetch thông tin chi tiết các group chung
+    const mutualGroups = await Group.find({
+      groupID: { $in: mutualGroupIDs },
+      isActive: true
+    }).select('groupID name avatar description').lean();
+
+    res.json(mutualGroups);
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi lấy nhóm chung', error: error.message });
+  }
+});
+
 export default router;

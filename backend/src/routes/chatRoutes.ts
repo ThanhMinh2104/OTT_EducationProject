@@ -137,12 +137,16 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
       ).length;
 
       // Stranger check — không cần thêm DB query
-      // Stranger check — Bất kỳ ai chưa là bạn bè (accepted) thì đều là người lạ
+      // Stranger check
       let isStranger = false;
       if (c.type === 'private') {
         const otherMember = membersByChat[c.chatID]?.find((m) => m.userID !== userID);
         if (otherMember && !friendIDs.has(otherMember.userID)) {
-          isStranger = true;
+          // Chỉ là người lạ nếu không phải bạn bè VÀ người dùng hiện tại CHƯA TỪNG NHẮN TIN (chưa từng reply)
+          // Nếu đã từng nhắn tin thì vẫn giữ ở danh sách chính
+          if (!myRepliedSet.has(c.chatID)) {
+            isStranger = true;
+          }
         }
       }
 
@@ -991,7 +995,6 @@ export default function chatRoutes(io: Server) {
           console.log(`[Socket] Emitting new_message (system) to users`);
           io.to(senderID).emit('new_message', fullSystemMsg);
           io.to(userID).emit('new_message', fullSystemMsg);
-          io.to(chat.chatID).emit(chat.chatID, fullSystemMsg);
         }
       } catch (chatError) {
         console.error('Lỗi tự động tạo chat khi kết bạn:', chatError);

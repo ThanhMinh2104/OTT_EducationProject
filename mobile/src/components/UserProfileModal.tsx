@@ -106,7 +106,7 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
     setIsEditing(false);
     setImageUri(null);
     setActiveTab("info");
-    setPwForm({ matKhauCu: "", matKhauMoi: "", xacNhan: "" });
+    setPwForm({ matKhauCu: "", matKhauMoi: "", xacNhan: "", otp: "" });
     setPwError("");
   }, [user, visible]);
 

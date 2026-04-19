@@ -377,7 +377,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   >({});
 
   const [showOtherProfile, setShowOtherProfile] = useState(false);
-  const [selectedUserForProfile, setSelectedUserForProfile] = useState<unknown | null>(null);
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<User | null>(null);
 
   const [showPinnedList, setShowPinnedList] = useState(false);
   const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
@@ -398,6 +398,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [isLoadingGifs, setIsLoadingGifs] = useState(false);
   const [suggestedGifs, setSuggestedGifs] = useState<any[]>([]);
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const [mutualGroups, setMutualGroups] = useState<any[]>([]);
+  const [loadingMutual, setLoadingMutual] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -416,11 +418,48 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     try {
       await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: targetUserID });
       toast.success('Đã thu hồi lời mời kết bạn');
+      // Cập nhật state cả memberInfo (cho banner) và selectedUserForProfile (cho modal nếu đang mở)
+      if (memberInfo && memberInfo.userID === targetUserID) {
+        setMemberInfo({ ...memberInfo, friendStatus: 'none' });
+      }
       if (selectedUserForProfile && (selectedUserForProfile as any).userID === targetUserID) {
         setSelectedUserForProfile({ ...(selectedUserForProfile as any), friendStatus: 'none' });
       }
     } catch (err) {
       toast.error('Lỗi khi thu hồi lời mời');
+    }
+  };
+
+  const handleAcceptFriendRequest = async (targetUserID: string) => {
+    try {
+      await axiosInstance.post('/contacts/accept-friend-request', { senderID: targetUserID });
+      toast.success('Đã chấp nhận kết bạn');
+      if (memberInfo && memberInfo.userID === targetUserID) {
+        setMemberInfo({ ...memberInfo, friendStatus: 'accepted' });
+        setIsStranger(false);
+      }
+      if (selectedUserForProfile && (selectedUserForProfile as any).userID === targetUserID) {
+        setSelectedUserForProfile({ ...(selectedUserForProfile as any), friendStatus: 'accepted' });
+      }
+      socket.emit('friend_request_accepted', { from: user?.userID, to: targetUserID });
+    } catch (err) {
+      toast.error('Lỗi khi chấp nhận kết bạn');
+    }
+  };
+
+  const handleRejectFriendRequest = async (targetUserID: string) => {
+    try {
+      await axiosInstance.post('/contacts/reject-friend-request', { senderID: targetUserID });
+      toast.success('Đã từ chối lời mời kết bạn');
+      if (memberInfo && memberInfo.userID === targetUserID) {
+        setMemberInfo({ ...memberInfo, friendStatus: 'none' });
+        setIsStranger(true);
+      }
+      if (selectedUserForProfile && (selectedUserForProfile as any).userID === targetUserID) {
+        setSelectedUserForProfile({ ...(selectedUserForProfile as any), friendStatus: 'none' });
+      }
+    } catch (err) {
+      toast.error('Lỗi khi từ chối kết bạn');
     }
   };
 
@@ -441,7 +480,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     setPage(1);
     setHasMore((selectedChat.lastMessage || []).length >= 50);
     setIsLoadingMore(false);
-    
+
     setPinnedMessages(
       (selectedChat.lastMessage || []).filter((m) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
     );
@@ -488,16 +527,23 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           .then((d) => setMemberInfo(d))
           .catch(() => { });
 
-        // Check stranger status
-        fetch(`${API}/contacts/friend-status/${otherId}`, {
-          headers: { ...authHeaders() },
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            setIsStranger(d.friendStatus === 'none');
-            setMemberInfo(prev => prev?.userID === otherId ? { ...prev, friendStatus: d.friendStatus } : prev);
+        // Check stranger status & mutual groups
+        axiosInstance.get(`/contacts/friend-status/${otherId}`)
+          .then((res) => {
+            const d = res.data;
+            const status = d.friendStatus;
+            // Banner hiện lên khi không phải bạn bè (không là accepted, self, blocked)
+            setIsStranger(status === 'none' || status === 'pending_sent' || status === 'pending_received');
+            setMemberInfo(prev => prev?.userID === otherId ? { ...prev, friendStatus: status } : prev);
           })
           .catch(() => setIsStranger(false));
+
+        // Fetch mutual groups
+        setLoadingMutual(true);
+        axiosInstance.get(`/groups/mutual/${otherId}`)
+          .then(res => setMutualGroups(res.data))
+          .catch(() => setMutualGroups([]))
+          .finally(() => setLoadingMutual(false));
       }
     } else {
       setIsStranger(false);
@@ -598,7 +644,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     };
 
     socket.on('new_message', onNewMessage);
-    socket.on(chatID, onNewMessage);
     socket.on('unsend_notification', onUnsend);
     socket.on('message_deleted_local', onMessageDeletedLocal);
     socket.on('ghim_notification', onGhim);
@@ -770,31 +815,31 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         body: JSON.stringify({ chatID: selectedChat.chatID, page: nextPage, limit: 50 }),
       });
       const data = await res.json();
-      
+
       const messageArray = Array.isArray(data) ? data : (data.messages || []);
       if (messageArray && Array.isArray(messageArray)) {
-         
-         const previousScrollHeight = scrollRef.current?.scrollHeight || 0;
 
-         setMessages(prev => {
-            const seen = new Set(prev.map(m => m.messageID || m.tempID));
-            const filtered = messageArray.filter((m: Message) => {
-               const k = m.messageID || m.tempID;
-               if (seen.has(k)) return false;
-               seen.add(k); return true;
-            });
-            return [...filtered, ...prev];
-         });
-         
-         setPage(nextPage);
-         setHasMore(Array.isArray(data) ? false : (data.page * 50 < data.total));
+        const previousScrollHeight = scrollRef.current?.scrollHeight || 0;
 
-         // Giữ vị trí cuộn
-         setTimeout(() => {
-           if (scrollRef.current) {
-             scrollRef.current.scrollTop = scrollRef.current.scrollHeight - previousScrollHeight;
-           }
-         }, 0);
+        setMessages(prev => {
+          const seen = new Set(prev.map(m => m.messageID || m.tempID));
+          const filtered = messageArray.filter((m: Message) => {
+            const k = m.messageID || m.tempID;
+            if (seen.has(k)) return false;
+            seen.add(k); return true;
+          });
+          return [...filtered, ...prev];
+        });
+
+        setPage(nextPage);
+        setHasMore(Array.isArray(data) ? false : (data.page * 50 < data.total));
+
+        // Giữ vị trí cuộn
+        setTimeout(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight - previousScrollHeight;
+          }
+        }, 0);
       }
     } catch (e) {
       console.error('Error loading more messages:', e);
@@ -858,11 +903,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     }
 
     const specialTags = ['GIF', 'STICKER', 'Bot'];
-    
+
     // Sắp xếp tên theo độ dài giảm dần
     const mentionNames = memberInfo ? [memberInfo.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')] : [];
     const allPatterns = [...specialTags, ...mentionNames].join('|');
-    
+
     const regex = new RegExp(`(@(?:${allPatterns}))`, 'gi');
     const parts = text.split(regex);
     const elements: JSX.Element[] = parts.map((part, index) => {
@@ -870,7 +915,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       if (part.startsWith('@')) {
         const candidate = part.substring(1).toLowerCase();
         const isValid = specialTags.some(t => t.toLowerCase() === candidate) ||
-                      (memberInfo && memberInfo.name.toLowerCase() === candidate);
+          (memberInfo && memberInfo.name.toLowerCase() === candidate);
         if (isValid) {
           return (
             <span key={index} className="text-[#0068ff] font-normal">
@@ -972,11 +1017,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
   const handleInputChange = (value: string) => {
     setInputText(value);
-    
+
     // Logic gợi ý Ghost Text cho lệnh
     const lower = value.toLowerCase();
     const commonTags = ['@GIF', '@STICKER', '@Bot'];
-    
+
     if (value.startsWith('@') && value.length > 1) {
       const match = commonTags.find(t => t.toLowerCase().startsWith(lower) && t.toLowerCase() !== lower);
       if (match) {
@@ -1797,7 +1842,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   alt="avatar"
                   className="w-[42px] h-[42px] rounded-full object-cover border-2 border-[#0068ff]/10 cursor-pointer hover:ring-2 hover:ring-[#0068ff] transition-all"
                   onClick={async () => {
-                    if (selectedChat.type === 'private' && memberInfo) {
+                    if (selectedChat.type === 'private' && memberInfo && memberInfo.userID !== 'bot') {
                       try {
                         const [userRes, statusRes] = await Promise.all([
                           fetch(`${API}/usersID`, {
@@ -1845,7 +1890,10 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   )}
                   {isStranger && (
                     <span className="flex items-center gap-1 text-gray-400">
-                      <FaUserFriends className="text-[10px]" /> Không có nhóm chung
+                      <FaUserFriends className="text-[10px]" />
+                      {loadingMutual ? 'Đang tải nhóm chung...' :
+                        mutualGroups.length > 0 ? `${mutualGroups.length} nhóm chung` : 'Không có nhóm chung'
+                      }
                     </span>
                   )}
                 </p>
@@ -1889,56 +1937,84 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                   <FaSearch />
                 </button>
 
-                {/* Nút thông tin hội thoại */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowInfo((v) => !v);
-                    setShowSearch(false);
-                  }}
-                  title="Thông tin hội thoại"
-                  className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showInfo ? 'bg-blue-50 text-[#0068ff]' : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
-                >
-                  <FaInfoCircle />
-                </button>
+                {/* Nút thông tin hội thoại (Ẩn cho AI Bot) */}
+                {memberInfo?.userID !== 'bot' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowInfo((v) => !v);
+                      setShowSearch(false);
+                    }}
+                    title="Thông tin hội thoại"
+                    className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showInfo ? 'bg-blue-50 text-[#0068ff]' : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
+                  >
+                    <FaInfoCircle />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Stranger banner */}
-            {isStranger && (
-              <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                <FaUserFriends className="text-gray-400 text-base shrink-0" />
-                {friendRequestSent ? (
-                  <span className="flex-1 text-[13px] text-gray-500">
-                    Bạn đã gửi yêu cầu kết bạn và đang chờ người này đồng ý
-                  </span>
+            {/* Stranger banner (Zalo Style) */}
+            {isStranger && memberInfo && (memberInfo.friendStatus !== 'accepted' && memberInfo.friendStatus !== 'self') && (
+              <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex-shrink-0 animate-in fade-in slide-in-from-top-1">
+                <FaUserFriends className="text-blue-500 text-base shrink-0" />
+
+                {memberInfo.friendStatus === 'pending_sent' ? (
+                  <>
+                    <span className="flex-1 text-[13px] text-gray-600 font-medium">
+                      Đã gửi lời mời kết bạn tới người này
+                    </span>
+                    <button
+                      onClick={() => handleRecallFriendRequest(memberInfo.userID)}
+                      className="px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 text-[12px] font-bold rounded-lg transition-all shadow-sm"
+                    >
+                      Thu hồi lời mời
+                    </button>
+                  </>
+                ) : memberInfo.friendStatus === 'pending_received' ? (
+                  <>
+                    <span className="flex-1 text-[13px] text-gray-600 font-medium">
+                      <b className="text-gray-900">{memberInfo.name}</b> đã gửi cho bạn lời mời kết bạn
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRejectFriendRequest(memberInfo.userID)}
+                        className="px-3 py-1.5 bg-white border border-red-500 text-red-600 hover:bg-red-50 text-[12px] font-bold rounded-lg transition-all shadow-sm"
+                      >
+                        Từ chối
+                      </button>
+                      <button
+                        onClick={() => handleAcceptFriendRequest(memberInfo.userID)}
+                        className="px-3 py-1.5 bg-[#0068ff] text-white hover:brightness-110 text-[12px] font-bold rounded-lg transition-all shadow-sm"
+                      >
+                        Chấp nhận
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
-                    <span className="flex-1 text-[13px] text-gray-500">Gửi yêu cầu kết bạn tới người này</span>
+                    <span className="flex-1 text-[13px] text-gray-600 font-medium">Gửi yêu cầu kết bạn tới người này để trò chuyện thuận tiện hơn</span>
                     <button
                       disabled={isSendingFriendRequest}
                       onClick={async () => {
                         if (!memberInfo?.sdt) return;
                         setIsSendingFriendRequest(true);
                         try {
-                          const res = await fetch(`${API}/contacts/send-friend-request`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                            body: JSON.stringify({ recipientPhone: memberInfo.sdt }),
+                          const res = await axiosInstance.post('/contacts/send-friend-request', {
+                            recipientPhone: memberInfo.sdt,
+                            message: 'Mình kết bạn nhé!'
                           });
-                          if (res.ok) {
-                            setFriendRequestSent(true);
-                          } else {
-                            const d = await res.json();
-                            toast.error(d.message || 'Không thể gửi lời mời');
+                          if (res.status === 201 || res.status === 200) {
+                            setMemberInfo({ ...memberInfo, friendStatus: 'pending_sent' });
+                            socket.emit('friend_request_sent', { from: user?.userID, to: memberInfo.userID });
                           }
-                        } catch {
-                          toast.error('Lỗi kết nối');
+                        } catch (err: any) {
+                          toast.error(err.response?.data?.message || 'Lỗi khi gửi lời mời');
                         } finally {
                           setIsSendingFriendRequest(false);
                         }
                       }}
-                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0068ff] text-[13px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 bg-[#e5efff] text-[#0068ff] hover:bg-[#d0e3ff] text-[12px] font-bold rounded-lg transition-all shadow-sm disabled:opacity-50"
                     >
                       {isSendingFriendRequest ? 'Đang gửi...' : 'Gửi kết bạn'}
                     </button>
@@ -2111,7 +2187,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             )}
 
             {/* Messages */}
-            <div 
+            <div
               ref={scrollRef}
               onScroll={handleScroll}
               className="flex-1 px-4 py-3 overflow-y-auto flex flex-col gap-1 bg-[#eef0f3] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded">
@@ -2233,6 +2309,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           alt="av"
                           className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                           onClick={async () => {
+                            if (group.senderID === 'bot') return;
                             try {
                               const [userRes, statusRes] = await Promise.all([
                                 fetch(`${API}/usersID`, {
@@ -2484,6 +2561,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                         alt="av"
                         className="w-7 h-7 rounded-full object-cover flex-shrink-0 mb-1 cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
                         onClick={async () => {
+                          if (msg.senderID === 'bot') return;
                           try {
                             const [userRes, statusRes] = await Promise.all([
                               fetch(`${API}/usersID`, {
@@ -3082,7 +3160,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     >
                       <FaPaperPlane />
                     </button>
-                    
+
                     <MentionDropdown
                       ref={mentionDropdownRef}
                       isOpen={showMentionDropdown}
@@ -3279,6 +3357,27 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
             }
           }}
           onRecall={() => selectedUserForProfile && handleRecallFriendRequest((selectedUserForProfile as any).userID)}
+          onAccept={() => selectedUserForProfile && handleAcceptFriendRequest((selectedUserForProfile as any).userID)}
+          onReject={() => selectedUserForProfile && handleRejectFriendRequest((selectedUserForProfile as any).userID)}
+          onAddFriend={async () => {
+            if (!selectedUserForProfile?.sdt || isSendingFriendRequest) return;
+            setIsSendingFriendRequest(true);
+            try {
+              const res = await axiosInstance.post('/contacts/send-friend-request', {
+                recipientPhone: selectedUserForProfile.sdt,
+                message: 'Mình kết bạn nhé!'
+              });
+              if (res.status === 201 || res.status === 200) {
+                toast.success('Đã gửi lời mời kết bạn');
+                setSelectedUserForProfile({ ...selectedUserForProfile, friendStatus: 'pending_sent' });
+                socket.emit('friend_request_sent', { from: user?.userID, to: selectedUserForProfile.userID });
+              }
+            } catch (err: any) {
+              toast.error(err.response?.data?.message || 'Lỗi khi gửi lời mời');
+            } finally {
+              setIsSendingFriendRequest(false);
+            }
+          }}
         />
       )}
 

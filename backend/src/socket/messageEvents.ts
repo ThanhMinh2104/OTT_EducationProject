@@ -91,7 +91,6 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       } else {
         // Gửi tới tất cả thành viên
         memberIDs.forEach((id) => io.to(id).emit('new_message', fullMessage));
-        io.to(data.chatID).emit(data.chatID, fullMessage);
       }
 
       // Cập nhật trạng thái delivered sau 1 giây

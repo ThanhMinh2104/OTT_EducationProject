@@ -123,6 +123,7 @@ interface GroupChatWindowProps {
   groupID: string;
   userID: string;
   onShowGroupInfo?: () => void;
+  onSelectChat?: (chat: any) => void;
 }
 
 const formatTime = (ts: string | Date) => {
@@ -352,11 +353,12 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
   );
 };
 
-export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
+export const GroupChatWindow = ({
   groupID,
   userID,
   onShowGroupInfo,
-}) => {
+  onSelectChat
+}: GroupChatWindowProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [groupInfo, setGroupInfo] = useState<GroupInfo | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -397,6 +399,69 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     name: members.find(m => m.userID === userID)?.name || groupInfo?.members.find(m => m.userID === userID)?.name || userID,
     anhDaiDien: groupInfo?.members.find(m => m.userID === userID)?.avatar,
   });
+
+  // Chuyển sang chat 1-1 từ profile (khi nhấn "Nhắn tin")
+  const handleStartChat1_1 = (chat: any) => {
+    setShowOtherProfile(false);
+    // Nếu có callback từ HomePage, gọi nó để chuyển chat
+    if (onSelectChat) {
+      onSelectChat(chat);
+    }
+  };
+
+  // Gửi lời mời kết bạn (Dùng sdt từ profile đã fetch)
+  const handleAddFriendFromProfile = async () => {
+    if (!selectedUserForProfile || !selectedUserForProfile.sdt) {
+      toast.error('Không tìm thấy số điện thoại người dùng');
+      return;
+    }
+    try {
+      await axiosInstance.post('/contacts/send-friend-request', { 
+        recipientPhone: selectedUserForProfile.sdt,
+        message: 'Mình kết bạn nhé!'
+      });
+      toast.success(`Đã gửi lời mời kết bạn tới ${selectedUserForProfile.name}`);
+      
+      // Update local state for friendStatus
+      setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'pending_sent' } : prev);
+      
+      // Emit socket để thông báo bên kia
+      socket.emit('friend_request_sent', { 
+        from: userID, 
+        to: selectedUserForProfile.userID 
+      });
+    } catch {
+      toast.error('Lỗi khi gửi lời mời kết bạn');
+    }
+  };
+
+  const handleAcceptFriendFromProfile = async () => {
+    if (!selectedUserForProfile) return;
+    try {
+      await axiosInstance.post('/contacts/accept-friend-request', { senderID: selectedUserForProfile.userID });
+      toast.success(`Đã trở thành bạn với ${selectedUserForProfile.name}`);
+      setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'accepted' } : prev);
+      socket.emit('friend_request_accepted', { from: userID, to: selectedUserForProfile.userID });
+    } catch { toast.error('Lỗi khi chấp nhận kết bạn'); }
+  };
+
+  const handleRejectFriendFromProfile = async () => {
+    if (!selectedUserForProfile) return;
+    try {
+      await axiosInstance.post('/contacts/reject-friend-request', { senderID: selectedUserForProfile.userID });
+      toast.success(`Đã từ chối lời mời từ ${selectedUserForProfile.name}`);
+      setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'none' } : prev);
+    } catch { toast.error('Lỗi khi từ chối kết bạn'); }
+  };
+
+  const handleRecallFriendFromProfile = async () => {
+    if (!selectedUserForProfile) return;
+    try {
+      await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: selectedUserForProfile.userID });
+      toast.success(`Đã thu hồi lời mời tới ${selectedUserForProfile.name}`);
+      setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'none' } : prev);
+    } catch { toast.error('Lỗi khi thu hồi lời mời'); }
+  };
 
   const openNewCall = () => setShowGroupCall(true);
 
@@ -530,17 +595,12 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       setGroupInfo((prev) =>
         prev ? { ...prev, members: membersWithInfo } : prev
       );
-      const fetchedMessages = messagesRes.data.messages || [];
-      setMessages(fetchedMessages);
-      setCurrentPage(1);
-      setHasMoreMessages(fetchedMessages.length === 50);
+      setMessages(messagesRes.data.messages || []);
 
-      // Memoized filtered members to exclude current user
-      const otherMembers = membersWithInfo.filter(m => m.userID !== userID);
-
-      // Load pinned messages from separate API
-      await fetchPinnedMessages();
-      await fetchPinnedNotes();
+      // Load pinned messages
+      setPinnedMessages(
+        (messagesRes.data.messages || []).filter((m: Message) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
+      );
 
       // Load all images from chat
       const images = (messagesRes.data.messages || [])
@@ -680,15 +740,12 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     if (message.groupID !== groupID) return;
 
     setMessages((prev) => {
-      // Kiểm tra đã tồn tại chưa (theo messageID thật)
-      const exists = prev.some(msg =>
-        msg.messageID === message.messageID && !msg.messageID.startsWith('temp_')
-      );
+      // KIỂM TRA TRÙNG LẶP: Nếu messageID đã tồn tại thì không thêm nữa
+      const exists = prev.some((m) => m.messageID === message.messageID);
       if (exists) return prev;
 
       // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn
       // Tin nhắn đã được thêm và xác nhận qua callback socket.emit('send_group_message')
-      // Việc bỏ qua ở đây ngăn chặn 100% tình trạng duplicate tin nhắn do Race Condition
       if (message.senderID === userID) {
         return prev;
       }
@@ -696,6 +753,15 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       // Tin nhắn người khác → thêm bình thường
       return [...prev, message];
     });
+
+    // Nếu đang mở group này, đánh dấu đã đọc tin nhắn mới ngay lập tức
+    if (message.senderID !== userID) {
+      socket.emit('mark_as_read', { 
+        messageID: message.messageID, 
+        userID, 
+        groupID 
+      });
+    }
   }, [groupID, userID]);
 
   const handleTypingStart = useCallback((data: { groupID: string; userID: string; userName: string }) => {
@@ -967,17 +1033,20 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       status: 'sent',
       replyTo: currentReplyTo
         ? {
-            messageID: currentReplyTo.messageID,
-            senderID: currentReplyTo.senderID,
-            content: currentReplyTo.content,
-            type: currentReplyTo.type,
-          }
+          messageID: currentReplyTo.messageID,
+          senderID: currentReplyTo.senderID,
+          senderName: currentReplyTo.senderInfo?.name || members.find(m => m.userID === currentReplyTo.senderID)?.name,
+          content: currentReplyTo.content,
+          type: currentReplyTo.type,
+        }
         : undefined,
+      mentions: [...mentions], // QUAN TRỌNG: Include mentions để render tag ngay lập tức cho người gửi
       senderInfo: {
         name: currentUserInfo?.name || 'Bạn',
         avatar: currentUserInfo?.avatar,
       },
     };
+
 
     setMessages((prev) => [...prev, optimisticMessage]);
 
@@ -1003,7 +1072,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     socket.emit('send_group_message', message, (response: any) => {
       if (response?.error) {
         toast.error(response.error);
-        setMessages((prev) => prev.filter(msg => msg.messageID !== tempMessageID));
       } else if (response?.success && response?.message) {
         const realMessage: Message = response.message;
         setMessages((prev) => {
@@ -1013,14 +1081,13 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         });
       }
     });
+
+    console.log('✅ Message emitted via socket');
+
     setInputText('');
     setReplyTo(null);
-    setMentions([]); // Reset danh sách tag sau khi gửi
+    setMentions([]); // QUAN TRỌNG: Clear danh sách tag sau khi gửi
 
-    // Đồng bộ lại overlay
-    if (overlayRef.current) {
-      overlayRef.current.scrollLeft = 0;
-    }
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -1033,7 +1100,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
     const messageContent = inputText.trim();
     const currentReplyTo = replyTo;
-    
+
     setInputText('');
     setReplyTo(null);
 
@@ -1676,7 +1743,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         // Xác định loại file
         let uploadEndpoint = '/upload';
         let messageType: 'image' | 'video' | 'audio' | 'file' = 'file';
-        
+
         if (file.type.startsWith('image/')) {
           messageType = 'image';
         } else if (file.type.startsWith('video/')) {
@@ -1777,15 +1844,17 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             const candidate = part.substring(1).toLowerCase().trim();
             const isMentionAll = candidate === 'all';
 
-            // Tìm thành viên trong danh sách có tên khớp (không phân biệt hoa thường, cắt khoảng trắng)
+            // Tìm thành viên trong danh sách có tên khớp HOẶC userID khớp
             const mentionMember = members.find(m =>
               m.name.toLowerCase().trim() === candidate ||
-              m.userID === candidate
+              m.userID === candidate || 
+              (messageMentions && messageMentions.includes(m.userID) && m.name.toLowerCase().trim().includes(candidate))
             );
 
             const isValid = isMentionAll ||
               specialTags.some(t => t.toLowerCase() === candidate) ||
               !!mentionMember;
+
 
             if (isValid) {
               return (
@@ -1816,6 +1885,11 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   };
 
   const handleShowUserProfile = async (targetUserID: string) => {
+    if (targetUserID === 'bot') {
+      // Không mở hồ sơ cho AI Bot theo yêu cầu người dùng
+      return;
+    }
+    
     try {
       // 1. Lấy thông tin cơ bản từ danh sách members hiện có
       const memberInfo = members.find(m => m.userID === targetUserID);
@@ -1931,7 +2005,12 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowMembersSidebar(!showMembersSidebar);
-                  if (!showMembersSidebar) fetchJoinRequests();
+                  if (!showMembersSidebar) {
+                    const currentRole = members.find(m => m.userID === userID)?.role;
+                    if (currentRole === 'owner' || currentRole === 'admin') {
+                      fetchJoinRequests();
+                    }
+                  }
                 }}
                 title="Danh sách thành viên"
                 className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors relative ${showMembersSidebar
@@ -2078,7 +2157,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                       <FaTimes />
                     </button>
                   </div>
-                  
+
                   {/* Combine and sort pinned messages and notes by pin date */}
                   {[
                     ...pinnedMessages.map(m => ({ type: 'message' as const, data: m, pinnedAt: m.pinnedInfo?.pinnedAt })),
@@ -2190,7 +2269,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
           )}
 
           {/* Messages Area */}
-          <div 
+          <div
             ref={messagesContainerRef}
             onScroll={handleScroll}
             className="flex-1 overflow-y-auto px-4 py-3 bg-gray-50"
@@ -3025,7 +3104,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                           key={gif.id}
                           onClick={() => {
                             sendGif(gif.images.original.url);
-                            handleInputChange(''); 
+                            handleInputChange('');
                           }}
                           className="w-[100px] h-[70px] shrink-0 bg-gray-50 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-400 hover:scale-105 transition-all shadow-sm"
                         >
@@ -3436,7 +3515,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         onReplace={handleReplacePinnedItem}
       />
 
-      {/* Pending Approval Modal */}
       {pendingApprovalModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]"
@@ -3494,7 +3572,14 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
           user={selectedUserForProfile}
           currentUser={members.find((m) => m.userID === userID)}
           onClose={() => setShowOtherProfile(false)}
-          onStartChat={() => setShowOtherProfile(false)}
+          onStartChat={handleStartChat1_1}
+          onAddFriend={handleAddFriendFromProfile}
+          onAccept={handleAcceptFriendFromProfile}
+          onReject={handleRejectFriendFromProfile}
+          onRecall={handleRecallFriendFromProfile}
+          onStatusChange={(status) => {
+            setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: status } : prev);
+          }}
         />
       )}
 
@@ -3505,6 +3590,8 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
           setUser={() => { }}
         />
       )}
+
+      {/* Incoming Group Call Modal — handled globally in HomePage */}
 
       {/* Group Call Modal — floating window */}
       {(showGroupCall || joinExistingCall) && (

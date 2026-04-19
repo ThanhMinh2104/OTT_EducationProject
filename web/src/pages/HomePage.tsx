@@ -304,6 +304,7 @@ const HomePage = () => {
               groupID={selectedChat.chatID}
               userID={user.userID}
               onShowGroupInfo={() => {}}
+              onSelectChat={handleSelectChat}
             />
           )
         ) : (

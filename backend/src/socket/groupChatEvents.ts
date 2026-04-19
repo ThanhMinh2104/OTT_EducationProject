@@ -5,10 +5,10 @@ import MessageReaction from '../models/MessageReaction';
 import Users from '../models/User';
 import Group from '../models/Group';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  processBotAction, 
-  getChatHistory, 
-  isBotMention 
+import {
+  processBotAction,
+  getChatHistory,
+  isBotMention
 } from '../services/botService';
 
 // Generate unique messageID using UUID
@@ -43,9 +43,9 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       socket.join(groupID);
       socket.join(`user_${userID}`);
 
-      console.log('✅ Socket joined group:', { 
-        groupID, 
-        userID, 
+      console.log('✅ Socket joined group:', {
+        groupID,
+        userID,
         socketID: socket.id,
         rooms: Array.from(socket.rooms)
       });
@@ -178,7 +178,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       // Gửi tới tất cả trong group
       console.log('✅ Broadcasting message to group:', groupID);
       io.to(groupID).emit('new_group_message', fullMessage);
-      
+
       console.log('📤 Message broadcasted to room:', groupID);
 
       // ==================== XỬ LÝ MENTION ====================
@@ -233,16 +233,16 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
       // ==================== BOT INTEGRATION FOR GROUP ====================
       // Kiểm tra xem có gọi bot không
-      if (content && isBotMention(content)) {
+      if (senderID !== 'bot' && content && isBotMention(content)) {
         console.log('🤖 Bot mentioned in group, processing...');
-        
+
         // Lấy danh sách thành viên
         const members = await GroupMember.find({ groupID, isActive: true });
         const memberIDs = members.map(m => m.userID);
 
         // Emit typing indicator
-        io.to(groupID).emit('group_typing_start', { 
-          groupID, 
+        io.to(groupID).emit('group_typing_start', {
+          groupID,
           userID: 'bot',
           userName: 'AI Bot'
         });
@@ -259,7 +259,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
           for (const msg of messages) {
             // Bỏ qua tin nhắn notification
             if (msg.type === 'notification') continue;
-            
+
             let senderName = 'Người dùng';
             if (msg.senderID !== 'system' && msg.senderID !== 'bot') {
               const user = await Users.findOne({ userID: msg.senderID });
@@ -334,8 +334,8 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
           console.error('❌ Bot processing failed in group:', error);
         } finally {
           // Tắt typing indicator
-          io.to(groupID).emit('group_typing_stop', { 
-            groupID, 
+          io.to(groupID).emit('group_typing_stop', {
+            groupID,
             userID: 'bot'
           });
         }
@@ -592,7 +592,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       // Tạo notification message
       const notifMessageID = generateMessageID();
       let displayContent = '';
-      
+
       if (msg.content) {
         displayContent = msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content;
       } else {
@@ -606,7 +606,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         };
         displayContent = mediaTypes[msg.type] || 'tin nhắn';
       }
-      
+
       const notificationMsg = new GroupMessage({
         messageID: notifMessageID,
         groupID,
@@ -617,7 +617,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         media_url: [],
         status: 'sent',
       });
-      
+
       await notificationMsg.save();
 
       console.log('✅ Message pinned successfully');
@@ -675,7 +675,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       // Tạo notification message
       const notifMessageID = generateMessageID();
       let displayContent = '';
-      
+
       if (msg.content) {
         displayContent = msg.content.length > 30 ? msg.content.substring(0, 30) + '...' : msg.content;
       } else {
@@ -689,7 +689,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         };
         displayContent = mediaTypes[msg.type] || 'tin nhắn';
       }
-      
+
       const notificationMsg = new GroupMessage({
         messageID: notifMessageID,
         groupID,
@@ -700,7 +700,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         media_url: [],
         status: 'sent',
       });
-      
+
       await notificationMsg.save();
 
       console.log('✅ Message unpinned successfully');
