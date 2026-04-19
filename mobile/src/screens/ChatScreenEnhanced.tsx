@@ -142,6 +142,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   // Chat info panel state
   const [showChatInfo, setShowChatInfo] = useState(false);
 
+  // States cho Mention (@)
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentions, setMentions] = useState<string[]>([]);
+
   // Pinned messages states
   const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
@@ -807,26 +812,33 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     onChatOpen?.(); // ẩn tab bar
 
     // Fetch member info và friend status nếu chưa có
-    if (chat.type === 'private' && user) {
-      const otherId = chat.members.find((m) => m.userID !== user.userID)?.userID;
-      if (otherId) {
-        fetchMember(otherId);
-        (async () => {
-          try {
-            const token = await AsyncStorage.getItem('token');
-            const statusRes = await fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (statusRes.ok) {
-              const statusData = await statusRes.json();
-              setCurrentFriendStatus(statusData.friendStatus || 'none');
-            } else {
+    if (user) {
+      if (chat.type === 'private') {
+        const otherId = chat.members.find((m) => m.userID !== user.userID)?.userID;
+        if (otherId) {
+          fetchMember(otherId);
+          (async () => {
+            try {
+              const token = await AsyncStorage.getItem('token');
+              const statusRes = await fetch(`${API_URL}/api/contacts/friend-status/${otherId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (statusRes.ok) {
+                const statusData = await statusRes.json();
+                setCurrentFriendStatus(statusData.friendStatus || 'none');
+              } else {
+                setCurrentFriendStatus('none');
+              }
+            } catch {
               setCurrentFriendStatus('none');
             }
-          } catch {
-            setCurrentFriendStatus('none');
-          }
-        })();
+          })();
+        }
+      } else if (chat.type === 'group') {
+        // Fetch thông tin tất cả thành viên trong nhóm để hiển thị tên khi mention
+        chat.members.forEach((m) => {
+          if (m.userID !== user.userID) fetchMember(m.userID);
+        });
       }
     }
 
@@ -864,6 +876,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     status: 'sent',
     senderInfo: { name: user!.name, avatar: user!.anhDaiDien || null },
     replyTo: replyTo ? { messageID: replyTo.messageID, senderID: replyTo.senderID, content: replyTo.content, type: replyTo.type } : null,
+    mentions: mentions, // Gửi danh sách tag
     ...extra,
   } as Message);
 
@@ -876,16 +889,51 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     setMessages(prev => [...prev, msg]);
     setInputText('');
     setReplyTo(null);
+    setMentions([]); // Reset tag sau khi gửi
   };
 
   const handleInputChange = (value: string) => {
     setInputText(value);
     if (!selectedChat || !user) return;
+
+    // Logic phát hiện Mention cho Mobile
+    if (selectedChat.type === 'group') {
+      const atIndex = value.lastIndexOf('@');
+      // Kiểm tra xem ký tự @ có ở đầu hoặc sau khoảng trắng không
+      if (atIndex !== -1 && (atIndex === 0 || value[atIndex - 1] === ' ')) {
+        const query = value.substring(atIndex + 1);
+        if (!query.includes(' ')) {
+          setMentionSearch(query);
+          setShowMentionDropdown(true);
+        } else {
+          setShowMentionDropdown(false);
+        }
+      } else {
+        setShowMentionDropdown(false);
+      }
+    }
+
     socket.emit('typing_start', { chatID: selectedChat.chatID, userID: user.userID, userName: user.name });
     if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
     typingDebounceRef.current = setTimeout(() => {
       socket.emit('typing_stop', { chatID: selectedChat.chatID, userID: user.userID, userName: user.name });
     }, 2000);
+  };
+
+  const handleMentionSelect = (member: User | 'all') => {
+    const atIndex = inputText.lastIndexOf('@');
+    const textBeforeMention = inputText.substring(0, atIndex);
+    
+    let mentionText = '';
+    if (member === 'all') {
+      mentionText = '@all ';
+    } else {
+      mentionText = `@${member.name} `;
+      setMentions(prev => [...new Set([...prev, member.userID])]);
+    }
+    
+    setInputText(textBeforeMention + mentionText);
+    setShowMentionDropdown(false);
   };
 
   const handlePickImage = async () => {
@@ -1512,9 +1560,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               </Text>
             </View>
           )}
-          <Text style={[styles.messageText, isMine ? styles.textMine : styles.textOther]}>
-            {item.content}
-          </Text>
+          {renderMentionedText(item.content || '', item.mentions)}
           <Text style={[styles.messageTime, isMine ? styles.timeMine : styles.timeOther]}>{timeStr}</Text>
         </View>
       );
@@ -1849,9 +1895,59 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     openOtherProfile(selectedChat);
   };
 
-  // ===== CHAT WINDOW VIEW =====
+  const renderMentionedText = (content: string, messageMentions?: string[]) => {
+    if (!content) return null;
+    const hasMentions = (messageMentions && messageMentions.length > 0) || content.toLowerCase().includes('@all');
+    if (!hasMentions) return <Text style={[styles.messageText, isMine ? styles.textMine : styles.textOther]}>{content}</Text>;
+
+    const parts = content.split(/(\s+)/);
+    return (
+      <Text style={[styles.messageText, isMine ? styles.textMine : styles.textOther]}>
+        {parts.map((part, index) => {
+          if (part.startsWith('@')) {
+            return (
+              <Text key={index} style={{ color: isMine ? '#fff' : '#0068ff', fontWeight: 'bold' }}>
+                {part}
+              </Text>
+            );
+          }
+          return part;
+        })}
+      </Text>
+    );
+  };
+
+  // Socket listener cho Mention
+  useEffect(() => {
+    if (!user) return;
+
+    const onUserMentioned = (data: any) => {
+      console.log('🔔 Mobile Received user_mentioned:', data);
+      if (selectedChat?.chatID === data.groupID) {
+        Alert.alert('Nhắc tên', `${data.mentionerName} đã nhắc tên bạn trong nhóm`);
+      }
+    };
+
+    const onGroupMentionAll = (data: any) => {
+      console.log('🔔 Mobile Received group_mention_all:', data);
+      if (selectedChat?.chatID === data.groupID && data.mentionerID !== user.userID) {
+        Alert.alert('Nhắc tên cả nhóm', `${data.mentionerName} đã nhắc tên tất cả mọi người`);
+      }
+    };
+
+    socket.on('user_mentioned', onUserMentioned);
+    socket.on('group_mention_all', onGroupMentionAll);
+
+    return () => {
+      socket.off('user_mentioned', onUserMentioned);
+      socket.off('group_mention_all', onGroupMentionAll);
+    };
+  }, [selectedChat?.chatID, user?.userID]);
+
+  // View chính của Chat Window
   return (
     <View style={styles.container}>
+      {/* ... (phần header cũ) ... */}
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity onPress={() => { setSelectedChat(null); onChatClose?.(); }} style={styles.backButton}>
@@ -2175,6 +2271,57 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           >
             <Text style={styles.audioPreviewSendText}>{isUploading ? '...' : 'Gửi'}</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Mention Dropdown */}
+      {showMentionDropdown && selectedChat?.type === 'group' && (
+        <View style={styles.mentionDropdown}>
+          <View style={styles.mentionHeader}>
+            <Text style={styles.mentionHeaderText}>Nhắc tên thành viên</Text>
+          </View>
+          <ScrollView horizontal={false} keyboardShouldPersistTaps="always">
+            {/* Option @all */}
+            {(mentionSearch === '' || 'tất cả'.includes(mentionSearch.toLowerCase()) || 'all'.includes(mentionSearch.toLowerCase())) && (
+              <TouchableOpacity
+                style={styles.mentionItem}
+                onPress={() => handleMentionSelect('all')}
+              >
+                <View style={[styles.mentionAvatar, { backgroundColor: '#0068ff', justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>@</Text>
+                </View>
+                <View>
+                  <Text style={styles.mentionName}>@Tất cả</Text>
+                  <Text style={styles.mentionRole}>Nhắc tên mọi người trong nhóm</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+            
+            {/* Members filtered by search */}
+            {selectedChat.members
+              .filter(m => m.userID !== user?.userID)
+              .map(m => {
+                const memberInfo = memberCache[m.userID];
+                if (!memberInfo || (mentionSearch && !memberInfo.name.toLowerCase().includes(mentionSearch.toLowerCase()))) return null;
+                
+                return (
+                  <TouchableOpacity
+                    key={m.userID}
+                    style={styles.mentionItem}
+                    onPress={() => handleMentionSelect(memberInfo)}
+                  >
+                    <Image
+                      source={{ uri: memberInfo.anhDaiDien || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.userID}` }}
+                      style={styles.mentionAvatar}
+                    />
+                    <View>
+                      <Text style={styles.mentionName}>{memberInfo.name}</Text>
+                      <Text style={styles.mentionRole}>{m.role === 'owner' ? 'Trưởng nhóm' : m.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+          </ScrollView>
         </View>
       )}
 
@@ -3571,6 +3718,65 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+
+  // Mention Dropdown Styles
+  mentionDropdown: {
+    position: 'absolute',
+    bottom: 60,
+    left: 10,
+    right: 10,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    maxHeight: 250,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 1000,
+    borderWidth: 1,
+    borderColor: '#eee',
+    overflow: 'hidden',
+  },
+  mentionHeader: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  mentionHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#666',
+    textTransform: 'uppercase',
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f0f0f0',
+    gap: 12,
+  },
+  mentionAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  mentionName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111',
+  },
+  mentionRole: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 2,
   },
 });
 

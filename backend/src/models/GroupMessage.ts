@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-type MessageType = 'text' | 'image' | 'video' | 'file' | 'audio' | 'emoji' | 'sticker' | 'notification';
+type MessageType = 'text' | 'image' | 'video' | 'file' | 'audio' | 'emoji' | 'sticker' | 'notification' | 'gif';
 
 export interface IGroupMessage extends Document {
   messageID: string;
@@ -28,6 +28,7 @@ export interface IGroupMessage extends Document {
   deletedFor: string[];
   forwardedFrom?: string;
   groupId?: string; // Thêm groupId để gom nhóm ảnh
+  mentions: string[]; // Danh sách UserID được nhắc tên
 }
 
 const GroupMessageSchema = new Schema<IGroupMessage>(
@@ -38,7 +39,7 @@ const GroupMessageSchema = new Schema<IGroupMessage>(
     content: { type: String },
     type: {
       type: String,
-      enum: ['text', 'image', 'video', 'file', 'audio', 'emoji', 'sticker', 'notification'],
+      enum: ['text', 'image', 'video', 'file', 'audio', 'emoji', 'sticker', 'notification', 'gif'],
       default: 'text',
     },
     media_url: { type: [String], default: [] },
@@ -64,6 +65,7 @@ const GroupMessageSchema = new Schema<IGroupMessage>(
     deletedFor: { type: [String], default: [] },
     forwardedFrom: { type: String },
     groupId: { type: String }, // Thêm groupId để gom nhóm ảnh
+    mentions: { type: [String], default: [] },
   },
   { versionKey: false }
 );

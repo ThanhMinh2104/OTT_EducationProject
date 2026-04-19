@@ -40,6 +40,10 @@ import GroupInfoPanel from './GroupInfoPanel';
 import GroupManagementModal from './GroupManagementModal';
 import EditGroupInfoModal from './EditGroupInfoModal';
 import { groupMessages, isMessageGroup, MessageGroup } from '../utils/messageGrouping';
+import MentionDropdown, { MentionDropdownHandle } from './MentionDropdown';
+import { getCaretCoordinates } from '../utils/caretPosition';
+import OtherProfileModal from './OtherProfileModal';
+import UserProfileModal from './UserProfileModal';
 
 const API = 'http://localhost:5000/api';
 
@@ -56,6 +60,7 @@ interface SenderInfo {
 interface ReplyTo {
   messageID: string;
   senderID: string;
+  senderName?: string; // Thêm tên người gửi để hiển thị khi reply
   content?: string;
   type: string;
 }
@@ -74,6 +79,7 @@ interface Message {
   reactions?: Array<{ userID: string; emoji: string }>;
   pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
   groupId?: string; // Thêm groupId để gom nhóm ảnh
+  mentions?: string[]; // Thêm mentions
 }
 
 interface GroupMember {
@@ -130,6 +136,25 @@ const formatFileSize = (bytes: number): string => {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 };
+
+// Giphy API key cho gợi ý @GIF
+const GIPHY_API_KEY = 'iw8DsJkjCByct4EHovySloueKpn6ljwK';
+
+// Dữ liệu Sticker mẫu để tìm kiếm
+const STICKER_DATA = [
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002734/android/sticker.png', name: 'cute dog', tags: ['cho', 'dog', 'hi', 'hello'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002735/android/sticker.png', name: 'happy cat', tags: ['meo', 'cat', 'vui', 'cuoi', 'haha'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002736/android/sticker.png', name: 'sad bear', tags: ['gau', 'bear', 'buon', 'khoc', 'hic'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002737/android/sticker.png', name: 'angry duck', tags: ['vit', 'duck', 'gian', 'cau', 'thoi'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002738/android/sticker.png', name: 'cool monkey', tags: ['khi', 'monkey', 'ngau', 'kinh', 'chat'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002739/android/sticker.png', name: 'shy bunny', tags: ['tho', 'bunny', 'ngai', 'xau ho', 'ahihi'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002740/android/sticker.png', name: 'surprised fox', tags: ['cao', 'fox', 'bat ngo', 'soc', 'ha'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002741/android/sticker.png', name: 'sleeping owl', tags: ['cu', 'owl', 'ngu', 'met', 'ngáp'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869384/android/sticker.png', name: 'love heart', tags: ['yeu', 'love', 'tim', 'heart'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869385/android/sticker.png', name: 'cheer up', tags: ['co len', 'cheer', 'fighting'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869386/android/sticker.png', name: 'thank you', tags: ['cam on', 'thanks', 'cảm ơn'] },
+  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869387/android/sticker.png', name: 'good luck', tags: ['may man', 'lucky', 'chuc mung'] },
+];
 
 // ==================== Role Badge Component ====================
 const RoleBadge = ({ role }: { role: 'owner' | 'admin' | 'member' }) => {
@@ -192,7 +217,7 @@ const FileDisplay = ({
         const size = res.headers.get('content-length');
         if (size) setFileSize(parseInt(size));
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [fileUrl]);
 
   const handleDownload = async () => {
@@ -363,11 +388,23 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [pendingApprovalModal, setPendingApprovalModal] = useState<{ requestID: string; inviteeName: string; inviterName: string } | null>(null);
   const [socketConnected, setSocketConnected] = useState(socket.connected);
 
+  // States cho tính năng Mention
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentions, setMentions] = useState<string[]>([]); // Lưu danh sách UserID được tag
+  const [dropdownCoords, setDropdownCoords] = useState({ x: 0, y: 0 });
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<any>(null);
+  const [showOtherProfile, setShowOtherProfile] = useState(false);
+  const [showUserProfile, setShowUserProfile] = useState(false);
+  const [suggestedGifs, setSuggestedGifs] = useState<any[]>([]);
+  const [isLoadingGifs, setIsLoadingGifs] = useState(false);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mentionDropdownRef = useRef<MentionDropdownHandle>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -376,6 +413,21 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   // Helper: lấy role của sender từ members list
   const getSenderRole = (senderID: string): 'owner' | 'admin' | 'member' => {
     return members.find(m => m.userID === senderID)?.role || 'member';
+  };
+
+  // Helper cho việc trả lời tin nhắn: Tự động @tên người khác
+  const handleReply = (msg: Message) => {
+    setReplyTo(msg);
+    if (msg.senderID !== userID) {
+      const senderName = msg.senderInfo?.name || members.find(m => m.userID === msg.senderID)?.name;
+      if (senderName) {
+        handleInputChange(`@${senderName} `);
+        // Tự động focus vào ô nhập
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 0);
+      }
+    }
   };
 
   const fetchGroupData = useCallback(async () => {
@@ -387,13 +439,13 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       ]);
 
       const groupData = groupRes.data;
-      
+
       console.log('📥 Fetched group data:', {
         groupID: groupData.groupID,
         hasSettings: !!groupData.settings,
         settings: groupData.settings
       });
-      
+
       setGroupInfo({
         groupID: groupData.groupID,
         name: groupData.name,
@@ -441,7 +493,10 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         prev ? { ...prev, members: membersWithInfo } : prev
       );
       setMessages(messagesRes.data.messages || []);
-      
+
+      // Memoized filtered members to exclude current user
+      const otherMembers = membersWithInfo.filter(m => m.userID !== userID);
+
       // Load pinned messages
       setPinnedMessages(
         (messagesRes.data.messages || []).filter((m: Message) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
@@ -525,10 +580,19 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     });
     console.log('🔍 Current groupID:', groupID);
     console.log('🔍 Match:', message.groupID === groupID);
-    
+
     if (message.groupID === groupID) {
       console.log('✅ Adding message to web');
       setMessages((prev) => [...prev, message]);
+      
+      // Nếu đang mở group này, đánh dấu đã đọc tin nhắn mới ngay lập tức
+      if (message.senderID !== userID) {
+        socket.emit('mark_as_read', { 
+          messageID: message.messageID, 
+          userID, 
+          groupID 
+        });
+      }
     } else {
       console.log('❌ GroupID mismatch, not adding message');
     }
@@ -549,6 +613,36 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       });
     }
   }, [groupID]);
+
+  // Fetch GIF gợi ý khi người dùng gõ @GIF
+  useEffect(() => {
+    const lowerText = inputText.toLowerCase();
+    if (lowerText.startsWith('@gif')) {
+      const query = inputText.substring(4).trim();
+      const timer = setTimeout(() => {
+        fetchGifs(query);
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setSuggestedGifs([]);
+    }
+  }, [inputText]);
+
+  const fetchGifs = async (query: string) => {
+    setIsLoadingGifs(true);
+    try {
+      const url = query
+        ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=15&rating=g`
+        : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_API_KEY}&limit=15&rating=g`;
+      const response = await fetch(url);
+      const data = await response.json();
+      setSuggestedGifs(data.data || []);
+    } catch (error) {
+      console.error('Error fetching GIFs:', error);
+    } finally {
+      setIsLoadingGifs(false);
+    }
+  };
 
   const handleMessageDeleted = useCallback((data: { messageID: string; deleteForAll: boolean }) => {
     if (data.deleteForAll) {
@@ -617,7 +711,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
   useEffect(() => {
     fetchGroupData();
-    
+
     // Monitor socket connection
     const handleConnect = () => {
       console.log('✅ Socket connected');
@@ -663,6 +757,29 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       const currentRole = groupInfo?.members?.find(m => m.userID === userID)?.role;
       if (currentRole === 'owner' || currentRole === 'admin') {
         setMessages((prev) => [...prev, data.message]);
+      }
+    });
+
+    // ==================== MENTION NOTIFICATIONS ====================
+    socket.on('user_mentioned', (data: any) => {
+      console.log('🔔 Received user_mentioned:', data);
+      if (data.groupID === groupID) {
+        toast(`Bạn được ${data.mentionerName} nhắc tên: "${data.contentSnippet}..."`, {
+          icon: '🔔',
+          duration: 5000,
+          position: 'top-right',
+        });
+      }
+    });
+
+    socket.on('group_mention_all', (data: any) => {
+      console.log('🔔 Received group_mention_all:', data);
+      if (data.groupID === groupID && data.mentionerID !== userID) {
+        toast(`${data.mentionerName} đã nhắc tên tất cả`, {
+          icon: '📣',
+          duration: 5000,
+          position: 'top-right',
+        });
       }
     });
 
@@ -714,12 +831,14 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       media_url: [],
       replyTo: replyTo
         ? {
-            messageID: replyTo.messageID,
-            senderID: replyTo.senderID,
-            content: replyTo.content,
-            type: replyTo.type,
-          }
+          messageID: replyTo.messageID,
+          senderID: replyTo.senderID,
+          senderName: replyTo.senderInfo?.name || members.find(m => m.userID === replyTo.senderID)?.name,
+          content: replyTo.content,
+          type: replyTo.type,
+        }
         : undefined,
+      mentions: mentions, // Gửi danh sách ID được tag
     };
 
     socket.emit('send_group_message', message, (response: any) => {
@@ -730,11 +849,18 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         console.log('✅ Message sent successfully');
       }
     });
-    
+
     console.log('✅ Message emitted via socket');
-    
+
+
     setInputText('');
     setReplyTo(null);
+    setMentions([]); // Reset danh sách tag sau khi gửi
+
+    // Đồng bộ lại overlay
+    if (overlayRef.current) {
+      overlayRef.current.scrollLeft = 0;
+    }
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -805,7 +931,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         const data = await res.json();
 
         // Tạo groupId cho các ảnh được gửi cùng lúc
-        const groupId = type === 'image' && data.urls.length > 1 
+        const groupId = type === 'image' && data.urls.length > 1
           ? `img_group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
           : undefined;
 
@@ -933,12 +1059,12 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
   const handlePin = (msg: Message) => {
     if (!msg.messageID) return;
-    
+
     if (msg.pinnedInfo) {
       // Unpin message
       console.log('📌 Unpinning message:', msg.messageID);
-      socket.emit('unghim_group_message', { 
-        messageID: msg.messageID, 
+      socket.emit('unghim_group_message', {
+        messageID: msg.messageID,
         groupID,
         senderID: userID
       });
@@ -949,7 +1075,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         setActionMsgId(null);
         return;
       }
-      
+
       // Pin message
       console.log('📌 Pinning message:', msg.messageID);
       socket.emit('ghim_group_message', {
@@ -958,7 +1084,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         senderID: userID
       });
     }
-    
+
     setActionMsgId(null);
   };
 
@@ -1045,14 +1171,89 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     setActionMsgId(null);
   };
 
-  const handleInputChange = (value: string) => {
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement> | string) => {
+    let value = '';
+    let cursorPosition = 0;
+
+    if (typeof e === 'string') {
+      value = e;
+      cursorPosition = value.length; // Điền từ Bot Suggestion thì trỏ cuối
+    } else {
+      value = e.target.value;
+      cursorPosition = e.target.selectionStart || 0;
+    }
+
     setInputText(value);
-    
+
+    // Nếu là lệnh từ phím tắt Bot Suggestion, đảm bảo con trỏ ở cuối sau khi focus
+    if (typeof e === 'string' && inputRef.current) {
+      setTimeout(() => {
+        if (inputRef.current) {
+          const len = value.length;
+          inputRef.current.setSelectionRange(len, len);
+        }
+      }, 0);
+    }
+
+    // Logic phát hiện Mention
+    const textBeforeCursor = value.substring(0, cursorPosition);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === ' ')) {
+      const query = textBeforeCursor.substring(atIndex + 1);
+      if (!query.includes(' ')) {
+        setMentionSearch(query);
+        setShowMentionDropdown(true);
+        // Tính toán vị trí con trỏ cho dropdown
+        if (inputRef.current) {
+          const coords = getCaretCoordinates(inputRef.current);
+          setDropdownCoords(coords);
+        }
+      } else {
+        setShowMentionDropdown(false);
+      }
+    } else {
+      setShowMentionDropdown(false);
+    }
+
     socket.emit('group_typing_start', {
       groupID,
       userID,
       userName: groupInfo?.members?.find((m) => m.userID === userID)?.name || 'User',
     });
+
+    // Tự động cập nhật danh sách ID mention dựa trên text (Anti-Spam & Sync)
+    const lowerValue = value.toLowerCase();
+    const newMentions: string[] = [];
+
+    // Kiểm tra Command trước (GIF/Sticker/Bot)
+    const hasGif = lowerValue.includes('@gif');
+    const hasSticker = lowerValue.includes('@sticker');
+    const hasBot = lowerValue.includes('@bot');
+
+    // Nếu có Command thì không nhận diện tag người
+    if (hasGif) {
+      newMentions.push('gif');
+    } else if (hasSticker) {
+      newMentions.push('sticker');
+    } else if (hasBot) {
+      newMentions.push('bot');
+    } else {
+      // Nếu không có Command thì mới nhận diện tag @All và tag tên người
+      if (lowerValue.includes('@all')) newMentions.push('all');
+
+      members.forEach((m) => {
+        if (m.userID !== userID && lowerValue.includes(`@${m.name.toLowerCase()}`)) {
+          if (!newMentions.includes(m.userID)) {
+            newMentions.push(m.userID);
+          }
+        }
+      });
+    }
+
+    setMentions(newMentions);
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -1061,6 +1262,119 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit('group_typing_stop', { groupID, userID });
     }, 2000);
+  };
+
+  const renderHighlightedInputText = (text: string) => {
+    if (!text) {
+      return (
+        <span className="text-gray-400 opacity-70">
+          Nhập @, tin nhắn tới {groupInfo?.name || "nhóm"}
+        </span>
+      );
+    }
+
+    // Xây dựng biểu thức chính quy (Regex) từ danh sách thành viên hiện tại
+    const specialTags = ['All', 'GIF', 'STICKER', 'Bot'];
+
+    // Sắp xếp tên theo độ dài giảm dần để ưu tiên khớp tên dài nhất trước (tránh lỗi khi tên là tập con của nhau)
+    const sortedMemberNames = [...members]
+      .map(m => m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .sort((a, b) => b.length - a.length);
+
+    const allPatterns = [...specialTags, ...sortedMemberNames].join('|');
+
+    // Regex tìm @ theo sau là các từ khóa (case-insensitive)
+    const regex = new RegExp(`(@(?:${allPatterns}))`, 'gi');
+
+    // Tách text theo regex (capturing group sẽ giữ lại các phần khớp trong mảng kết quả)
+    const parts = text.split(regex);
+
+    const elements = parts.map((part, index) => {
+      if (!part) return null;
+
+      // Kiểm tra xem phần này có phải là một tag hợp lệ không
+      if (part.startsWith('@')) {
+        const candidate = part.substring(1).toLowerCase();
+        const isValid = specialTags.some(t => t.toLowerCase() === candidate) ||
+          members.some(m => m.name.toLowerCase() === candidate);
+
+        if (isValid) {
+          return (
+            <span key={index} className="text-[#0068ff] font-normal">
+              {part}
+            </span>
+          );
+        }
+      }
+      return <span key={index}>{part}</span>;
+    });
+
+    // Ghost Placeholder: Nếu chỉ mới gõ @Bot hoặc @STICKER thì hiện gợi ý mờ phía sau
+    const lowerText = text.toLowerCase().trim();
+    if (lowerText === '@bot') {
+      elements.push(
+        <span key="ghost-bot" className="text-gray-400 opacity-60 italic ml-1 pointer-events-none">
+          Bạn có yêu cầu gì...
+        </span>
+      );
+    } else if (lowerText === '@sticker') {
+      elements.push(
+        <span key="ghost-sticker" className="text-gray-400 opacity-60 italic ml-1 pointer-events-none">
+          Gõ từ khóa để tìm kiếm Sticker
+        </span>
+      );
+    } else if (lowerText === '@gif') {
+      elements.push(
+        <span key="ghost-gif" className="text-gray-400 opacity-60 italic ml-1 pointer-events-none">
+          Gõ từ khóa để tìm kiếm GIF
+        </span>
+      );
+    }
+
+    return elements;
+  };
+
+  const handleMentionSelect = (item: any) => {
+    const cursorPosition = inputRef.current?.selectionStart || 0;
+    const textBeforeCursor = inputText.substring(0, cursorPosition);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+
+    const textBeforeMention = inputText.substring(0, atIndex);
+    const textAfterMention = inputText.substring(cursorPosition);
+
+    let mentionText = '';
+    if (item === 'all') {
+      mentionText = '@All ';
+    } else if (item === 'gif') {
+      mentionText = '@GIF ';
+    } else if (item === 'sticker') {
+      mentionText = '@STICKER ';
+    } else if (item === 'bot') {
+      mentionText = '@Bot ';
+    } else {
+      // Trường hợp chọn một thành viên cụ thể
+      const member = item as GroupMember;
+      mentionText = `@${member.name} `;
+      setMentions(prev => {
+        if (!prev.includes(member.userID)) {
+          return [...prev, member.userID];
+        }
+        return prev;
+      });
+    }
+
+    const newText = textBeforeMention + mentionText + textAfterMention;
+    handleInputChange(newText);
+    setShowMentionDropdown(false);
+
+    // Đặt vị trí con trỏ sau khi tag (cần đợi một nhịp để state cập nhật)
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const newCursorPos = textBeforeMention.length + mentionText.length;
+        inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
   };
 
   const handleDeleteMessage = (messageID: string) => {
@@ -1108,7 +1422,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
   const handleKickMember = async (targetUserID: string, memberName: string) => {
     if (!window.confirm(`Xóa ${memberName} khỏi nhóm?`)) return;
-    
+
     try {
       await axiosInstance.delete(`/groups/${groupID}/members/${targetUserID}`);
       toast.success('Đã xóa thành viên khỏi nhóm');
@@ -1172,11 +1486,11 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const currentMember = members.find(m => m.userID === userID);
   const isOwner = currentMember?.role === 'owner';
   const isAdmin = currentMember?.role === 'admin';
-  const canEditGroupInfo = isOwner || isAdmin || 
+  const canEditGroupInfo = isOwner || isAdmin ||
     (groupInfo?.settings?.memberPermissions?.changeNameAvatar ?? true);
 
   // Kiểm tra quyền gửi tin nhắn
-  const canSendMessages = isOwner || isAdmin || 
+  const canSendMessages = isOwner || isAdmin ||
     (groupInfo?.settings?.memberPermissions?.sendMessages ?? true);
 
   console.log('🔐 Send message permission check:', {
@@ -1187,6 +1501,103 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     sendMessagesPermission: groupInfo?.settings?.memberPermissions?.sendMessages,
     canSendMessages
   });
+
+  const renderMessageContent = (content: string, messageMentions?: string[]) => {
+    if (!content) return null;
+
+    // Kiểm tra xem tin nhắn có các hình thức tag/lệnh đặc biệt không
+    const lowerContent = content.toLowerCase();
+    const hasSpecialCommands = ['@all', '@bot', '@gif', '@sticker'].some(cmd => lowerContent.includes(cmd));
+    const hasMentions = (messageMentions && messageMentions.length > 0) || hasSpecialCommands;
+
+    if (!hasMentions) {
+      return <span className="text-sm whitespace-pre-wrap break-words">{content}</span>;
+    }
+
+    // Sử dụng cùng logic Regex như ô nhập liệu để đảm bảo thống nhất
+    const specialTags = ['All', 'GIF', 'STICKER', 'Bot'];
+    const sortedMemberNames = [...members]
+      .map(m => m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .sort((a, b) => b.length - a.length);
+    const allPatterns = [...specialTags, ...sortedMemberNames].join('|');
+    const regex = new RegExp(`(@(?:${allPatterns}))`, 'gi');
+
+    const parts = content.split(regex);
+
+    return (
+      <span className="text-sm whitespace-pre-wrap break-words">
+        {parts.map((part, index) => {
+          if (part.startsWith('@')) {
+            const candidate = part.substring(1).toLowerCase().trim();
+            const isMentionAll = candidate === 'all';
+
+            // Tìm thành viên trong danh sách có tên khớp (không phân biệt hoa thường, cắt khoảng trắng)
+            const mentionMember = members.find(m =>
+              m.name.toLowerCase().trim() === candidate ||
+              m.userID === candidate
+            );
+
+            const isValid = isMentionAll ||
+              specialTags.some(t => t.toLowerCase() === candidate) ||
+              !!mentionMember;
+
+            if (isValid) {
+              return (
+                <b
+                  key={index}
+                  className="text-[#0068ff] cursor-pointer hover:underline font-bold"
+                  title={mentionMember ? `Xem hồ sơ của ${mentionMember.name}` : ''}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isMentionAll) {
+                      // Không làm gì khi nhấn @All
+                    } else if (candidate === 'gif' || candidate === 'sticker' || candidate === 'bot') {
+                      // Không làm gì với lệnh hệ thống
+                    } else if (mentionMember) {
+                      handleShowUserProfile(mentionMember.userID);
+                    }
+                  }}
+                >
+                  {part}
+                </b>
+              );
+            }
+          }
+          return <span key={index}>{part}</span>;
+        })}
+      </span>
+    );
+  };
+
+  const handleShowUserProfile = async (targetUserID: string) => {
+    try {
+      // 1. Lấy thông tin cơ bản từ danh sách members hiện có
+      const memberInfo = members.find(m => m.userID === targetUserID);
+
+      // 2. Fetch thông tin đầy đủ từ server
+      const userRes = await axiosInstance.post('/usersID', { userID: targetUserID });
+      const fullUserData = userRes.data;
+
+      // 3. Fetch trạng thái bạn bè
+      const statusRes = await axiosInstance.get(`/contacts/friend-status/${targetUserID}`);
+
+      // 4. Hợp nhất dữ liệu
+      const completeUser = {
+        ...fullUserData,
+        userID: targetUserID,
+        name: fullUserData.name || memberInfo?.name || targetUserID,
+        avatar: fullUserData.anhDaiDien || memberInfo?.avatar,
+        anhDaiDien: fullUserData.anhDaiDien || memberInfo?.avatar,
+        friendStatus: statusRes.data.friendStatus || 'none',
+      };
+
+      setSelectedUserForProfile(completeUser);
+      setShowOtherProfile(true);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      toast.error('Không thể tải thông tin người dùng');
+    }
+  };
 
   return (
     <div
@@ -1199,7 +1610,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         <div className="flex-1 h-full bg-white flex flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center px-4 py-3 bg-white/85 backdrop-blur-xl border-b border-gray-100/80 shadow-[0_1px_3px_rgba(0,0,0,0.02),0_1px_2px_rgba(0,0,0,0.04)] flex-shrink-0 sticky top-0 z-30">
-            <div 
+            <div
               className={`relative flex-shrink-0 mr-3 ${canEditGroupInfo ? 'cursor-pointer group' : ''}`}
               onClick={(e) => {
                 if (canEditGroupInfo) {
@@ -1222,7 +1633,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h2 
+                <h2
                   className={`text-[15px] font-bold m-0 mb-0.5 text-gray-900 ${canEditGroupInfo ? 'cursor-pointer hover:text-[#0068ff] transition-colors' : ''}`}
                   onClick={(e) => {
                     if (canEditGroupInfo) {
@@ -1288,11 +1699,10 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                   if (!showMembersSidebar) fetchJoinRequests();
                 }}
                 title="Danh sách thành viên"
-                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors relative ${
-                  showMembersSidebar
-                    ? 'bg-blue-50 text-[#0068ff]'
-                    : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
-                }`}
+                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors relative ${showMembersSidebar
+                  ? 'bg-blue-50 text-[#0068ff]'
+                  : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
+                  }`}
               >
                 <FaUserFriends />
                 {(() => {
@@ -1314,11 +1724,10 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                   setShowGroupInfoPanel(!showGroupInfoPanel);
                 }}
                 title="Thông tin nhóm"
-                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
-                  showGroupInfoPanel
-                    ? 'bg-blue-50 text-[#0068ff]'
-                    : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
-                }`}
+                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showGroupInfoPanel
+                  ? 'bg-blue-50 text-[#0068ff]'
+                  : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
+                  }`}
               >
                 <FaInfoCircle />
               </button>
@@ -1456,8 +1865,8 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                   const firstMsg = group.messages[0];
 
                   return (
-                    <div 
-                      key={group.groupId} 
+                    <div
+                      key={group.groupId}
                       ref={(el) => {
                         if (el) {
                           // Set ref cho tất cả messages trong group
@@ -1470,10 +1879,10 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                       }}
                       className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${
                         // Highlight nếu bất kỳ message nào trong group được highlight
-                        (group.messages as any).some((msg: Message) => msg.messageID === highlightedMsgId) 
-                          ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1' 
+                        (group.messages as any).some((msg: Message) => msg.messageID === highlightedMsgId)
+                          ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1'
                           : ''
-                      }`}
+                        }`}
                     >
                       {!isMine && (
                         <div className="relative flex-shrink-0 mr-2">
@@ -1507,9 +1916,8 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
                           {/* Action buttons for image group */}
                           <div
-                            className={`absolute ${
-                              isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
-                            } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
+                            className={`absolute ${isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
+                              } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
                           >
                             <button
                               onClick={() => handleAddReaction(firstMsg.messageID || '', '👍')}
@@ -1519,7 +1927,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                               <FaThumbsUp className="text-xs" />
                             </button>
                             <button
-                              onClick={() => setReplyTo(firstMsg as any)}
+                              onClick={() => handleReply(firstMsg as any)}
                               className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
                               title="Trả lời"
                             >
@@ -1599,16 +2007,15 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                 const msgKey = msg.messageID || `temp-${Date.now()}`;
 
                 return (
-                  <div 
-                    key={msgKey} 
+                  <div
+                    key={msgKey}
                     ref={(el) => {
                       if (el && msg.messageID) {
                         msgRefsMap.current.set(msg.messageID, el);
                       }
                     }}
-                    className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${
-                      highlightedMsgId === msg.messageID ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1' : ''
-                    }`}
+                    className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1' : ''
+                      }`}
                   >
                     {/* Notification — căn giữa, không có avatar/bubble */}
                     {msg.type === 'notification' ? (
@@ -1616,6 +2023,20 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                         <div className="max-w-[80%] text-center">
                           {(() => {
                             try {
+                              if (msg.content?.startsWith('##FRIENDSHIP##')) {
+                                const parts = msg.content.split('|');
+                                const senderID = parts[1];
+                                const receiverID = parts[2];
+                                const senderName = parts[3];
+                                const receiverName = parts[4];
+                                const otherName = userID === senderID ? receiverName : senderName;
+                                return (
+                                  <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block">
+                                    Bạn và <b>{otherName}</b> đã trở thành bạn bè
+                                  </span>
+                                );
+                              }
+
                               const parsed = JSON.parse(msg.content || '');
                               if (parsed.type === 'join_request_notification') {
                                 return (
@@ -1634,7 +2055,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                   </span>
                                 );
                               }
-                            } catch { /* không phải JSON */ }
+                            } catch { /* không phải JSON hoặc không phải friendship */ }
                             return (
                               <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block">
                                 {msg.content}
@@ -1644,35 +2065,38 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                         </div>
                       </div>
                     ) : (
-                    <>
-                    {!isMine && (
-                      <div className="relative flex-shrink-0 mr-2">
-                        <img
-                          src={msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`}
-                          alt="avatar"
-                          className="w-8 h-8 rounded-full object-cover"
-                        />
-                      </div>
-                    )}
+                      <>
+                        {!isMine && (
+                          <div className="relative flex-shrink-0 mr-2">
+                            <img
+                              src={msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`}
+                              alt="avatar"
+                              className="w-8 h-8 rounded-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => handleShowUserProfile(msg.senderID)}
+                            />
+                          </div>
+                        )}
 
-                    <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
-                      {!isMine && (
-                        <span className="text-xs text-gray-500 mb-1 font-semibold px-1 flex items-center">
-                          {msg.senderInfo?.name}
-                          <RoleBadge role={getSenderRole(msg.senderID)} />
-                        </span>
-                      )}
+                        <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
+                          {!isMine && (
+                            <span
+                              className="text-xs text-gray-500 mb-1 font-semibold px-1 flex items-center cursor-pointer hover:text-blue-500 transition-colors"
+                              onClick={() => handleShowUserProfile(msg.senderID)}
+                            >
+                              {msg.senderInfo?.name}
+                              <RoleBadge role={getSenderRole(msg.senderID)} />
+                            </span>
+                          )}
 
-                      <div className="relative group">
-                        <div
-                          className={`${
-                            msg.type === 'notification'
-                              ? 'bg-transparent'
-                              : msg.type === 'sticker' || msg.type === 'gif'
-                                ? ''
-                                : isMine
-                                  ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
-                                  : (() => {
+                          <div className="relative group">
+                            <div
+                              className={`${msg.type === 'notification'
+                                ? 'bg-transparent'
+                                : msg.type === 'sticker' || msg.type === 'gif'
+                                  ? ''
+                                  : isMine
+                                    ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
+                                    : (() => {
                                       const senderRole = getSenderRole(msg.senderID);
                                       const isAdminMsg =
                                         groupInfo?.settings?.highlightAdminMessages &&
@@ -1683,205 +2107,203 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                                         return 'bg-blue-50 text-gray-800 border border-blue-300';
                                       return 'bg-white text-gray-800 border border-gray-100';
                                     })()
-                          } ${
-                            msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif'
-                              ? 'p-0 rounded-2xl overflow-hidden'
-                              : msg.type === 'file'
-                                ? 'rounded-2xl'
-                                : 'px-4 py-2.5 rounded-2xl'
-                          } ${msg.type !== 'notification' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'shadow-sm' : ''} ${isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-br-sm' : ''} ${!isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-bl-sm' : ''}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                        {msg.replyTo && (
-                          <div 
-                            className={`text-xs mb-2 pb-2 border-b cursor-pointer hover:bg-gray-50/50 -mx-2 px-2 py-1 rounded transition-colors ${isMine ? 'border-blue-400/30' : 'border-gray-200'}`}
-                            onClick={() => {
-                              if (msg.replyTo?.messageID) {
-                                setHighlightedMsgId(msg.replyTo.messageID);
-                                msgRefsMap.current.get(msg.replyTo.messageID)?.scrollIntoView({
-                                  behavior: 'smooth',
-                                  block: 'center',
-                                });
-                                setTimeout(() => setHighlightedMsgId(null), 2500);
-                              }
-                            }}
-                          >
-                            <span className={`font-semibold ${isMine ? 'text-blue-600' : 'text-gray-700'}`}>
-                              Trả lời {msg.replyTo.senderID === userID ? 'chính mình' : 'tin nhắn'}
-                            </span>
-                            <div className={`mt-0.5 ${isMine ? 'text-gray-600' : 'text-gray-500'}`}>
-                              {msg.replyTo.type === 'text' || msg.replyTo.type === 'emoji' ? (
-                                <span className="line-clamp-1">{msg.replyTo.content}</span>
-                              ) : msg.replyTo.type === 'image' ? (
-                                <span className="flex items-center gap-1">
-                                  <FaImage className="text-[10px]" /> Hình ảnh
-                                </span>
-                              ) : msg.replyTo.type === 'video' ? (
-                                <span className="flex items-center gap-1">
-                                  <FaVideo className="text-[10px]" /> Video
-                                </span>
-                              ) : msg.replyTo.type === 'audio' ? (
-                                <span className="flex items-center gap-1">
-                                  <FaMicrophone className="text-[10px]" /> Tin nhắn thoại
-                                </span>
-                              ) : msg.replyTo.type === 'file' ? (
-                                <span className="flex items-center gap-1">
-                                  <FaPaperclip className="text-[10px]" /> {msg.replyTo.content || 'File'}
-                                </span>
-                              ) : msg.replyTo.type === 'sticker' ? (
-                                <span>Sticker</span>
+                                } ${msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif'
+                                  ? 'p-0 rounded-2xl overflow-hidden'
+                                  : msg.type === 'file'
+                                    ? 'rounded-2xl'
+                                    : 'px-4 py-2.5 rounded-2xl'
+                                } ${msg.type !== 'notification' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'shadow-sm' : ''} ${isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-br-sm' : ''} ${!isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-bl-sm' : ''}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {msg.replyTo && (
+                                <div
+                                  className={`text-xs mb-2 pb-2 border-b cursor-pointer hover:bg-gray-50/50 -mx-2 px-2 py-1 rounded transition-colors ${isMine ? 'border-blue-400/30' : 'border-gray-200'}`}
+                                  onClick={() => {
+                                    if (msg.replyTo?.messageID) {
+                                      setHighlightedMsgId(msg.replyTo.messageID);
+                                      msgRefsMap.current.get(msg.replyTo.messageID)?.scrollIntoView({
+                                        behavior: 'smooth',
+                                        block: 'center',
+                                      });
+                                      setTimeout(() => setHighlightedMsgId(null), 2500);
+                                    }
+                                  }}
+                                >
+                                  <span className={`font-semibold ${isMine ? 'text-blue-600' : 'text-gray-700'}`}>
+                                    Trả lời {msg.replyTo.senderID === userID ? 'chính mình' : (msg.replyTo.senderName || 'tin nhắn')}
+                                  </span>
+                                  <div className={`mt-0.5 ${isMine ? 'text-gray-600' : 'text-gray-500'}`}>
+                                    {msg.replyTo.type === 'text' || msg.replyTo.type === 'emoji' ? (
+                                      <span className="line-clamp-1">{msg.replyTo.content}</span>
+                                    ) : msg.replyTo.type === 'image' ? (
+                                      <span className="flex items-center gap-1">
+                                        <FaImage className="text-[10px]" /> Hình ảnh
+                                      </span>
+                                    ) : msg.replyTo.type === 'video' ? (
+                                      <span className="flex items-center gap-1">
+                                        <FaVideo className="text-[10px]" /> Video
+                                      </span>
+                                    ) : msg.replyTo.type === 'audio' ? (
+                                      <span className="flex items-center gap-1">
+                                        <FaMicrophone className="text-[10px]" /> Tin nhắn thoại
+                                      </span>
+                                    ) : msg.replyTo.type === 'file' ? (
+                                      <span className="flex items-center gap-1">
+                                        <FaPaperclip className="text-[10px]" /> {msg.replyTo.content || 'File'}
+                                      </span>
+                                    ) : msg.replyTo.type === 'sticker' ? (
+                                      <span>Sticker</span>
+                                    ) : (
+                                      <span>{msg.replyTo.content}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {msg.type === 'image' && msg.media_url?.length ? (
+                                <img
+                                  src={msg.media_url[0]}
+                                  alt="img"
+                                  className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg hover:opacity-90 transition-opacity"
+                                  onClick={() => {
+                                    const imageIndex = chatImages.findIndex((img) => img.url === msg.media_url[0]);
+                                    if (imageIndex !== -1) {
+                                      setImageViewerIndex(imageIndex);
+                                      setShowImageViewer(true);
+                                    }
+                                  }}
+                                />
+                              ) : msg.type === 'sticker' && msg.media_url?.length ? (
+                                <div className="p-0">
+                                  <img
+                                    src={msg.media_url[0]}
+                                    alt="sticker"
+                                    className="w-[150px] h-[150px] object-contain cursor-pointer"
+                                    onClick={() => window.open(msg.media_url[0], '_blank')}
+                                  />
+                                </div>
+                              ) : msg.type === 'gif' && msg.media_url?.length ? (
+                                <img
+                                  src={msg.media_url[0]}
+                                  alt="gif"
+                                  className="max-w-[300px] max-h-[300px] w-auto h-auto object-contain cursor-pointer rounded-lg"
+                                  onClick={() => window.open(msg.media_url[0], '_blank')}
+                                />
+                              ) : msg.type === 'video' && msg.media_url?.length ? (
+                                <video src={msg.media_url[0]} controls className="max-w-[280px] rounded-lg" />
+                              ) : msg.type === 'audio' && msg.media_url?.length ? (
+                                <AudioPlayer src={msg.media_url[0]} isMine={isMine} />
+                              ) : msg.type === 'file' && msg.media_url?.length ? (
+                                <FileDisplay fileName={msg.content || 'file'} fileUrl={msg.media_url[0]} isMine={isMine} />
                               ) : (
-                                <span>{msg.replyTo.content}</span>
+                                renderMessageContent(msg.content || '', msg.mentions)
+                              )}
+
+                              {msg.reactions && msg.reactions.length > 0 && (
+                                <div className="flex gap-1 mt-2 flex-wrap">
+                                  {msg.reactions.map((reaction, rIdx) => (
+                                    <span
+                                      key={rIdx}
+                                      className="bg-white/20 px-1.5 py-0.5 rounded-full text-xs cursor-pointer hover:bg-white/30"
+                                    >
+                                      {reaction.emoji}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Action buttons */}
+                              {msg.type !== 'notification' && (
+                                <>
+                                  <div
+                                    className={`absolute ${isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
+                                      } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
+                                  >
+                                    <button
+                                      onClick={() => handleAddReaction(msg.messageID, '👍')}
+                                      className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
+                                      title="Thích"
+                                    >
+                                      <FaThumbsUp className="text-xs" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleReply(msg)}
+                                      className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
+                                      title="Trả lời"
+                                    >
+                                      <FaReply className="text-xs" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActionMsgId(actionMsgId === msg.messageID ? null : msg.messageID);
+                                      }}
+                                      className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
+                                      title="Thêm"
+                                    >
+                                      <FaEllipsisV className="text-xs" />
+                                    </button>
+                                  </div>
+
+                                  {/* Context Menu */}
+                                  {actionMsgId === msg.messageID && (
+                                    <div
+                                      className={`absolute z-20 bg-white rounded-xl shadow-xl border border-gray-100 py-1 min-w-[160px] ${isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'} top-0`}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {(msg.type === 'text' || msg.type === 'emoji') && (
+                                        <button
+                                          onClick={() => handleCopy(msg)}
+                                          className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                        >
+                                          <FaCopy className="text-xs" />
+                                          Sao chép
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={() => handleForwardMessage(msg)}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                      >
+                                        <FaForward className="text-xs" />
+                                        Chuyển tiếp
+                                      </button>
+                                      <button
+                                        onClick={() => handlePin(msg)}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                      >
+                                        <BsPin className="text-xs" />
+                                        {msg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
+                                      </button>
+                                      {isMine && msg.type !== 'notification' && (
+                                        <>
+                                          <button
+                                            onClick={() => handleDeleteLocal(msg)}
+                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 transition-colors"
+                                          >
+                                            <FaTrash className="text-xs" />
+                                            Xóa phía tôi
+                                          </button>
+                                          <button
+                                            onClick={() => handleUnsend(msg)}
+                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
+                                          >
+                                            <FaTrash className="text-xs" />
+                                            Thu hồi
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
-                        )}
 
-                        {msg.type === 'image' && msg.media_url?.length ? (
-                          <img
-                            src={msg.media_url[0]}
-                            alt="img"
-                            className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg hover:opacity-90 transition-opacity"
-                            onClick={() => {
-                              const imageIndex = chatImages.findIndex((img) => img.url === msg.media_url[0]);
-                              if (imageIndex !== -1) {
-                                setImageViewerIndex(imageIndex);
-                                setShowImageViewer(true);
-                              }
-                            }}
-                          />
-                        ) : msg.type === 'sticker' && msg.media_url?.length ? (
-                          <div className="p-0">
-                            <img
-                              src={msg.media_url[0]}
-                              alt="sticker"
-                              className="w-[150px] h-[150px] object-contain cursor-pointer"
-                              onClick={() => window.open(msg.media_url[0], '_blank')}
-                            />
-                          </div>
-                        ) : msg.type === 'gif' && msg.media_url?.length ? (
-                          <img
-                            src={msg.media_url[0]}
-                            alt="gif"
-                            className="max-w-[300px] max-h-[300px] w-auto h-auto object-contain cursor-pointer rounded-lg"
-                            onClick={() => window.open(msg.media_url[0], '_blank')}
-                          />
-                        ) : msg.type === 'video' && msg.media_url?.length ? (
-                          <video src={msg.media_url[0]} controls className="max-w-[280px] rounded-lg" />
-                        ) : msg.type === 'audio' && msg.media_url?.length ? (
-                          <AudioPlayer src={msg.media_url[0]} isMine={isMine} />
-                        ) : msg.type === 'file' && msg.media_url?.length ? (
-                          <FileDisplay fileName={msg.content || 'file'} fileUrl={msg.media_url[0]} isMine={isMine} />
-                        ) : (
-                          <span className="text-sm whitespace-pre-wrap break-words">{msg.content}</span>
-                        )}
-
-                        {msg.reactions && msg.reactions.length > 0 && (
-                          <div className="flex gap-1 mt-2 flex-wrap">
-                            {msg.reactions.map((reaction, rIdx) => (
-                              <span
-                                key={rIdx}
-                                className="bg-white/20 px-1.5 py-0.5 rounded-full text-xs cursor-pointer hover:bg-white/30"
-                              >
-                                {reaction.emoji}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Action buttons */}
-                        {msg.type !== 'notification' && (
-                          <>
-                            <div
-                              className={`absolute ${
-                                isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
-                              } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
-                            >
-                              <button
-                                onClick={() => handleAddReaction(msg.messageID, '👍')}
-                                className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
-                                title="Thích"
-                              >
-                                <FaThumbsUp className="text-xs" />
-                              </button>
-                              <button
-                                onClick={() => setReplyTo(msg)}
-                                className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
-                                title="Trả lời"
-                              >
-                                <FaReply className="text-xs" />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActionMsgId(actionMsgId === msg.messageID ? null : msg.messageID);
-                                }}
-                                className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
-                                title="Thêm"
-                              >
-                                <FaEllipsisV className="text-xs" />
-                              </button>
-                            </div>
-
-                            {/* Context Menu */}
-                            {actionMsgId === msg.messageID && (
-                              <div
-                                className={`absolute z-20 bg-white rounded-xl shadow-xl border border-gray-100 py-1 min-w-[160px] ${isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'} top-0`}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {(msg.type === 'text' || msg.type === 'emoji') && (
-                                  <button
-                                    onClick={() => handleCopy(msg)}
-                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                                  >
-                                    <FaCopy className="text-xs" />
-                                    Sao chép
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => handleForwardMessage(msg)}
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                                >
-                                  <FaForward className="text-xs" />
-                                  Chuyển tiếp
-                                </button>
-                                <button
-                                  onClick={() => handlePin(msg)}
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                                >
-                                  <BsPin className="text-xs" />
-                                  {msg.pinnedInfo ? 'Bỏ ghim' : 'Ghim tin nhắn'}
-                                </button>
-                                {isMine && msg.type !== 'notification' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleDeleteLocal(msg)}
-                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 transition-colors"
-                                    >
-                                      <FaTrash className="text-xs" />
-                                      Xóa phía tôi
-                                    </button>
-                                    <button
-                                      onClick={() => handleUnsend(msg)}
-                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
-                                    >
-                                      <FaTrash className="text-xs" />
-                                      Thu hồi
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </>
-                        )}
+                          <span className={`text-[11px] text-gray-400 mt-1 px-1`}>
+                            {formatTime(msg.timestamp)}
+                          </span>
                         </div>
-                      </div>
-
-                      <span className={`text-[11px] text-gray-400 mt-1 px-1`}>
-                        {formatTime(msg.timestamp)}
-                      </span>
-                    </div>
-                    </>
+                      </>
                     )}
                   </div>
                 );
@@ -2137,32 +2559,171 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               </div>
             )}
 
-            {/* Text input */}
-            {canSendMessages && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-white">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => handleInputChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  placeholder="Nhập tin nhắn..."
-                  className="flex-1 px-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#0068ff]/20 transition-all"
-                />
+            {/* Thành phần Dropdown gợi ý Mention */}
+            <MentionDropdown
+              ref={mentionDropdownRef}
+              isOpen={showMentionDropdown && canSendMessages}
+              members={members.filter(m => m.userID !== userID)}
+              query={mentionSearch}
+              onSelect={handleMentionSelect}
+              onClose={() => setShowMentionDropdown(false)}
+              coords={dropdownCoords}
+              existingMentionIDs={mentions}
+            />
 
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!inputText.trim() || isUploading}
-                  className="w-9 h-9 flex items-center justify-center rounded-full bg-[#0068ff] text-white hover:bg-[#0077c2] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Gửi"
-                >
-                  <FaPaperPlane className="text-sm" />
-                </button>
+            {/* Ô nhập văn bản với lớp phủ Highlight và Suggestions */}
+            {canSendMessages && (
+              <div className="flex flex-col bg-white">
+
+                {/* Thanh Suggestion cho @Bot */}
+                {inputText.toLowerCase().includes('@bot') && (
+                  <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-100 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden w-full text-sm">
+                    {['Tóm tắt nhóm chat', 'Lên lịch họp', 'Dịch tin nhắn gần nhất', 'Tạo bình chọn'].map((sug, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          const hasSpace = inputText.endsWith(' ');
+                          handleInputChange(inputText + (hasSpace ? sug : ' ' + sug) + ' ');
+                          inputRef.current?.focus();
+                        }}
+                        className="px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0 font-medium border border-indigo-100/50 flex items-center gap-1.5"
+                      >
+                        <span className="text-[10px] opacity-70">✦</span> {sug}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Thanh Suggestion cho @STICKER (Yêu cầu mới) */}
+                {inputText.toLowerCase().startsWith('@sticker') && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden w-full bg-white/50 backdrop-blur-sm">
+                    {(() => {
+                      const query = inputText.substring(8).trim().toLowerCase();
+                      const filtered = query
+                        ? STICKER_DATA.filter(s => s.name.includes(query) || s.tags.some(t => t.includes(query)))
+                        : STICKER_DATA;
+
+                      if (filtered.length === 0) {
+                        return <span className="text-xs text-gray-500 mx-auto italic py-1">Vui lòng thử lại với từ khóa khác</span>;
+                      }
+
+                      return filtered.map((sticker, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            sendSticker(sticker.url);
+                            handleInputChange(''); // Clear input sau khi gửi
+                          }}
+                          className="w-[60px] h-[60px] shrink-0 bg-gray-50 rounded-xl p-1.5 hover:bg-blue-50 hover:scale-110 transition-all border border-gray-100/50 shadow-sm"
+                          title={sticker.name}
+                        >
+                          <img src={sticker.url} alt={sticker.name} className="w-full h-full object-contain" />
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                )}
+
+                {/* Thanh Suggestion cho @GIF (Mới) */}
+                {inputText.toLowerCase().startsWith('@gif') && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden w-full bg-white/50 backdrop-blur-sm h-[90px]">
+                    {isLoadingGifs ? (
+                      <div className="flex items-center gap-2 text-gray-400 italic text-xs py-2 mx-auto">
+                        <div className="w-3 h-3 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                        Đang tìm GIF...
+                      </div>
+                    ) : suggestedGifs.length === 0 ? (
+                      <span className="text-xs text-gray-500 mx-auto italic py-1">Không tìm thấy GIF phù hợp</span>
+                    ) : (
+                      suggestedGifs.map((gif, i) => (
+                        <button
+                          key={gif.id}
+                          onClick={() => {
+                            sendGif(gif.images.original.url);
+                            handleInputChange(''); 
+                          }}
+                          className="w-[100px] h-[70px] shrink-0 bg-gray-50 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-400 hover:scale-105 transition-all shadow-sm"
+                        >
+                          <img src={gif.images.fixed_height.url} alt="gif" className="w-full h-full object-cover" />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 px-4 py-2 bg-white">
+                  <div className="flex-1 relative group h-[40px] bg-gray-100 rounded-full overflow-hidden">
+                    {/* Lớp phủ Highlight (Phản chiếu nội dung của ô nhập) */}
+                    <div
+                      ref={overlayRef}
+                      className="absolute inset-0 px-4 py-2 text-sm font-sans pointer-events-none whitespace-pre overflow-hidden text-gray-900 z-10 box-border leading-[24px]"
+                      aria-hidden="true"
+                      style={{
+                        letterSpacing: 'normal',
+                        fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                        margin: 0,
+                        border: 'none'
+                      }}
+                    >
+                      {renderHighlightedInputText(inputText)}
+                    </div>
+
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={inputText}
+                      onChange={handleInputChange}
+                      onScroll={() => {
+                        if (inputRef.current && overlayRef.current) {
+                          overlayRef.current.scrollLeft = inputRef.current.scrollLeft;
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          // Nếu dropdown đang mở, ưu tiên xử lý phím Enter tại đó
+                          if (showMentionDropdown && mentionDropdownRef.current) {
+                            const handled = mentionDropdownRef.current.handleKeyDown(e);
+                            if (handled) return;
+                          }
+
+                          e.preventDefault();
+                          handleSendMessage();
+                        } else if (showMentionDropdown && mentionDropdownRef.current) {
+                          // Các phím điều hướng khác (Up, Down, Escape)
+                          mentionDropdownRef.current.handleKeyDown(e);
+                        }
+                      }}
+                      placeholder={
+                        inputText.toLowerCase().startsWith('@gif')
+                          ? "Gõ từ khóa để tìm kiếm GIF"
+                          : inputText.toLowerCase().startsWith('@sticker')
+                            ? "Gõ từ khóa để tìm kiếm Sticker"
+                            : inputText.toLowerCase().includes('@bot')
+                              ? "Bạn có yêu cầu gì"
+                              : `Nhập @, tin nhắn tới ${groupInfo?.name || "nhóm"}`
+                      }
+                      className="absolute inset-0 w-full h-full px-4 py-2 bg-transparent text-transparent caret-gray-900 text-sm font-sans focus:outline-none z-20 box-border leading-[24px]"
+                      style={{
+                        letterSpacing: 'normal',
+                        fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                        margin: 0,
+                        border: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!inputText.trim() || isUploading}
+                    className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${inputText.toLowerCase().includes('@bot')
+                      ? 'bg-indigo-500 hover:bg-indigo-600 text-white shadow-sm'
+                      : 'bg-[#0068ff] text-white hover:bg-[#0077c2]'
+                      }`}
+                    title="Gửi"
+                  >
+                    <FaPaperPlane className="text-sm" />
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -2206,7 +2767,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
 
         {/* Members Sidebar */}
         {showMembersSidebar && (
-          <div 
+          <div
             className="w-[280px] bg-white border-l border-gray-200 flex flex-col overflow-hidden"
             onClick={() => setMemberMenuId(null)}
           >
@@ -2220,7 +2781,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               </button>
             </div>
 
-            {/* Nút thêm thành viên */}
             <div className="px-3 pt-3 pb-2">
               <button
                 onClick={(e) => {
@@ -2234,7 +2794,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               </button>
             </div>
 
-            {/* Join Requests — chỉ owner/admin thấy */}
             {joinRequests.length > 0 && (() => {
               const currentRole = members.find(m => m.userID === userID)?.role;
               if (currentRole !== 'owner' && currentRole !== 'admin') return null;
@@ -2296,13 +2855,14 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               {members.map((member) => {
                 const currentUserMember = members.find(m => m.userID === userID);
                 const currentUserRole = currentUserMember?.role;
-                const canManage = currentUserRole === 'owner' || 
+                const canManage = currentUserRole === 'owner' ||
                   (currentUserRole === 'admin' && member.role === 'member');
-                
+
                 return (
                   <div
                     key={member.userID}
-                    className="relative flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors group"
+                    className="relative flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors group cursor-pointer"
+                    onClick={() => handleShowUserProfile(member.userID)}
                   >
                     <img
                       src={member.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.userID}`}
@@ -2312,19 +2872,17 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 m-0 truncate">{member.name}</p>
                       <p
-                        className={`text-xs m-0 ${
-                          member.role === 'owner'
-                            ? 'text-red-500 font-semibold'
-                            : member.role === 'admin'
-                              ? 'text-orange-500 font-semibold'
-                              : 'text-gray-500'
-                        }`}
+                        className={`text-xs m-0 ${member.role === 'owner'
+                          ? 'text-red-500 font-semibold'
+                          : member.role === 'admin'
+                            ? 'text-orange-500 font-semibold'
+                            : 'text-gray-500'
+                          }`}
                       >
                         {member.role === 'owner' ? 'Trưởng nhóm' : member.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}
                       </p>
                     </div>
-                    
-                    {/* Context menu button - chỉ hiện với member có thể quản lý và không phải chính mình */}
+
                     {canManage && member.userID !== userID && member.role !== 'owner' && (
                       <button
                         onClick={(e) => {
@@ -2337,7 +2895,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                       </button>
                     )}
 
-                    {/* Context Menu */}
                     {memberMenuId === member.userID && (
                       <div
                         className="absolute right-2 top-full mt-1 z-30 bg-white rounded-xl shadow-xl border border-gray-100 py-1 min-w-[180px]"
@@ -2365,7 +2922,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
                             )}
                           </>
                         )}
-                        
+
                         <button
                           onClick={() => handleKickMember(member.userID, member.name)}
                           className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
@@ -2383,16 +2940,15 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         )}
       </div>
 
-      {/* Forward Message Modal */}
+      {/* Modals outside flex row */}
       {forwardingMessage && (
         <ForwardMessageModal
           message={{ ...forwardingMessage, chatID: forwardingMessage.groupID } as any}
           onClose={() => setForwardingMessage(null)}
-          user={{ userID, name: groupInfo?.members?.find(m => m.userID === userID)?.name || 'User' }}
+          user={{ userID, name: members.find(m => m.userID === userID)?.name || 'User' }}
         />
       )}
 
-      {/* Image Viewer Modal */}
       {showImageViewer && (
         <ImageViewerModal
           images={chatImages}
@@ -2401,7 +2957,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         />
       )}
 
-      {/* Add Members Modal */}
       {showAddMembersModal && (
         <AddMembersModal
           groupID={groupID}
@@ -2428,17 +2983,12 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         />
       )}
 
-      {/* Group Management Modal */}
       {showManagementModal && groupInfo && (
         <GroupManagementModal
           groupInfo={groupInfo}
           currentUserID={userID}
-          onClose={() => {
-            setShowManagementModal(false);
-          }}
-          onUpdate={() => {
-            refreshGroupInfo();
-          }}
+          onClose={() => setShowManagementModal(false)}
+          onUpdate={() => refreshGroupInfo()}
           onDeleteGroup={async () => {
             try {
               await axiosInstance.delete(`/groups/${groupID}`);
@@ -2451,7 +3001,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         />
       )}
 
-      {/* Edit Group Info Modal */}
       {showEditGroupInfoModal && groupInfo && (
         <EditGroupInfoModal
           groupID={groupInfo.groupID}
@@ -2465,7 +3014,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
         />
       )}
 
-      {/* Pending Approval Modal */}
       {pendingApprovalModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]"
@@ -2479,63 +3027,63 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
               <h3 className="text-base font-semibold text-gray-800">Yêu cầu tham gia nhóm</h3>
             </div>
 
-            {joinRequests.some(r => r.requestID === pendingApprovalModal.requestID) ? (
-              <>
-                <div className="px-5 py-4">
-                  <p className="text-sm text-gray-700">
-                    <b>{pendingApprovalModal.inviteeName}</b> được <b>{pendingApprovalModal.inviterName}</b> mời tham gia nhóm.
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">Bạn có muốn đồng ý cho họ vào nhóm không?</p>
-                </div>
-                <div className="flex gap-2 px-5 pb-4">
-                  <button
-                    onClick={async () => {
-                      try {
-                        await axiosInstance.post(`/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/reject`);
-                        setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
-                        toast.success(`Đã từ chối ${pendingApprovalModal.inviteeName}`);
-                        setPendingApprovalModal(null);
-                      } catch { toast.error('Lỗi khi từ chối'); }
-                    }}
-                    className="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-700 font-medium transition-colors"
-                  >
-                    Từ chối
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await axiosInstance.post(`/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/approve`);
-                        setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
-                        fetchGroupData();
-                        toast.success(`Đã đồng ý cho ${pendingApprovalModal.inviteeName} vào nhóm`);
-                        setPendingApprovalModal(null);
-                      } catch { toast.error('Lỗi khi phê duyệt'); }
-                    }}
-                    className="flex-1 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-sm text-white font-semibold transition-colors"
-                  >
-                    Đồng ý
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="px-5 py-6 flex flex-col items-center gap-2">
-                  <span className="text-3xl">✅</span>
-                  <p className="text-sm text-gray-500 text-center">Không còn yêu cầu tham gia nào</p>
-                </div>
-                <div className="px-5 pb-4">
-                  <button
-                    onClick={() => setPendingApprovalModal(null)}
-                    className="w-full py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-700 font-medium transition-colors"
-                  >
-                    Đóng
-                  </button>
-                </div>
-              </>
-            )}
+            <div className="px-5 py-4">
+              <p className="text-sm text-gray-700">
+                <b>{pendingApprovalModal.inviteeName}</b> được <b>{pendingApprovalModal.inviterName}</b> mời tham gia nhóm.
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Bạn có muốn đồng ý cho họ vào nhóm không?</p>
+            </div>
+            <div className="flex gap-2 px-5 pb-4">
+              <button
+                onClick={async () => {
+                  try {
+                    await axiosInstance.post(`/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/reject`);
+                    setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
+                    toast.success(`Đã từ chối ${pendingApprovalModal.inviteeName}`);
+                    setPendingApprovalModal(null);
+                  } catch { toast.error('Lỗi khi từ chối'); }
+                }}
+                className="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-700 font-medium transition-colors"
+              >
+                Từ chối
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await axiosInstance.post(`/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/approve`);
+                    setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
+                    fetchGroupData();
+                    toast.success(`Đã đồng ý cho ${pendingApprovalModal.inviteeName} vào nhóm`);
+                    setPendingApprovalModal(null);
+                  } catch { toast.error('Lỗi khi phê duyệt'); }
+                }}
+                className="flex-1 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-sm text-white font-semibold transition-colors"
+              >
+                Đồng ý
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {showOtherProfile && selectedUserForProfile && (
+        <OtherProfileModal
+          user={selectedUserForProfile}
+          currentUser={members.find((m) => m.userID === userID)}
+          onClose={() => setShowOtherProfile(false)}
+          onStartChat={() => setShowOtherProfile(false)}
+        />
+      )}
+
+      {showUserProfile && (
+        <UserProfileModal
+          user={members.find((m) => m.userID === userID) as any}
+          onClose={() => setShowUserProfile(false)}
+          setUser={() => { }}
+        />
       )}
     </div>
   );
 };
+
+export default GroupChatWindow;

@@ -92,7 +92,8 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
       });
 
       const messageID = generateMessageID();
-      const { groupID, senderID, content, type, media_url, replyTo, groupId } = data;
+      const { groupID, senderID, content, type, media_url, replyTo, groupId, mentions } = data;
+      console.log('🗣️ Mentions received:', mentions);
 
       // Kiểm tra quyền
       const member = await GroupMember.findOne({
@@ -130,6 +131,14 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         }
       }
 
+      // Validate mentions - Đảm bảo những người được mention thuộc nhóm
+      let validMentions: string[] = [];
+      if (Array.isArray(mentions) && mentions.length > 0) {
+        const groupMembers = await GroupMember.find({ groupID, isActive: true }).select('userID');
+        const memberIDs = groupMembers.map(m => m.userID);
+        validMentions = mentions.filter(id => memberIDs.includes(id));
+      }
+
       const newMsg = new GroupMessage({
         messageID,
         groupID,
@@ -140,6 +149,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         timestamp: new Date(),
         replyTo,
         groupId, // Thêm groupId để gom nhóm ảnh
+        mentions: validMentions,
       });
 
       const saved = await newMsg.save();
@@ -158,6 +168,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
         status: 'sent',
         replyTo,
         groupId, // Thêm groupId vào response
+        mentions: saved.mentions, // Nhắc tên
         senderInfo: {
           name: sender?.name || 'Người dùng',
           avatar: sender?.anhDaiDien || null,
@@ -166,12 +177,41 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
       // Gửi tới tất cả trong group
       console.log('✅ Broadcasting message to group:', groupID);
-      console.log('📊 Rooms in server:', Array.from(io.sockets.adapter.rooms.keys()));
-      console.log('📊 Sockets in group room:', io.sockets.adapter.rooms.get(groupID)?.size || 0);
-      
       io.to(groupID).emit('new_group_message', fullMessage);
       
       console.log('📤 Message broadcasted to room:', groupID);
+
+      // ==================== XỬ LÝ MENTION ====================
+      // 1. Nhắc tên cá nhân
+      if (validMentions.length > 0) {
+        console.log(`🔔 Sending user_mentioned to ${validMentions.length} users`);
+        validMentions.forEach(mentionedUserID => {
+          // Không tự mention chính mình để tránh spam notification
+          if (mentionedUserID !== senderID) {
+            io.to(`user_${mentionedUserID}`).emit('user_mentioned', {
+              groupID,
+              messageID: saved.messageID,
+              mentionerID: senderID,
+              mentionerName: sender?.name || 'Người dùng',
+              contentSnippet: content?.substring(0, 50)
+            });
+          }
+        });
+      }
+
+      // 2. Nhắc tên tất cả (@all)
+      if (content && content.toLowerCase().includes('@all')) {
+        console.log('🔔 Sending group_mention_all to group:', groupID);
+        // Loại bỏ người gửi khỏi thông báo mention_all nếu cần, 
+        // nhưng thông thường @all gửi cho tất cả thành viên đang lắng nghe
+        socket.to(groupID).emit('group_mention_all', {
+          groupID,
+          messageID: saved.messageID,
+          mentionerID: senderID,
+          mentionerName: sender?.name || 'Người dùng',
+          contentSnippet: content?.substring(0, 50)
+        });
+      }
 
       // Acknowledge callback nếu có
       if (callback) {
@@ -229,7 +269,7 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
             }
 
             let msgContent = msg.content;
-            if (!msgContent || msgContent.trim() === '') {
+            if (!msgContent || (typeof msgContent === 'string' && msgContent.trim() === '')) {
               const mediaTypes: Record<string, string> = {
                 image: '[Hình ảnh]',
                 video: '[Video]',

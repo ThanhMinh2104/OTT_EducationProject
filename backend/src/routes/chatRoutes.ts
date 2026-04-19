@@ -211,7 +211,7 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
   const groupChats = groups.map((g) => {
     const messages = msgByGroup[g.groupID] || [];
     const unreadCount = messages.filter(
-      (msg) => msg.senderID !== userID && msg.status !== 'read'
+      (msg) => msg.senderID !== userID && !msg.seenBy?.some((s: any) => s.userID === userID)
     ).length;
 
     return {

@@ -48,14 +48,29 @@ interface Props {
   activeTab?: 'chats' | 'contacts';
 }
 
-const getLastMsgPreview = (chat: Chat, userID: string): string => {
+const getLastMsgPreview = (chat: Chat, userID: string, userName?: string): string => {
   const msgs = [...(chat.lastMessage || [])].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
   const last = msgs[msgs.length - 1];
   if (!last) return 'Chưa có tin nhắn';
   const isMine = last.senderID === userID;
-  const prefix = isMine ? 'Bạn: ' : '';
+  const senderName = last.senderInfo?.name || 'Người dùng';
+  const prefix = isMine ? 'Bạn: ' : (chat.type === 'group' ? `${senderName}: ` : '');
+
+  // Xử lý Mention (Yêu cầu 2)
+  if (!isMine && last.type === 'text' && last.content) {
+    if (last.content.includes('@All')) {
+      const cleanContent = last.content.replace(/@All/gi, '').trim();
+      return `${senderName} đã nhắc cả nhóm: "${cleanContent || '...'}"`;
+    }
+    // Tìm mention cụ thể tới mình (@Name)
+    if (userName && last.content.includes(`@${userName}`)) {
+      const cleanContent = last.content.replace(new RegExp(`@${userName}`, 'gi'), '').trim();
+      return `${senderName} đã nhắc bạn: "${cleanContent || '...'}"`;
+    }
+  }
+
   switch (last.type) {
     case 'image':
       return prefix + '[Hình ảnh]';
@@ -65,11 +80,26 @@ const getLastMsgPreview = (chat: Chat, userID: string): string => {
       return prefix + '[Tin nhắn thoại]';
     case 'file':
       return prefix + '[File]';
+    case 'sticker':
+      return prefix + '[Sticker]';
+    case 'gif':
+      return prefix + '[GIF]';
     case 'emoji':
       return prefix + (last.content || '');
     case 'unsend':
       return isMine ? 'Bạn đã thu hồi tin nhắn' : 'Tin nhắn đã bị thu hồi';
     case 'notification':
+      if (last.content?.startsWith('##FRIENDSHIP##')) {
+        const parts = last.content.split('|');
+        // ##FRIENDSHIP##|senderID|receiverID|senderName|receiverName|...
+        const senderID = parts[1];
+        const receiverID = parts[2];
+        const senderName = parts[3];
+        const receiverName = parts[4];
+        
+        const otherName = userID === senderID ? receiverName : senderName;
+        return `Bạn và ${otherName} đã trở thành bạn bè`;
+      }
       return last.content || '';
     case 'call-missed':
       return '📞 Cuộc gọi nhỡ';
@@ -630,7 +660,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
                 </p>
               ) : (
                 <p className="text-[13px] text-gray-400 m-0 truncate">
-                  {getLastMsgPreview(chat, user?.userID || '')}
+                  {getLastMsgPreview(chat, user?.userID || '', user?.name)}
                 </p>
               )}
             </div>

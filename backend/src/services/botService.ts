@@ -176,14 +176,15 @@ export async function getChatHistory(chatID: string, limit: number = 50): Promis
 export function isBotMention(message: string): boolean {
   const lowerMessage = message.toLowerCase().trim();
   
-  // Các pattern gọi bot
+  // Các pattern gọi bot (vòng lặp đã được ngăn bởi check senderID !== 'bot' trong messageEvents)
   const botPatterns = [
     '@bot',
     '/bot',
-    'bot ',
     'hey bot',
     'hi bot',
     'hello bot',
+    'xin chào bot',
+    'bot ơi',
   ];
 
   return botPatterns.some(pattern => lowerMessage.includes(pattern));
