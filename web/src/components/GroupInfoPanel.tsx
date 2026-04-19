@@ -186,6 +186,9 @@ const GroupInfoPanel = ({
   const canEditGroupInfo = isOwner || isAdmin ||
     (groupInfo.settings?.memberPermissions?.changeNameAvatar ?? true);
 
+  const canCreateNotes = isOwner || isAdmin ||
+    (groupInfo.settings?.memberPermissions?.createNotes ?? true);
+
   const mediaImages = messages
     .filter((m) => m.type === 'image' && m.media_url?.length)
     .flatMap((m) => (m.media_url || []).map((url, i) => ({ url, timestamp: m.timestamp, id: `${m.messageID}_${i}` })));
@@ -708,6 +711,7 @@ const GroupInfoPanel = ({
         userID={currentUserID}
         onViewMessage={onViewMessage}
         onPinLimitReached={onPinLimitReached}
+        canCreateNotes={canCreateNotes}
       />
     </>
   );
