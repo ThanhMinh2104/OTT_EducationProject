@@ -1,0 +1,31 @@
+/* Animations for GroupBoardModal */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #3a3a3a;
+  border-top-color: #0084ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.note-form-container,
+.note-view-container {
+  animation: slideInRight 0.3s ease-out;
+}
