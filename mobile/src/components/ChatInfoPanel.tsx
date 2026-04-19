@@ -11,13 +11,18 @@ import {
   Linking,
   Dimensions,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../utils/config';
 import ImageViewer from './ImageViewer';
 import VideoViewer from './VideoViewer';
 import { downloadAndOpenFile } from '../utils/fileDownload';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import GroupManagementModal from './GroupManagementModal';
+import GroupMembersModal from './GroupMembersModal';
+import AddMembersModal from './AddMembersModal';
+import { EditGroupInfoModal } from './EditGroupInfoModal';
 
 const { width } = Dimensions.get('window');
 
@@ -64,12 +69,14 @@ interface Props {
 
 type Tab = 'media' | 'files' | 'links';
 
-const formatDate = (ts: string) =>
-  new Date(ts).toLocaleDateString('vi-VN', {
+const formatDate = (ts: string | Date) => {
+  const date = typeof ts === 'string' ? new Date(ts) : ts;
+  return date.toLocaleDateString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
+};
 
 const getFileExt = (name: string) => (name.split('.').pop() || '').toUpperCase();
 const getFileColor = (name: string) => {
@@ -103,6 +110,134 @@ const ChatInfoPanel = ({
   const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
   const [friendStatus, setFriendStatus] = useState<string>('none');
+  const [showBoardExpanded, setShowBoardExpanded] = useState(true);
+  const [boardTab, setBoardTab] = useState<'reminders' | 'notes'>('reminders');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
+  const [showManagementModal, setShowManagementModal] = useState(false);
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [currentUserID, setCurrentUserID] = useState<string>('');
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+  const [membersWithInfo, setMembersWithInfo] = useState<Array<{
+    userID: string;
+    name: string;
+    avatar?: string;
+    role: 'owner' | 'admin' | 'member';
+  }>>([]);
+  const [availableFriends, setAvailableFriends] = useState<Array<{
+    userID: string;
+    name: string;
+    avatar?: string;
+  }>>([]);
+  const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+
+  // Fetch current user ID
+  React.useEffect(() => {
+    const fetchCurrentUserID = async () => {
+      try {
+        const userID = await AsyncStorage.getItem('userID');
+        if (userID) setCurrentUserID(userID);
+      } catch (error) {
+        console.error('Error fetching userID:', error);
+      }
+    };
+    fetchCurrentUserID();
+  }, []);
+
+  // Fetch member info when opening members modal
+  React.useEffect(() => {
+    const fetchMembersInfo = async () => {
+      if (!showMembersModal || chat.type !== 'group') return;
+      
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const membersInfo = await Promise.all(
+          chat.members.map(async (m) => {
+            try {
+              const res = await fetch(`${API_URL}/api/usersID`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ userID: m.userID }),
+              });
+              const data = await res.json();
+              return {
+                userID: m.userID,
+                name: data.name || m.userID,
+                avatar: data.anhDaiDien,
+                role: m.role as 'owner' | 'admin' | 'member',
+              };
+            } catch {
+              return {
+                userID: m.userID,
+                name: m.userID,
+                role: m.role as 'owner' | 'admin' | 'member',
+              };
+            }
+          })
+        );
+        setMembersWithInfo(membersInfo);
+      } catch (error) {
+        console.error('Error fetching members info:', error);
+      }
+    };
+    
+    fetchMembersInfo();
+  }, [showMembersModal, chat.type, chat.members]);
+
+  // Fetch available friends when opening add members modal
+  React.useEffect(() => {
+    const fetchAvailableFriends = async () => {
+      if (!showAddMembersModal || chat.type !== 'group') return;
+      
+      setIsLoadingFriends(true);
+      try {
+        const token = await AsyncStorage.getItem('token');
+        
+        console.log('🔵 Fetching friends for add members modal...');
+        console.log('🔵 Current group members:', chat.members.map(m => m.userID));
+        
+        // Fetch danh sách contacts - sử dụng POST /api/contacts/friends
+        const contactsRes = await fetch(`${API_URL}/api/contacts/friends`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}` 
+          },
+        });
+        
+        if (!contactsRes.ok) {
+          throw new Error('Failed to fetch contacts');
+        }
+        
+        const contactsData = await contactsRes.json();
+        console.log('🔵 All friends from API:', contactsData.length, contactsData);
+        
+        // Lọc ra những bạn bè chưa có trong nhóm
+        const memberUserIDs = new Set(chat.members.map(m => m.userID));
+        const availableFriendsList = contactsData
+          .filter((contact: any) => !memberUserIDs.has(contact.userID))
+          .map((contact: any) => ({
+            userID: contact.userID,
+            name: contact.alias || contact.name || contact.userID,
+            avatar: contact.anhDaiDien,
+          }));
+        
+        console.log('🔵 Available friends (not in group):', availableFriendsList.length, availableFriendsList);
+        setAvailableFriends(availableFriendsList);
+      } catch (error) {
+        console.error('❌ Error fetching available friends:', error);
+        setAvailableFriends([]);
+      } finally {
+        setIsLoadingFriends(false);
+      }
+    };
+    
+    fetchAvailableFriends();
+  }, [showAddMembersModal, chat.type, chat.members]);
 
   // Fetch friend status khi mở panel
   React.useEffect(() => {
@@ -160,7 +295,7 @@ const ChatInfoPanel = ({
     .map((m) => ({
       url: m.content || '',
       timestamp: m.timestamp,
-      id: m.messageID || m.timestamp,
+      id: m.messageID || `link_${typeof m.timestamp === 'string' ? m.timestamp : m.timestamp.toISOString()}`,
     }));
 
   const allImageUrls = mediaImages.map((i) => i.url);
@@ -236,6 +371,79 @@ const ChatInfoPanel = ({
       : chat.avatar ||
         `https://api.dicebear.com/7.x/identicon/svg?seed=${chat.chatID}`;
 
+  const groupInviteLink = chat.type === 'group' ? `zalo.me/g/${chat.chatID.substring(0, 10)}` : '';
+
+  const handleCopyLink = () => {
+    if (groupInviteLink) {
+      Clipboard.setStringAsync(groupInviteLink);
+      Alert.alert('Thành công', 'Đã sao chép link tham gia nhóm');
+    }
+  };
+
+  const handleToggleMute = () => {
+    setIsMuted(!isMuted);
+    Alert.alert('Thành công', isMuted ? 'Đã bật thông báo' : 'Đã tắt thông báo');
+  };
+
+  const handleTogglePin = () => {
+    setIsPinned(!isPinned);
+    Alert.alert('Thành công', isPinned ? 'Đã bỏ ghim hội thoại' : 'Đã ghim hội thoại');
+  };
+
+  const handleLeaveGroup = () => {
+    Alert.alert(
+      'Rời nhóm',
+      `Bạn có chắc muốn rời khỏi nhóm "${chatName}"?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Rời nhóm',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('token');
+              await fetch(`${API_URL}/api/groups/${chat.chatID}/leave`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              Alert.alert('Thành công', 'Đã rời khỏi nhóm');
+              onClose();
+            } catch (error: any) {
+              Alert.alert('Lỗi', 'Không thể rời nhóm');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDissolveGroup = () => {
+    Alert.alert(
+      'Giải tán nhóm',
+      `Bạn có chắc muốn giải tán nhóm "${chatName}"? Hành động này không thể hoàn tác.`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Giải tán',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('token');
+              await fetch(`${API_URL}/api/groups/${chat.chatID}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              Alert.alert('Thành công', 'Đã giải tán nhóm');
+              onClose();
+            } catch (error: any) {
+              Alert.alert('Lỗi', 'Không thể giải tán nhóm');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const EmptyState = ({ text }: { text: string }) => (
     <View style={styles.emptyState}>
       <Text style={styles.emptyEmoji}>📂</Text>
@@ -262,22 +470,37 @@ const ChatInfoPanel = ({
         <ScrollView style={styles.content}>
           {/* Avatar + Info */}
           <View style={styles.profileSection}>
-            <View style={styles.avatarContainer}>
-              <Image source={{ uri: chatAvatar }} style={styles.avatar} />
-              {chat.type === 'private' && (
-                <View
-                  style={[
-                    styles.statusDot,
-                    memberInfo?.trangThai === 'online'
-                      ? styles.statusOnline
-                      : styles.statusOffline,
-                  ]}
-                />
-              )}
-            </View>
+            <TouchableOpacity
+              onPress={() => chat.type === 'group' && setShowEditGroupModal(true)}
+              activeOpacity={chat.type === 'group' ? 0.7 : 1}
+            >
+              <View style={styles.avatarContainer}>
+                <Image source={{ uri: chatAvatar }} style={styles.avatar} />
+                {chat.type === 'private' && (
+                  <View
+                    style={[
+                      styles.statusDot,
+                      memberInfo?.trangThai === 'online'
+                        ? styles.statusOnline
+                        : styles.statusOffline,
+                    ]}
+                  />
+                )}
+                {chat.type === 'group' && (
+                  <View style={styles.avatarEditBadge}>
+                    <Ionicons name="camera" size={12} color="#fff" />
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
             <Text style={styles.chatName}>{chatName}</Text>
             {chat.type === 'private' && memberInfo?.sdt && (
               <Text style={styles.phoneNumber}>{memberInfo.sdt}</Text>
+            )}
+            {chat.type === 'group' && (
+              <TouchableOpacity style={styles.editButton} onPress={() => setShowEditGroupModal(true)}>
+                <Text style={styles.editButtonText}>✏️ Đổi tên</Text>
+              </TouchableOpacity>
             )}
             <View
               style={[
@@ -303,6 +526,149 @@ const ChatInfoPanel = ({
               </Text>
             </View>
           </View>
+
+          {/* 4 Action Buttons - chỉ hiện cho group */}
+          {chat.type === 'group' && (
+            <View style={styles.actionButtonsGrid}>
+              <TouchableOpacity key="mute" style={styles.actionButtonItem} onPress={handleToggleMute}>
+                <View style={styles.actionButtonIcon}>
+                  <Ionicons
+                    name={isMuted ? 'notifications-off' : 'notifications'}
+                    size={20}
+                    color="#111"
+                  />
+                </View>
+                <Text style={styles.actionButtonText}>
+                  {isMuted ? 'Bật\nthông báo' : 'Tắt\nthông báo'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity key="pin" style={styles.actionButtonItem} onPress={handleTogglePin}>
+                <View style={styles.actionButtonIcon}>
+                  <Ionicons name={isPinned ? 'pin' : 'pin-outline'} size={20} color="#111" />
+                </View>
+                <Text style={styles.actionButtonText}>Ghim{'\n'}hội thoại</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity key="add" style={styles.actionButtonItem} onPress={() => setShowAddMembersModal(true)}>
+                <View style={styles.actionButtonIcon}>
+                  <Ionicons name="person-add" size={20} color="#111" />
+                </View>
+                <Text style={styles.actionButtonText}>Thêm{'\n'}thành viên</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity key="manage" style={styles.actionButtonItem} onPress={() => setShowManagementModal(true)}>
+                <View style={styles.actionButtonIcon}>
+                  <Ionicons name="settings" size={20} color="#111" />
+                </View>
+                <Text style={styles.actionButtonText}>Quản lý{'\n'}nhóm</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Xem thành viên - chỉ hiện cho group */}
+          {chat.type === 'group' && (
+            <TouchableOpacity
+              style={styles.viewMembersButton}
+              onPress={() => setShowMembersModal(true)}
+            >
+              <Ionicons name="people" size={20} color="#0068ff" />
+              <View style={styles.viewMembersContent}>
+                <Text style={styles.viewMembersTitle}>Xem thành viên</Text>
+                <Text style={styles.viewMembersCount}>({chat.members.length})</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#888" />
+            </TouchableOpacity>
+          )}
+
+          {/* Link tham gia nhóm - chỉ hiện cho group */}
+          {chat.type === 'group' && (
+            <View style={styles.linkSection}>
+              <View style={styles.linkSectionHeader}>
+                <Ionicons name="link" size={16} color="#888" />
+                <Text style={styles.linkSectionTitle}>Link tham gia nhóm</Text>
+              </View>
+              <View style={styles.linkContainer}>
+                <Text style={styles.linkText}>{groupInviteLink}</Text>
+                <TouchableOpacity style={styles.linkIconButton} onPress={handleCopyLink}>
+                  <Ionicons name="copy-outline" size={18} color="#0068ff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.linkIconButton}>
+                  <Ionicons name="share-outline" size={18} color="#0068ff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Bảng tin nhóm - chỉ hiện cho group */}
+          {chat.type === 'group' && (
+            <View style={styles.boardSection}>
+              <TouchableOpacity
+                style={styles.boardHeader}
+                onPress={() => setShowBoardExpanded(!showBoardExpanded)}
+              >
+                <Text style={styles.boardTitle}>Bảng tin nhóm</Text>
+                <Ionicons
+                  name={showBoardExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color="#111"
+                />
+              </TouchableOpacity>
+
+              {showBoardExpanded && (
+                <View style={styles.boardContent}>
+                  <TouchableOpacity
+                    key="reminders"
+                    style={[
+                      styles.boardTabButton,
+                      boardTab === 'reminders' && styles.boardTabButtonActive,
+                    ]}
+                    onPress={() => setBoardTab('reminders')}
+                  >
+                    <Ionicons
+                      name="time-outline"
+                      size={16}
+                      color={boardTab === 'reminders' ? '#111' : '#888'}
+                    />
+                    <Text
+                      style={[
+                        styles.boardTabText,
+                        boardTab === 'reminders' && styles.boardTabTextActive,
+                      ]}
+                    >
+                      Danh sách nhắc hẹn
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    key="notes"
+                    style={[
+                      styles.boardTabButton,
+                      boardTab === 'notes' && styles.boardTabButtonActive,
+                    ]}
+                    onPress={() => setBoardTab('notes')}
+                  >
+                    <Ionicons
+                      name="document-text-outline"
+                      size={16}
+                      color={boardTab === 'notes' ? '#111' : '#888'}
+                    />
+                    <Text
+                      style={[
+                        styles.boardTabText,
+                        boardTab === 'notes' && styles.boardTabTextActive,
+                      ]}
+                    >
+                      Ghi chú, ghim, bình chọn
+                    </Text>
+                  </TouchableOpacity>
+
+                  {boardTab === 'reminders' && <EmptyState text="Chưa có nhắc hẹn" />}
+                  {boardTab === 'notes' && <EmptyState text="Chưa có ghi chú" />}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Tabs */}
           <View style={styles.tabs}>
@@ -479,7 +845,7 @@ const ChatInfoPanel = ({
                   color={friendStatus === 'blocked' ? "#4caf50" : "#ff9500"} 
                 />
                 <Text style={[
-                  styles.actionButtonText,
+                  styles.actionButtonLargeText,
                   friendStatus === 'blocked' ? styles.unblockButtonText : styles.blockButtonText
                 ]}>
                   {friendStatus === 'blocked' ? 'Bỏ chặn' : 'Chặn người dùng'}
@@ -487,6 +853,23 @@ const ChatInfoPanel = ({
               </TouchableOpacity>
             )}
             
+            {/* Rời nhóm - chỉ hiện cho group */}
+            {chat.type === 'group' && (
+              <TouchableOpacity style={styles.leaveButton} onPress={handleLeaveGroup}>
+                <Ionicons name="exit-outline" size={18} color="#ff3b30" />
+                <Text style={styles.leaveButtonText}>Rời nhóm</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Giải tán nhóm - chỉ hiện cho group */}
+            {chat.type === 'group' && (
+              <TouchableOpacity style={styles.dissolveButton} onPress={handleDissolveGroup}>
+                <Ionicons name="trash-outline" size={18} color="#ff3b30" />
+                <Text style={styles.dissolveButtonText}>Giải tán nhóm</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Xóa lịch sử - hiện cho cả private và group */}
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={() => setShowDeleteConfirm(true)}
@@ -625,6 +1008,152 @@ const ChatInfoPanel = ({
             </View>
           </View>
         </Modal>
+
+        {/* Group Management Modal */}
+        {chat.type === 'group' && (
+          <GroupManagementModal
+            visible={showManagementModal}
+            groupInfo={{
+              groupID: chat.chatID,
+              name: chat.name,
+              avatar: chat.avatar,
+              ownerID: chat.members.find(m => m.role === 'owner')?.userID || '',
+              members: chat.members.map(m => ({
+                _id: m.userID,
+                userID: m.userID,
+                name: memberInfo?.name || m.userID,
+                role: m.role as 'owner' | 'admin' | 'member',
+                joinedAt: new Date(),
+                isActive: true,
+              })),
+              memberCount: chat.members.length,
+            }}
+            currentUserID={currentUserID}
+            onClose={() => setShowManagementModal(false)}
+            onUpdate={() => onHistoryDeleted()}
+          />
+        )}
+
+        {/* Group Members Modal */}
+        {chat.type === 'group' && (
+          <GroupMembersModal
+            visible={showMembersModal}
+            members={membersWithInfo}
+            memberCount={chat.members.length}
+            groupID={chat.chatID}
+            onClose={() => setShowMembersModal(false)}
+            onAddMembers={() => {
+              setShowMembersModal(false);
+              setShowAddMembersModal(true);
+            }}
+            onRefresh={() => {
+              // Trigger refresh by calling onHistoryDeleted
+              onHistoryDeleted();
+            }}
+          />
+        )}
+
+        {/* Add Members Modal */}
+        {chat.type === 'group' && (
+          <AddMembersModal
+            visible={showAddMembersModal}
+            friends={availableFriends}
+            isLoading={isLoadingFriends}
+            onClose={() => setShowAddMembersModal(false)}
+            onAdd={async (selectedUserIDs) => {
+              setShowAddMembersModal(false);
+              if (selectedUserIDs.length > 0) {
+                try {
+                  console.log('➕ Adding members:', selectedUserIDs);
+                  const token = await AsyncStorage.getItem('token');
+                  
+                  // Add members one by one
+                  const results = await Promise.allSettled(
+                    selectedUserIDs.map(async (userID) => {
+                      try {
+                        const url = `${API_URL}/api/groups/${chat.chatID}/members`;
+                        console.log(`➕ Adding member ${userID} to group ${chat.chatID}`);
+                        console.log(`📡 Request URL:`, url);
+                        console.log(`📡 API_URL:`, API_URL);
+                        
+                        const response = await fetch(
+                          url,
+                          {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ userID }),
+                          }
+                        );
+                        
+                        console.log(`📡 Response status for ${userID}:`, response.status);
+                        console.log(`📡 Response headers:`, response.headers);
+                        
+                        const responseText = await response.text();
+                        console.log(`📡 Response text:`, responseText.substring(0, 200));
+                        
+                        if (!response.ok) {
+                          let error;
+                          try {
+                            error = JSON.parse(responseText);
+                          } catch {
+                            error = { message: responseText };
+                          }
+                          console.error(`❌ Error adding ${userID}:`, error);
+                          throw new Error(error.message || 'Failed to add member');
+                        }
+                        
+                        const result = JSON.parse(responseText);
+                        console.log(`✅ Successfully added ${userID}:`, result);
+                        return result;
+                      } catch (err) {
+                        console.error(`❌ Exception adding ${userID}:`, err);
+                        throw err;
+                      }
+                    })
+                  );
+                  
+                  const successCount = results.filter(r => r.status === 'fulfilled').length;
+                  const failCount = results.filter(r => r.status === 'rejected').length;
+                  
+                  console.log('✅ Add members result:', { successCount, failCount });
+                  console.log('📋 Detailed results:', results);
+                  
+                  if (successCount > 0) {
+                    Alert.alert(
+                      'Thành công',
+                      `Đã thêm ${successCount} thành viên vào nhóm${failCount > 0 ? `. ${failCount} thất bại.` : ''}`
+                    );
+                    // Trigger refresh by calling onHistoryDeleted
+                    onHistoryDeleted();
+                  } else {
+                    Alert.alert('Lỗi', 'Không thể thêm thành viên vào nhóm');
+                  }
+                } catch (error) {
+                  console.error('❌ Error adding members:', error);
+                  Alert.alert('Lỗi', 'Không thể thêm thành viên vào nhóm');
+                }
+              }
+            }}
+          />
+        )}
+
+        {/* Edit Group Info Modal */}
+        {chat.type === 'group' && (
+          <EditGroupInfoModal
+            visible={showEditGroupModal}
+            groupID={chat.chatID}
+            currentName={chat.name}
+            currentAvatar={chat.avatar}
+            onClose={() => setShowEditGroupModal(false)}
+            onSuccess={() => {
+              setShowEditGroupModal(false);
+              onHistoryDeleted(); // trigger refresh
+            }}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -633,7 +1162,7 @@ const ChatInfoPanel = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#fff', // Giữ màu trắng
   },
   header: {
     flexDirection: 'row',
@@ -671,7 +1200,7 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     borderWidth: 2,
-    borderColor: '#e3f2fd',
+    borderColor: '#60a5fa',
   },
   statusDot: {
     position: 'absolute',
@@ -689,6 +1218,19 @@ const styles = StyleSheet.create({
   statusOffline: {
     backgroundColor: '#bbb',
   },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#0068ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
   chatName: {
     fontSize: 18,
     fontWeight: '600',
@@ -699,6 +1241,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#888',
     marginBottom: 8,
+  },
+  editButton: {
+    paddingVertical: 4,
+  },
+  editButtonText: {
+    color: '#0068ff',
+    fontSize: 14,
   },
   statusBadge: {
     paddingHorizontal: 12,
@@ -720,6 +1269,139 @@ const styles = StyleSheet.create({
   },
   statusBadgeTextOffline: {
     color: '#888',
+  },
+  // 4 Action buttons
+  actionButtonsGrid: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e0e0e0',
+    justifyContent: 'space-between',
+  },
+  actionButtonItem: {
+    alignItems: 'center',
+    gap: 10,
+    width: 80,
+  },
+  actionButtonIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionButtonText: {
+    fontSize: 11,
+    color: '#111',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  // Xem thành viên button
+  viewMembersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e0e0e0',
+    gap: 12,
+  },
+  viewMembersContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  viewMembersTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111',
+  },
+  viewMembersCount: {
+    fontSize: 14,
+    color: '#888',
+  },
+  // Link section
+  linkSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e0e0e0',
+  },
+  linkSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  linkSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+  },
+  linkContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  linkText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0068ff',
+  },
+  linkIconButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  // Board section
+  boardSection: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e0e0e0',
+  },
+  boardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  boardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+  },
+  boardContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  boardTabButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+  },
+  boardTabButtonActive: {
+    backgroundColor: '#f5f5f5',
+  },
+  boardTabText: {
+    fontSize: 13,
+    color: '#888',
+  },
+  boardTabTextActive: {
+    color: '#111',
   },
   tabs: {
     flexDirection: 'row',
@@ -876,7 +1558,7 @@ const styles = StyleSheet.create({
   unblockButton: {
     borderColor: '#4caf50',
   },
-  actionButtonText: {
+  actionButtonLargeText: {
     fontSize: 14,
     fontWeight: '600',
   },
@@ -899,6 +1581,36 @@ const styles = StyleSheet.create({
     borderColor: '#ff3b30',
   },
   deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ff3b30',
+  },
+  leaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  leaveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ff3b30',
+  },
+  dissolveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  dissolveButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#ff3b30',

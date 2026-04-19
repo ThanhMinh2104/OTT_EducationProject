@@ -119,9 +119,7 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
       const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
       const currentMember = memberDoc?.members.find((m) => m.userID === userID);
       const hasDeletedAt = !!currentMember?.deletedAt;
-      if (hasDeletedAt) {
-        console.log(`  ❌ Filtering out chat ${c.chatID} - has deletedAt`);
-      }
+      // Đã xóa log debug
       return !hasDeletedAt;
     })
     .map((c) => {

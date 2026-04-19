@@ -82,15 +82,15 @@ const EditGroupInfoModal = ({ groupID, currentName, currentAvatar, onClose, onSu
         onClick={onClose}
       >
         <div
-          className="bg-[#2a2f35] rounded-2xl w-full max-w-md shadow-2xl"
+          className="bg-white rounded-2xl w-full max-w-md shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
-            <h2 className="text-lg font-bold text-white">Chỉnh sửa thông tin nhóm</h2>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-bold text-gray-900">Chỉnh sửa thông tin nhóm</h2>
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
+              className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
             >
               <FaTimes />
             </button>
@@ -121,14 +121,14 @@ const EditGroupInfoModal = ({ groupID, currentName, currentAvatar, onClose, onSu
                 onChange={handleAvatarChange}
                 className="hidden"
               />
-              <p className="text-xs text-gray-400 text-center">
+              <p className="text-xs text-gray-500 text-center">
                 Click vào icon camera để thay đổi ảnh đại diện
               </p>
             </div>
 
             {/* Group Name Input */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tên nhóm
               </label>
               <input
@@ -137,20 +137,20 @@ const EditGroupInfoModal = ({ groupID, currentName, currentAvatar, onClose, onSu
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="Nhập tên nhóm..."
                 maxLength={100}
-                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="w-full px-4 py-3 bg-gray-100 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-gray-500 mt-1">
                 {groupName.length}/100 ký tự
               </p>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="flex items-center gap-3 px-5 py-4 border-t border-gray-700">
+          <div className="flex items-center gap-3 px-5 py-4 border-t border-gray-200">
             <button
               onClick={onClose}
               disabled={isUploading}
-              className="flex-1 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Hủy
             </button>

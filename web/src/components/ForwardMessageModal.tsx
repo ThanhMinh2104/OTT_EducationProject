@@ -114,18 +114,56 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
 
     setIsSending(true);
     try {
-      socket.emit('forward_message', {
+      console.log('🔄 Forwarding message:', {
         originalMessageID: message.messageID,
         targetChatID: selectedChatID,
         senderID: user.userID,
-        senderInfo: {
-          name: user.name || 'Người dùng',
-          avatar: null,
-        },
       });
+
+      // Determine target chat type
+      const targetChat = chats.find(c => c.chatID === selectedChatID);
+      const isTargetGroup = targetChat?.type === 'group';
+      
+      // Determine source chat type from message
+      const isSourceGroup = message.chatID.startsWith('grp_');
+
+      console.log('📊 Forward info:', {
+        isSourceGroup,
+        isTargetGroup,
+        sourceChatID: message.chatID,
+        targetChatID: selectedChatID,
+      });
+
+      // Emit appropriate socket event based on target type
+      if (isTargetGroup) {
+        // Forward to group
+        socket.emit('forward_to_group', {
+          originalMessageID: message.messageID,
+          targetGroupID: selectedChatID,
+          senderID: user.userID,
+          senderInfo: {
+            name: user.name || 'Người dùng',
+            avatar: null,
+          },
+        });
+      } else {
+        // Forward to private chat
+        socket.emit('forward_message', {
+          originalMessageID: message.messageID,
+          targetChatID: selectedChatID,
+          senderID: user.userID,
+          senderInfo: {
+            name: user.name || 'Người dùng',
+            avatar: null,
+          },
+        });
+      }
+
+      console.log('✅ Forward message emitted');
       onClose();
     } catch (error) {
-      console.error('Error forwarding message:', error);
+      console.error('❌ Error forwarding message:', error);
+      alert('Không thể chuyển tiếp tin nhắn');
     } finally {
       setIsSending(false);
     }

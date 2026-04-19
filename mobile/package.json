@@ -20,6 +20,7 @@
     "expo": "~54.0.33",
     "expo-audio": "~1.1.1",
     "expo-av": "~16.0.8",
+    "expo-clipboard": "^55.0.13",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.21",
     "expo-image-picker": "~17.0.10",
