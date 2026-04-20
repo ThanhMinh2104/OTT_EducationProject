@@ -20,6 +20,8 @@ import { groupMessages, isMessageGroup, Message as MessageGroupingMessage } from
 import AudioPlayer from '../components/AudioPlayer';
 import CallScreen from './CallScreen';
 import IncomingCallModal from '../components/IncomingCallModal';
+import GroupCallScreen from './GroupCallScreen';
+import GroupIncomingCallModal from '../components/GroupIncomingCallModal';
 import { downloadAndOpenFile } from '../utils/fileDownload';
 import ImageViewer from '../components/ImageViewer';
 import VideoViewer from '../components/VideoViewer';
@@ -182,6 +184,22 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     callerInfo: { name: string; avatar?: string | null };
     callType: 'voice' | 'video';
   } | null>(null);
+
+  // Group call states
+  const [showGroupCall, setShowGroupCall] = useState(false);
+  const [groupCallIsCallee, setGroupCallIsCallee] = useState(false);
+  const [groupCallData, setGroupCallData] = useState<{
+    groupID: string;
+    groupName: string;
+    initialParticipants: { userID: string; name: string; avatar?: string }[];
+  } | null>(null);
+  const [incomingGroupCall, setIncomingGroupCall] = useState<{
+    groupID: string;
+    callerID: string;
+    callerInfo: { name: string; avatar?: string };
+    groupName: string;
+    allMemberInfos: { userID: string; name: string; avatar?: string }[];
+  } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -294,6 +312,17 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
     socket.on('call-cancelled', () => {
       setIncomingCall(null);
+    });
+
+    socket.on('group-call-incoming', (data: any) => {
+      if (data.callerID === user?.userID) return;
+      setIncomingGroupCall({
+        groupID: data.groupID,
+        callerID: data.callerID,
+        callerInfo: data.callerInfo,
+        groupName: data.groupName,
+        allMemberInfos: data.allMemberInfos || [],
+      });
     });
 
     // Lắng nghe chat mới được tạo (kể cả từ người lạ)
@@ -450,6 +479,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       socket.off('newChat1-1');
       socket.off('friend_request_accepted');
       socket.off('friend_status_update');
+      socket.off('group-call-incoming');
     };
   }, [navigation]);
 
@@ -1836,6 +1866,46 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       );
     }
 
+    // Group call message
+    if (item.type === 'group-call') {
+      return (
+        <View key={item.messageID || item.tempID} style={styles.groupCallMsgWrapper}>
+          <TouchableOpacity
+            style={styles.groupCallMsgCard}
+            onPress={() => {
+              if (!selectedChat) return;
+              socket.emit('group-call-check', { groupID: selectedChat.chatID }, (active: boolean) => {
+                if (active) {
+                  setGroupCallData({
+                    groupID: selectedChat.chatID,
+                    groupName: selectedChat.name,
+                    initialParticipants: [],
+                  });
+                  setGroupCallIsCallee(true);
+                  setShowGroupCall(true);
+                } else {
+                  Alert.alert('Thông báo', 'Cuộc gọi đã kết thúc');
+                }
+              });
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.groupCallMsgIcon}>
+              <Ionicons name="videocam" size={18} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.groupCallMsgTitle}>Cuộc gọi nhóm</Text>
+              <Text style={styles.groupCallMsgSub}>{item.senderInfo?.name} đã bắt đầu</Text>
+            </View>
+            <View style={styles.groupCallJoinBtn}>
+              <Text style={styles.groupCallJoinText}>Tham gia</Text>
+            </View>
+          </TouchableOpacity>
+          <Text style={styles.groupCallTime}>{timeStr}</Text>
+        </View>
+      );
+    }
+
     const renderBubbleContent = () => {
       if (isUnsent) {
         return (
@@ -2464,7 +2534,30 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => startCall('voice')}>
           <Ionicons name="call-outline" size={22} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => startCall('video')}>
+        <TouchableOpacity
+          style={styles.headerIconBtn}
+          onPress={() => {
+            if (selectedChat?.type === 'group') {
+              // Lấy members của group để chọn
+              const groupMembers = selectedChat.members
+                .filter(m => m.userID !== user?.userID)
+                .map(m => ({
+                  userID: m.userID,
+                  name: memberCache[m.userID]?.name || m.userID,
+                  avatar: memberCache[m.userID]?.anhDaiDien,
+                }));
+              setGroupCallData({
+                groupID: selectedChat.chatID,
+                groupName: selectedChat.name,
+                initialParticipants: [],
+              });
+              setGroupCallIsCallee(false);
+              setShowGroupCall(true);
+            } else {
+              startCall('video');
+            }
+          }}
+        >
           <Ionicons name="videocam-outline" size={22} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowChatInfo(true)}>
@@ -3289,6 +3382,58 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           chatID={''}
           currentUser={user}
           onClose={() => setShowCall(false)}
+        />
+      )}
+
+      {/* Group Incoming Call */}
+      {incomingGroupCall && (
+        <GroupIncomingCallModal
+          visible={!!incomingGroupCall}
+          callerInfo={incomingGroupCall.callerInfo}
+          groupName={incomingGroupCall.groupName}
+          invitedNames={incomingGroupCall.allMemberInfos
+            .filter(m => m.userID !== user?.userID && m.userID !== incomingGroupCall.callerID)
+            .map(m => m.name)}
+          onAccept={() => {
+            const data = incomingGroupCall;
+            setIncomingGroupCall(null);
+            setGroupCallData({
+              groupID: data.groupID,
+              groupName: data.groupName,
+              initialParticipants: data.allMemberInfos,
+            });
+            setGroupCallIsCallee(true);
+            setShowGroupCall(true);
+          }}
+          onReject={() => {
+            socket.emit('group-call-reject', { groupID: incomingGroupCall.groupID, userID: user?.userID });
+            setIncomingGroupCall(null);
+          }}
+        />
+      )}
+
+      {/* Group Call Screen */}
+      {showGroupCall && user && groupCallData && (
+        <GroupCallScreen
+          visible={showGroupCall}
+          groupID={groupCallData.groupID}
+          groupName={groupCallData.groupName}
+          currentUser={{ userID: user.userID, name: user.name, anhDaiDien: user.anhDaiDien }}
+          members={
+            // Lấy members từ selectedChat nếu đang mở group chat đó
+            selectedChat?.chatID === groupCallData.groupID
+              ? selectedChat.members
+                  .filter(m => m.userID !== user.userID)
+                  .map(m => ({
+                    userID: m.userID,
+                    name: memberCache[m.userID]?.name || m.userID,
+                    avatar: memberCache[m.userID]?.anhDaiDien,
+                  }))
+              : []
+          }
+          isCallee={groupCallIsCallee}
+          initialParticipants={groupCallData.initialParticipants}
+          onClose={() => { setShowGroupCall(false); setGroupCallData(null); setGroupCallIsCallee(false); }}
         />
       )}
 
@@ -4219,6 +4364,43 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
+
+  // Group call message
+  groupCallMsgWrapper: {
+    alignItems: 'center',
+    marginVertical: 6,
+    paddingHorizontal: 16,
+  },
+  groupCallMsgCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f7ff',
+    borderRadius: 16,
+    padding: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    width: '100%',
+    maxWidth: 320,
+  },
+  groupCallMsgIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#0068ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupCallMsgTitle: { fontSize: 14, fontWeight: '700', color: '#1e3a5f' },
+  groupCallMsgSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  groupCallJoinBtn: {
+    backgroundColor: '#0068ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  groupCallJoinText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  groupCallTime: { fontSize: 11, color: '#999', marginTop: 4 },
 
   // Group sender name (for image groups in group chats)
   groupSenderName: {

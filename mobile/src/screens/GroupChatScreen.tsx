@@ -43,6 +43,8 @@ interface GroupChatScreenProps {
   userName?: string;
   userAvatar?: string;
   onBack: () => void;
+  onJoinGroupCall?: (groupID: string) => void;
+  onStartGroupCall?: () => void;
 }
 
 export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
@@ -51,6 +53,8 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
   userName = 'User',
   userAvatar,
   onBack,
+  onJoinGroupCall,
+  onStartGroupCall,
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -449,6 +453,38 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
     const isOwn = item.senderID === userID;
 
     const renderContent = () => {
+      // Group call message
+      if (item.type === 'group-call') {
+        return (
+          <TouchableOpacity
+            style={styles.groupCallMsg}
+            onPress={() => {
+              // Sẽ được handle bởi parent qua prop
+              if (onJoinGroupCall) onJoinGroupCall(item.groupID);
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.groupCallIcon}>
+              <Ionicons name="videocam" size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.groupCallTitle}>Cuộc gọi nhóm</Text>
+              <Text style={styles.groupCallSub}>{item.senderInfo?.name} đã bắt đầu</Text>
+            </View>
+            <View style={styles.groupCallJoinBtn}>
+              <Text style={styles.groupCallJoinText}>Tham gia</Text>
+            </View>
+          </TouchableOpacity>
+        );
+      }
+
+      // Notification
+      if (item.type === 'notification') {
+        return (
+          <Text style={styles.notificationText}>{item.content}</Text>
+        );
+      }
+
       // Image
       if (item.type === 'image' && item.media_url?.length > 0) {
         return (
@@ -497,6 +533,15 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
       );
     };
 
+    // group-call và notification render centered
+    if (item.type === 'group-call' || item.type === 'notification') {
+      return (
+        <View key={item.messageID} style={styles.centeredMsgWrapper}>
+          {renderContent()}
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.messageGroup, isOwn && styles.messageGroupOwn]}>
         {!isOwn && (
@@ -544,9 +589,16 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
           <Text style={styles.btnBack}>← Quay lại</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Nhóm Chat</Text>
-        <TouchableOpacity onPress={() => setShowGroupInfo(true)}>
-          <Text style={styles.btnInfo}>ℹ️</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {onStartGroupCall && (
+            <TouchableOpacity onPress={onStartGroupCall} style={styles.headerBtn}>
+              <Ionicons name="videocam" size={22} color="#fff" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => setShowGroupInfo(true)}>
+            <Text style={styles.btnInfo}>ℹ️</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -775,5 +827,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  // Group call message
+  centeredMsgWrapper: {
+    alignItems: 'center',
+    marginVertical: 6,
+    paddingHorizontal: 16,
+  },
+  groupCallMsg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f7ff',
+    borderRadius: 16,
+    padding: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    maxWidth: 300,
+  },
+  groupCallIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0068ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupCallTitle: { fontSize: 14, fontWeight: '700', color: '#1e3a5f' },
+  groupCallSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  groupCallJoinBtn: {
+    backgroundColor: '#0068ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  groupCallJoinText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  notificationText: {
+    fontSize: 12,
+    color: '#888',
+    fontStyle: 'italic',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  headerBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
