@@ -127,6 +127,17 @@ export const registerCallEvents = (io: Server, socket: Socket) => {
     io.to(data.to).emit('ice-candidate', { candidate: data.candidate, from: data.from });
   });
 
+  // Renegotiate khi bật cam trong voice call — relay offer đến peer
+  socket.on('call-renegotiate', (data: { to: string; from: string; offer: any }) => {
+    console.log(`🔄 Renegotiate from ${data.from} to ${data.to}`);
+    io.to(data.to).emit('call-renegotiate', { from: data.from, offer: data.offer });
+  });
+
+  // Relay answer của renegotiate
+  socket.on('call-renegotiate-answer', (data: { to: string; from: string; answer: any }) => {
+    io.to(data.to).emit('call-renegotiate-answer', { from: data.from, answer: data.answer });
+  });
+
   socket.on('call-cancelled', async (data: { to: string; from: string; chatID?: string }) => {
     console.log(`🚫 Call cancelled by ${data.from}`);
     
