@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../utils/config';
+import socket from '../utils/socket';
 import ImageViewer from './ImageViewer';
 import VideoViewer from './VideoViewer';
 import { downloadAndOpenFile } from '../utils/fileDownload';
@@ -133,6 +134,9 @@ const ChatInfoPanel = ({
   }>>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [showGroupBoard, setShowGroupBoard] = useState(false);
+  const [canEditGroupInfo, setCanEditGroupInfo] = useState(true);
+  const [groupSettings, setGroupSettings] = useState<any>(null);
+  const [canCreateNotes, setCanCreateNotes] = useState(true);
 
   // Fetch current user ID
   React.useEffect(() => {
@@ -146,6 +150,81 @@ const ChatInfoPanel = ({
     };
     fetchCurrentUserID();
   }, []);
+
+  // Fetch group settings to determine canCreateNotes
+  React.useEffect(() => {
+    if (!visible || chat.type !== 'group' || !currentUserID) return;
+
+    const fetchGroupSettings = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const res = await fetch(`${API_URL}/api/groups/${chat.chatID}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setGroupSettings(data.settings);
+          
+          const myMember = chat.members.find((m: any) => m.userID === currentUserID);
+          const isOwnerOrAdmin = myMember?.role === 'owner' || myMember?.role === 'admin';
+          const createNotesPerm = data.settings?.memberPermissions?.createNotes ?? true;
+          
+          setCanCreateNotes(isOwnerOrAdmin || createNotesPerm);
+          
+          console.log('🔐 ChatInfoPanel - canCreateNotes:', {
+            userID: currentUserID,
+            role: myMember?.role,
+            isOwnerOrAdmin,
+            createNotesSetting: createNotesPerm,
+            canCreateNotes: isOwnerOrAdmin || createNotesPerm,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching group settings:', error);
+      }
+    };
+
+    fetchGroupSettings();
+    
+    // Listen for settings updates via socket
+    const handleSettingsUpdated = (data: { groupID: string; settings: any }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('🔄 ChatInfoPanel - Settings updated via socket, reloading...');
+        fetchGroupSettings();
+      }
+    };
+    
+    socket.on('group_settings_updated', handleSettingsUpdated);
+    
+    return () => {
+      socket.off('group_settings_updated', handleSettingsUpdated);
+    };
+  }, [visible, chat.type, chat.chatID, currentUserID, chat.members]);
+
+  // Fetch quyền changeNameAvatar khi panel mở (group chat)
+  React.useEffect(() => {
+    if (!visible || chat.type !== 'group') return;
+    const fetchPermission = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const userID = await AsyncStorage.getItem('userID');
+        const res = await fetch(`${API_URL}/api/groups/${chat.chatID}/settings`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const myMember = chat.members.find((m: any) => m.userID === userID);
+          const isOwnerOrAdmin = myMember?.role === 'owner' || myMember?.role === 'admin';
+          const perm = data.settings?.memberPermissions?.changeNameAvatar ?? true;
+          setCanEditGroupInfo(isOwnerOrAdmin || perm);
+        }
+      } catch {
+        setCanEditGroupInfo(true); // fallback
+      }
+    };
+    fetchPermission();
+  }, [visible, chat.chatID]);
 
   // Fetch member info when opening members modal
   React.useEffect(() => {
@@ -486,8 +565,8 @@ const ChatInfoPanel = ({
           {/* Avatar + Info */}
           <View style={styles.profileSection}>
             <TouchableOpacity
-              onPress={() => chat.type === 'group' && setShowEditGroupModal(true)}
-              activeOpacity={chat.type === 'group' ? 0.7 : 1}
+              onPress={() => chat.type === 'group' && canEditGroupInfo && setShowEditGroupModal(true)}
+              activeOpacity={chat.type === 'group' && canEditGroupInfo ? 0.7 : 1}
             >
               <View style={styles.avatarContainer}>
                 <Image source={{ uri: chatAvatar }} style={styles.avatar} />
@@ -501,7 +580,7 @@ const ChatInfoPanel = ({
                     ]}
                   />
                 )}
-                {chat.type === 'group' && (
+                {chat.type === 'group' && canEditGroupInfo && (
                   <View style={styles.avatarEditBadge}>
                     <Ionicons name="camera" size={12} color="#fff" />
                   </View>
@@ -512,7 +591,7 @@ const ChatInfoPanel = ({
             {chat.type === 'private' && memberInfo?.sdt && (
               <Text style={styles.phoneNumber}>{memberInfo.sdt}</Text>
             )}
-            {chat.type === 'group' && (
+            {chat.type === 'group' && canEditGroupInfo && (
               <TouchableOpacity style={styles.editButton} onPress={() => setShowEditGroupModal(true)}>
                 <Text style={styles.editButtonText}>✏️ Đổi tên</Text>
               </TouchableOpacity>
@@ -1176,6 +1255,7 @@ const ChatInfoPanel = ({
             onClose={() => setShowGroupBoard(false)}
             groupID={chat.chatID}
             userID={currentUserID}
+            canCreateNotes={canCreateNotes}
           />
         )}
       </View>

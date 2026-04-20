@@ -159,6 +159,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [canPinMessages, setCanPinMessages] = useState(true);
   // Quyền gửi tin nhắn trong group
   const [canSendMessages, setCanSendMessages] = useState(true);
+  // Quyền thay đổi tên và ảnh đại diện nhóm
+  const [canEditGroupInfo, setCanEditGroupInfo] = useState(true);
 
   // Forward message states
   const [showForwardModal, setShowForwardModal] = useState(false);
@@ -938,12 +940,33 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
     };
 
+    // Cập nhật real-time khi tên/ảnh nhóm thay đổi
+    const onGroupInfoUpdated = (data: { groupID: string; name?: string; avatar?: string }) => {
+      if (data.groupID !== chatID) return;
+      // Cập nhật selectedChat
+      setSelectedChat(prev => {
+        if (!prev || prev.chatID !== data.groupID) return prev;
+        return {
+          ...prev,
+          name: data.name ?? prev.name,
+          avatar: data.avatar ?? prev.avatar,
+        };
+      });
+      // Cập nhật danh sách chat
+      setChats(prev => prev.map(c =>
+        c.chatID === data.groupID
+          ? { ...c, name: data.name ?? c.name, avatar: data.avatar ?? c.avatar }
+          : c
+      ));
+    };
+
     socket.on('new_message', onNewMessage);
     // Lắng nghe group messages
     if (isGroup) {
       socket.on('new_group_message', onNewGroupMessage);
       socket.on('group_typing_start', onTypingStart);
       socket.on('group_typing_stop', onTypingStop);
+      socket.on('group_info_updated', onGroupInfoUpdated);
     } else {
       socket.on('typing_start', onTypingStart);
       socket.on('typing_stop', onTypingStop);
@@ -962,6 +985,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         socket.off('new_group_message', onNewGroupMessage);
         socket.off('group_typing_start', onTypingStart);
         socket.off('group_typing_stop', onTypingStop);
+        socket.off('group_info_updated', onGroupInfoUpdated);
         socket.emit('leave_group', { groupID: chatID, userID: user.userID });
       } else {
         socket.off('typing_start', onTypingStart);
@@ -1102,11 +1126,13 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             // owner/admin luôn có quyền; member thường phụ thuộc setting
             setCanPinMessages(isOwnerOrAdmin || (perms?.pinMessages ?? true));
             setCanSendMessages(isOwnerOrAdmin || (perms?.sendMessages ?? true));
+            setCanEditGroupInfo(isOwnerOrAdmin || (perms?.changeNameAvatar ?? true));
           }
         } catch { /* fallback: cho phép tất cả */ }
       } else {
         setCanPinMessages(true);
         setCanSendMessages(true);
+        setCanEditGroupInfo(true);
       }
     };
 
@@ -2301,7 +2327,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const handleHeaderPress = () => {
     if (selectedChat?.type === 'group') {
-      setShowEditGroupModal(true);
+      if (canEditGroupInfo) {
+        setShowEditGroupModal(true);
+      }
       return;
     }
     if (selectedChat?.type !== 'private') return;
@@ -2856,7 +2884,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             </TouchableOpacity>
 
             {/* Nút Ghim tin nhắn */}
-            {selectedMessage?.messageID && (selectedMessage?.pinnedInfo || canPinMessages) && (
+            {selectedMessage?.messageID && (
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
@@ -2873,13 +2901,18 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                     : { messageID: selectedMessage.messageID, chatID: selectedChat.chatID, senderID: user.userID };
 
                   if (selectedMessage.pinnedInfo) {
-                    // Bỏ ghim
+                    // Bỏ ghim — kiểm tra quyền
+                    if (isGroup && !canPinMessages) {
+                      Alert.alert("Thông báo", "Chỉ trưởng nhóm và phó nhóm mới có thể bỏ ghim tin nhắn");
+                      setShowMenu(false);
+                      return;
+                    }
                     socket.emit(unpinEvent, payload);
                     Alert.alert("Thành công", "Đã bỏ ghim tin nhắn");
                   } else {
                     // Kiểm tra quyền ghim
-                    if (!canPinMessages) {
-                      Alert.alert("Thông báo", "Bạn không có quyền ghim tin nhắn trong nhóm này");
+                    if (isGroup && !canPinMessages) {
+                      Alert.alert("Thông báo", "Chỉ trưởng nhóm và phó nhóm mới có thể ghim tin nhắn");
                       setShowMenu(false);
                       return;
                     }

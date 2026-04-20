@@ -164,14 +164,26 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
   ) => {
     try {
       setIsSaving(true);
-      await axiosInstance.put(`/groups/${groupInfo.groupID}/settings`, {
+      console.log('💾 Saving settings to backend:', {
+        settings: newSettings,
+        memberPermissions: newPermissions,
+      });
+      
+      const response = await axiosInstance.put(`/groups/${groupInfo.groupID}/settings`, {
         settings: {
           ...newSettings,
           memberPermissions: newPermissions,
         },
       });
-      onUpdate?.();
+      
+      console.log('✅ Settings saved successfully:', response.data);
+      
+      // Reload group info để có settings mới NGAY LẬP TỨC
+      await onUpdate?.();
+      
+      Alert.alert('Thành công', 'Đã cập nhật cài đặt');
     } catch (error: any) {
+      console.error('❌ Error saving settings:', error.response?.data);
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể cập nhật cài đặt');
     } finally {
       setIsSaving(false);
@@ -185,7 +197,16 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
   };
 
   const handleTogglePermission = (key: keyof typeof memberPermissions) => {
-    const newPermissions = { ...memberPermissions, [key]: !memberPermissions[key] };
+    const newValue = !memberPermissions[key];
+    const newPermissions = { ...memberPermissions, [key]: newValue };
+    
+    console.log('🔄 Toggling permission:', {
+      key,
+      oldValue: memberPermissions[key],
+      newValue,
+      allPermissions: newPermissions,
+    });
+    
     setMemberPermissions(newPermissions);
     saveSettings(settings, newPermissions);
   };
