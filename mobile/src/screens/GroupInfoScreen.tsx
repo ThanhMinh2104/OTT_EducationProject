@@ -14,8 +14,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import axiosInstance from '../utils/axios';
+import socket from '../utils/socket';
 import { AddMemberModal } from '../components/AddMemberModal';
 import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
+import { GroupBoardModal } from '../components/GroupBoardModal';
 
 const { width } = Dimensions.get('window');
 
@@ -87,9 +89,24 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showGroupBoard, setShowGroupBoard] = useState(false);
 
   useEffect(() => {
     fetchGroupData();
+    
+    // Listen for settings updates via socket
+    const handleSettingsUpdated = (data: { groupID: string; settings: any }) => {
+      if (data.groupID === groupID) {
+        console.log('🔄 Settings updated via socket, reloading group info...');
+        fetchGroupData();
+      }
+    };
+    
+    socket.on('group_settings_updated', handleSettingsUpdated);
+    
+    return () => {
+      socket.off('group_settings_updated', handleSettingsUpdated);
+    };
   }, [groupID]);
 
   const fetchGroupData = async () => {
@@ -101,6 +118,14 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
       ]);
 
       const groupData = groupRes.data;
+      
+      console.log('📥 Group data received in GroupInfoScreen:', {
+        groupID: groupData.groupID,
+        hasSettings: !!groupData.settings,
+        settings: groupData.settings,
+        memberPermissions: groupData.settings?.memberPermissions,
+        createNotes: groupData.settings?.memberPermissions?.createNotes,
+      });
 
       // Fetch user info for each member
       const membersWithInfo = await Promise.all(
@@ -148,6 +173,26 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
   const isAdmin = currentMember?.role === 'admin';
   const canEditGroupInfo =
     isOwner || isAdmin || (groupInfo?.settings?.memberPermissions?.changeNameAvatar ?? true);
+  
+  // Giống web: Owner HOẶC Admin HOẶC setting = true
+  const canCreateNotes =
+    isOwner || isAdmin || (groupInfo?.settings?.memberPermissions?.createNotes ?? true);
+  
+  // Log mỗi khi groupInfo thay đổi
+  useEffect(() => {
+    if (groupInfo) {
+      console.log('🔐 Permission check:', {
+        userID,
+        role: currentMember?.role,
+        isOwner,
+        isAdmin,
+        hasSettings: !!groupInfo.settings,
+        hasMemberPermissions: !!groupInfo.settings?.memberPermissions,
+        createNotesSetting: groupInfo.settings?.memberPermissions?.createNotes,
+        canCreateNotes,
+      });
+    }
+  }, [groupInfo, userID, currentMember, isOwner, isAdmin, canCreateNotes]);
 
   const groupAvatar =
     groupInfo?.avatar ||
@@ -403,7 +448,11 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
 
               <TouchableOpacity
                 style={[styles.tabButton, tab === 'notes' && styles.tabButtonActive]}
-                onPress={() => setTab('notes')}
+                onPress={async () => {
+                  // Reload group data để có settings mới nhất trước khi mở modal
+                  await fetchGroupData();
+                  setShowGroupBoard(true);
+                }}
               >
                 <Ionicons name="document-text-outline" size={16} color={tab === 'notes' ? '#60a5fa' : '#9ca3af'} />
                 <Text style={[styles.tabButtonText, tab === 'notes' && styles.tabButtonTextActive]}>
@@ -412,7 +461,6 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
               </TouchableOpacity>
 
               {tab === 'reminders' && <EmptyState text="Chưa có nhắc hẹn" />}
-              {tab === 'notes' && <EmptyState text="Chưa có ghi chú" />}
             </View>
           )}
         </View>
@@ -584,6 +632,19 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
         onSuccess={() => {
           fetchGroupData();
         }}
+      />
+
+      {/* Group Board Modal */}
+      <GroupBoardModal
+        visible={showGroupBoard}
+        onClose={() => {
+          setShowGroupBoard(false);
+          // Reload group info khi đóng modal để có settings mới nhất
+          fetchGroupData();
+        }}
+        groupID={groupID}
+        userID={userID}
+        canCreateNotes={canCreateNotes}
       />
     </View>
   );

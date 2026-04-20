@@ -177,6 +177,15 @@ router.put('/groups/:groupID/settings', authMiddleware, async (req: AuthRequest,
 
     console.log('✅ Settings saved successfully');
 
+    // Emit socket event để tất cả members reload settings
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('group_settings_updated', {
+        groupID,
+        settings: mergedSettings,
+      });
+    }
+
     // Nếu bật/tắt requireApproval → gửi notification vào chat
     const wasRequireApproval = currentGroup.settings?.requireApproval;
     const nowRequireApproval = mergedSettings.requireApproval;
@@ -195,7 +204,6 @@ router.put('/groups/:groupID/settings', authMiddleware, async (req: AuthRequest,
         timestamp: new Date(),
       });
       await notif.save();
-      const io = req.app.get('io');
       if (io) {
         io.to(groupID).emit('new_group_message', {
           ...notif.toObject(),
@@ -302,6 +310,13 @@ router.put('/groups/:groupID', authMiddleware, async (req: AuthRequest, res) => 
             name: userName,
             avatar: user?.anhDaiDien || null,
           },
+        });
+
+        // Emit event cập nhật thông tin nhóm để các client cập nhật real-time
+        io.to(groupID).emit('group_info_updated', {
+          groupID,
+          name: updatedGroup?.name,
+          avatar: updatedGroup?.avatar,
         });
       }
     }
@@ -1416,6 +1431,7 @@ router.post('/groups/:groupID/notes', authMiddleware, async (req: AuthRequest, r
     }
 
     // Kiểm tra quyền createNotes
+    // Giống logic frontend: Owner HOẶC Admin luôn có quyền
     const isOwnerOrAdmin = ['owner', 'admin'].includes(member.role);
     if (!isOwnerOrAdmin) {
       const group = await Group.findOne({ groupID });
