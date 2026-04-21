@@ -1296,7 +1296,7 @@ const ChatScreenEnhanced = ({
       );
     };
 
-    // Cập nhật real-time khi settings nhóm thay đổi (vd: tắt/bật quyền gửi tin nhắn)
+// Cập nhật real-time khi settings nhóm thay đổi (vd: tắt/bật quyền gửi tin nhắn)
     const onGroupSettingsUpdated = (data: { groupID: string; settings: any }) => {
       if (data.groupID !== chatID) return;
       const perms = data.settings?.memberPermissions;
