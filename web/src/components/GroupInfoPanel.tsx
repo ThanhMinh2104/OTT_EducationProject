@@ -552,11 +552,28 @@ const GroupInfoPanel = ({
                   </button>
                   <button
                     onClick={() => setShowGroupBoard(true)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                      tab === 'notes' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50'
-                    }`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      width: '100%',
+                      transition: 'all 0.2s',
+                      backgroundColor: tab === 'notes' ? '#e4e6eb' : 'transparent',
+                      color: tab === 'notes' ? '#050505' : '#65676b',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (tab !== 'notes') e.currentTarget.style.backgroundColor = '#f2f2f2';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (tab !== 'notes') e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
                   >
-                    <FaStickyNote className="text-xs" />
+                    <FaStickyNote style={{ fontSize: 11 }} />
                     Ghi chú, ghim, bình chọn
                   </button>
                 </div>

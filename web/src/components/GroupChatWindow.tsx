@@ -48,6 +48,9 @@ import MentionDropdown, { MentionDropdownHandle } from './MentionDropdown';
 import { getCaretCoordinates } from '../utils/caretPosition';
 import OtherProfileModal from './OtherProfileModal';
 import UserProfileModal from './UserProfileModal';
+import PollMessage from './PollMessage';
+import { PinnedMessagesPanel } from './PinnedMessagesPanel';
+import GroupBoardModal from './GroupBoardModal';
 
 const API = 'http://localhost:5000/api';
 
@@ -84,6 +87,7 @@ interface Message {
   pinnedInfo?: { pinnedBy?: string; pinnedAt?: string } | null;
   groupId?: string; // Thêm groupId để gom nhóm ảnh
   mentions?: string[]; // Thêm mentions
+  pollID?: string; // Liên kết tới Poll document
 }
 
 interface GroupMember {
@@ -411,6 +415,26 @@ export const GroupChatWindow = ({
   const [groupCallIsCallee, setGroupCallIsCallee] = useState(false);
   const [groupCallWithVideo, setGroupCallWithVideo] = useState(true);
   const [groupCallInitialParticipants, setGroupCallInitialParticipants] = useState<{ userID: string; name: string; avatar?: string }[]>([]);
+
+  // Board Modal States
+  const [showBoard, setShowBoard] = useState(false);
+  const [boardTab, setBoardTab] = useState<'all' | 'pinned' | 'notes' | 'polls'>('all');
+  const [boardInitialPollId, setBoardInitialPollId] = useState<string | undefined>(undefined);
+
+  // Lắng nghe sự kiện mở chi tiết bình chọn từ các component con (như PollMessage)
+  useEffect(() => {
+    const handleOpenPollDetail = (e: any) => {
+      const { pollID } = e.detail;
+      if (pollID) {
+        setBoardInitialPollId(pollID);
+        setBoardTab('polls');
+        setShowBoard(true);
+      }
+    };
+
+    window.addEventListener('open-poll-detail', handleOpenPollDetail);
+    return () => window.removeEventListener('open-poll-detail', handleOpenPollDetail);
+  }, []);
 
   const getMyInfo = () => ({
     userID,
@@ -762,9 +786,9 @@ export const GroupChatWindow = ({
       const exists = prev.some((m) => m.messageID === message.messageID);
       if (exists) return prev;
 
-      // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn
-      // Tin nhắn đã được thêm và xác nhận qua callback socket.emit('send_group_message')
-      if (message.senderID === userID) {
+      // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn (Trừ Poll và Notification hệ thống)
+      // Tin nhắn văn bản đã được thêm và xác nhận qua callback socket.emit('send_group_message')
+      if (message.senderID === userID && message.type !== 'poll' && message.type !== 'notification') {
         return prev;
       }
 
@@ -2066,225 +2090,25 @@ export const GroupChatWindow = ({
             </div>
           </div>
 
-          {/* Pinned Messages & Notes Bar */}
-          {(pinnedMessages.length > 0 || pinnedNotes.length > 0) && (
-            <div className="relative bg-white border-b border-gray-200 flex-shrink-0">
-              {/* Main pinned item display */}
-              <div
-                className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
-                onClick={() => {
-                  // Show the most recent pinned item (message or note)
-                  const allPinned = [
-                    ...pinnedMessages.map(m => ({ type: 'message' as const, data: m, pinnedAt: m.pinnedInfo?.pinnedAt })),
-                    ...pinnedNotes.map(n => ({ type: 'note' as const, data: n, pinnedAt: n.pinnedAt }))
-                  ].sort((a, b) => {
-                    const dateA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
-                    const dateB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
-                    return dateB - dateA;
-                  });
-
-                  if (allPinned.length > 0 && allPinned[0].type === 'message') {
-                    const msg = allPinned[0].data as Message;
-                    if (msg.messageID) {
-                      setHighlightedMsgId(msg.messageID);
-                      msgRefsMap.current.get(msg.messageID)?.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'center'
-                      });
-                      setTimeout(() => setHighlightedMsgId(null), 2500);
-                    }
-                  }
-                }}
-              >
-                <BsPinAngleFill className="text-[#0068ff] text-lg shrink-0" />
-                <div className="flex-1 min-w-0">
-                  {(() => {
-                    const allPinned = [
-                      ...pinnedMessages.map(m => ({ type: 'message' as const, data: m, pinnedAt: m.pinnedInfo?.pinnedAt })),
-                      ...pinnedNotes.map(n => ({ type: 'note' as const, data: n, pinnedAt: n.pinnedAt }))
-                    ].sort((a, b) => {
-                      const dateA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
-                      const dateB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
-                      return dateB - dateA;
-                    });
-
-                    if (allPinned.length === 0) return null;
-
-                    const latest = allPinned[0];
-                    if (latest.type === 'message') {
-                      const msg = latest.data as Message;
-                      return (
-                        <>
-                          <div className="text-[13px] font-semibold text-gray-800 mb-0.5 flex items-center gap-1">
-                            <span>📌</span>
-                            {msg.senderInfo?.name || 'Tin nhắn'}
-                          </div>
-                          <div className="text-[12px] text-gray-500 truncate">
-                            {msg.content || '[Media]'}
-                          </div>
-                        </>
-                      );
-                    } else {
-                      const note = latest.data as any;
-                      return (
-                        <>
-                          <div className="text-[13px] font-semibold text-gray-800 mb-0.5 flex items-center gap-1">
-                            <span>📝</span>
-                            {note.creatorInfo?.name || 'Ghi chú'}
-                          </div>
-                          <div className="text-[12px] text-gray-500 truncate">
-                            {note.content}
-                          </div>
-                        </>
-                      );
-                    }
-                  })()}
-                </div>
-                {(pinnedMessages.length + pinnedNotes.length > 1) && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowPinnedList(!showPinnedList);
-                    }}
-                    className="px-3 py-1 bg-gray-50 hover:bg-gray-100 rounded-lg text-[12px] text-gray-700 font-medium transition-colors flex items-center gap-1"
-                  >
-                    +{pinnedMessages.length + pinnedNotes.length - 1} ghim
-                    <svg
-                      className={`w-3 h-3 transition-transform ${showPinnedList ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-
-              {/* Dropdown list of all pinned messages and notes */}
-              {showPinnedList && (pinnedMessages.length + pinnedNotes.length > 1) && (
-                <div className="absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-lg z-10 max-h-[300px] overflow-y-auto">
-                  <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between">
-                    <span className="text-[13px] font-semibold text-gray-700">
-                      Danh sách ghim ({pinnedMessages.length + pinnedNotes.length})
-                    </span>
-                    <button
-                      onClick={() => setShowPinnedList(false)}
-                      className="text-gray-400 hover:text-gray-700"
-                    >
-                      <FaTimes />
-                    </button>
-                  </div>
-
-                  {/* Combine and sort pinned messages and notes by pin date */}
-                  {[
-                    ...pinnedMessages.map(m => ({ type: 'message' as const, data: m, pinnedAt: m.pinnedInfo?.pinnedAt })),
-                    ...pinnedNotes.map(n => ({ type: 'note' as const, data: n, pinnedAt: n.pinnedAt }))
-                  ]
-                    .sort((a, b) => {
-                      const dateA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
-                      const dateB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
-                      return dateB - dateA;
-                    })
-                    .map((item, index) => {
-                      if (item.type === 'message') {
-                        const msg = item.data as Message;
-                        return (
-                          <div
-                            key={`msg-${msg.messageID}`}
-                            className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                            onClick={() => {
-                              if (msg.messageID) {
-                                setHighlightedMsgId(msg.messageID);
-                                msgRefsMap.current.get(msg.messageID)?.scrollIntoView({
-                                  behavior: 'smooth',
-                                  block: 'center'
-                                });
-                                setTimeout(() => setHighlightedMsgId(null), 2500);
-                                setShowPinnedList(false);
-                              }
-                            }}
-                          >
-                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                              <span className="text-base">📌</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
-                                {msg.senderInfo?.name}
-                              </div>
-                              <div className="text-[12px] text-gray-600 truncate">
-                                {msg.content || '[Media]'}
-                              </div>
-                              <div className="text-[11px] text-gray-400 mt-0.5">
-                                {formatTime(msg.timestamp)}
-                              </div>
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePin(msg);
-                              }}
-                              className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                              title="Bỏ ghim"
-                            >
-                              <FaTimes className="text-sm" />
-                            </button>
-                          </div>
-                        );
-                      } else {
-                        const note = item.data as any;
-                        return (
-                          <div
-                            key={`note-${note.noteID}`}
-                            className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                            onClick={() => {
-                              // Open note modal or show note details
-                              setShowPinnedList(false);
-                            }}
-                          >
-                            <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
-                              <span className="text-base">📝</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-semibold text-gray-800 mb-0.5">
-                                {note.creatorInfo?.name || 'Ghi chú'}
-                              </div>
-                              <div className="text-[12px] text-gray-600 line-clamp-2">
-                                {note.content}
-                              </div>
-                              <div className="text-[11px] text-gray-400 mt-0.5">
-                                {new Date(note.createdAt).toLocaleString('vi-VN', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </div>
-                            </div>
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  await axiosInstance.post(`/groups/${groupID}/notes/${note.noteID}/toggle-pin`);
-                                  toast.success('Đã bỏ ghim ghi chú');
-                                  fetchPinnedNotes();
-                                } catch (error: any) {
-                                  toast.error(error.response?.data?.message || 'Lỗi khi bỏ ghim');
-                                }
-                              }}
-                              className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                              title="Bỏ ghim"
-                            >
-                              <FaTimes className="text-sm" />
-                            </button>
-                          </div>
-                        );
-                      }
-                    })}
-                </div>
-              )}
-            </div>
-          )}
+          {/* Pinned Messages & Notes Bar - New Implementation */}
+          <PinnedMessagesPanel
+            groupID={groupID}
+            onClose={() => {}}
+            onViewBoard={(tab) => {
+              setBoardTab(tab as any || 'all');
+              setShowBoard(true);
+            }}
+            onScrollToMessage={(msgId) => {
+              if (msgId) {
+                setHighlightedMsgId(msgId);
+                msgRefsMap.current.get(msgId)?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'center'
+                });
+                setTimeout(() => setHighlightedMsgId(null), 2500);
+              }
+            }}
+          />
 
           {/* Messages Area */}
           <div
@@ -2481,17 +2305,76 @@ export const GroupChatWindow = ({
                                 const receiverName = parts[4];
                                 const otherName = userID === senderID ? receiverName : senderName;
                                 return (
-                                  <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block">
-                                    Bạn và <b>{otherName}</b> đã trở thành bạn bè
+                                  <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block shadow-sm border border-gray-100">
+                                    🤝 Bạn và <b>{otherName}</b> đã trở thành bạn bè
                                   </span>
+                                );
+                              }
+
+                              // [NEW] Xử lý thông báo Bình chọn (Poll Notification)
+                              if (msg.content?.startsWith('##POLL_')) {
+                                const parts = msg.content.split('|');
+                                const type = parts[0]; // ##POLL_CREATED##, ##POLL_VOTED##, ##POLL_CLOSED##
+                                const pollID = parts[1];
+                                const question = parts[2];
+                                const personName = parts[3];
+                                const voterAction = parts[4] || ''; // Dùng cho VOTED: 'đã tham gia bình chọn'
+
+                                let text = '';
+                                const isMe = msg.senderID === userID;
+                                const displayName = isMe ? 'Bạn' : personName;
+
+                                if (type === '##POLL_CREATED##') {
+                                  text = `${displayName} đã tạo cuộc bình chọn mới: ${question}`;
+                                } else if (type === '##POLL_VOTED##') {
+                                  text = `${displayName} ${voterAction}: ${question}`;
+                                } else if (type === '##POLL_CLOSED##') {
+                                  text = `${displayName} đã khóa bình chọn: ${question}`;
+                                }
+
+                                return (
+                                  <div className="flex items-center gap-2 bg-[#f0f9f3] text-[#2e7d32] rounded-full px-4 py-1.5 shadow-sm border border-[#c8e6c9] max-w-full">
+                                    {/* Icon 3 cột sóng xanh lá giống ảnh */}
+                                    <div className="flex items-end gap-[2px] h-3 mb-[1px] shrink-0">
+                                      <div className="w-[3px] h-[6px] bg-[#2e7d32] rounded-t-sm"></div>
+                                      <div className="w-[3px] h-[10px] bg-[#2e7d32] rounded-t-sm"></div>
+                                      <div className="w-[3px] h-[8px] bg-[#2e7d32] rounded-t-sm"></div>
+                                    </div>
+                                    <span className="text-xs font-medium truncate shrink-1">
+                                      {text}
+                                    </span>
+                                    <button 
+                                      className="text-blue-600 hover:text-blue-700 font-bold text-xs shrink-0 ml-1"
+                                      onClick={() => {
+                                        // Tìm tin nhắn chứa pollID này để cuộn tới
+                                        const targetMsg = messages.find(m => m.pollID === pollID && m.type === 'poll');
+                                        if (targetMsg?.messageID) {
+                                          setHighlightedMsgId(targetMsg.messageID);
+                                          msgRefsMap.current.get(targetMsg.messageID)?.scrollIntoView({
+                                            behavior: 'smooth',
+                                            block: 'center',
+                                          });
+                                          setTimeout(() => setHighlightedMsgId(null), 2500);
+                                        } else {
+                                          // Nếu không tìm thấy trong list hiện tại (có thể là tin nhắn cũ), mở modal Board
+                                          setBoardTab('polls');
+                                          setBoardInitialPollId(pollID);
+                                          setShowBoard(true);
+                                          toast('Đang mở chi tiết bình chọn...');
+                                        }
+                                      }}
+                                    >
+                                      Xem
+                                    </button>
+                                  </div>
                                 );
                               }
 
                               const parsed = JSON.parse(msg.content || '');
                               if (parsed.type === 'join_request_notification') {
                                 return (
-                                  <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block">
-                                    <b>{parsed.inviteeName}</b> được <b>{parsed.inviterName}</b> mời tham gia nhóm và cần bạn phê duyệt.{' '}
+                                  <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block shadow-sm border border-gray-100">
+                                    🔔 <b>{parsed.inviteeName}</b> được <b>{parsed.inviterName}</b> mời tham gia nhóm và cần bạn phê duyệt.{' '}
                                     <button
                                       className="text-blue-500 underline font-medium not-italic"
                                       onClick={() => setPendingApprovalModal({
@@ -2507,7 +2390,7 @@ export const GroupChatWindow = ({
                               }
                             } catch { /* không phải JSON hoặc không phải friendship */ }
                             return (
-                              <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block">
+                              <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block shadow-sm border border-gray-100">
                                 {msg.content}
                               </span>
                             );
@@ -2548,7 +2431,7 @@ export const GroupChatWindow = ({
                       </div>
                     ) : (
                       <>
-                        {!isMine && (
+                        {!isMine && msg.type !== 'poll' && (
                           <div className="relative flex-shrink-0 mr-2">
                             <img
                               src={msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`}
@@ -2559,8 +2442,8 @@ export const GroupChatWindow = ({
                           </div>
                         )}
 
-                        <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
-                          {!isMine && (
+                        <div className={`flex flex-col ${msg.type === 'poll' ? 'w-full max-w-full items-center' : `max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}`}>
+                          {!isMine && msg.type !== 'poll' && (
                             <span
                               className="text-xs text-gray-500 mb-1 font-semibold px-1 flex items-center cursor-pointer hover:text-blue-500 transition-colors"
                               onClick={() => handleShowUserProfile(msg.senderID)}
@@ -2572,29 +2455,31 @@ export const GroupChatWindow = ({
 
                           <div className="relative group">
                             <div
-                              className={`${msg.type === 'notification'
+                                className={`${msg.type === 'notification'
                                 ? 'bg-transparent'
-                                : msg.type === 'sticker' || msg.type === 'gif'
-                                  ? ''
-                                  : isMine
-                                    ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
-                                    : (() => {
-                                      const senderRole = getSenderRole(msg.senderID);
-                                      const isAdminMsg =
-                                        groupInfo?.settings?.highlightAdminMessages &&
-                                        (senderRole === 'owner' || senderRole === 'admin');
-                                      if (isAdminMsg && senderRole === 'owner')
-                                        return 'bg-yellow-50 text-gray-800 border border-yellow-300';
-                                      if (isAdminMsg && senderRole === 'admin')
-                                        return 'bg-blue-50 text-gray-800 border border-blue-300';
-                                      return 'bg-white text-gray-800 border border-gray-100';
-                                    })()
-                                } ${msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif'
+                                : msg.type === 'poll'
+                                  ? '' // [UPDATE] Thẻ Poll tự lo phần UI/Background
+                                  : msg.type === 'sticker' || msg.type === 'gif'
+                                    ? ''
+                                    : isMine
+                                      ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
+                                      : (() => {
+                                        const senderRole = getSenderRole(msg.senderID);
+                                        const isAdminMsg =
+                                          groupInfo?.settings?.highlightAdminMessages &&
+                                          (senderRole === 'owner' || senderRole === 'admin');
+                                        if (isAdminMsg && senderRole === 'owner')
+                                          return 'bg-yellow-50 text-gray-800 border border-yellow-300';
+                                        if (isAdminMsg && senderRole === 'admin')
+                                          return 'bg-blue-50 text-gray-800 border border-blue-300';
+                                        return 'bg-white text-gray-800 border border-gray-100';
+                                      })()
+                                } ${msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif' || msg.type === 'poll'
                                   ? 'p-0 rounded-2xl overflow-hidden'
                                   : msg.type === 'file'
                                     ? 'rounded-2xl'
                                     : 'px-4 py-2.5 rounded-2xl'
-                                } ${msg.type !== 'notification' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'shadow-sm' : ''} ${isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-br-sm' : ''} ${!isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' ? 'rounded-bl-sm' : ''}`}
+                                } ${msg.type !== 'notification' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'shadow-sm' : ''} ${isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'rounded-br-sm' : ''} ${!isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'rounded-bl-sm' : ''}`}
                               onClick={(e) => e.stopPropagation()}
                             >
                               {msg.replyTo && (
@@ -2677,6 +2562,13 @@ export const GroupChatWindow = ({
                                 <AudioPlayer src={msg.media_url[0]} isMine={isMine} />
                               ) : msg.type === 'file' && msg.media_url?.length ? (
                                 <FileDisplay fileName={msg.content || 'file'} fileUrl={msg.media_url[0]} isMine={isMine} />
+                              ) : msg.type === 'poll' && msg.pollID ? (
+                                <PollMessage
+                                  pollID={msg.pollID}
+                                  groupID={groupID}
+                                  userID={userID}
+                                  senderName={msg.senderInfo?.name || 'Người dùng'}
+                                />
                               ) : (
                                 renderMessageContent(msg.content || '', msg.mentions)
                               )}
@@ -3623,6 +3515,17 @@ export const GroupChatWindow = ({
           initialWithVideo={groupCallWithVideo}
           initialParticipants={groupCallInitialParticipants}
           onClose={() => { setShowGroupCall(false); setJoinExistingCall(false); setGroupCallIsCallee(false); }}
+        />
+      )}
+
+      {showBoard && (
+        <GroupBoardModal
+          show={showBoard}
+          onClose={() => setShowBoard(false)}
+          groupID={groupID}
+          userID={userID}
+          initialTab={boardTab}
+          initialPollId={boardInitialPollId}
         />
       )}
     </div>
