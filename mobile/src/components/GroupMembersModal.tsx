@@ -9,6 +9,8 @@ import {
   Image,
   TextInput,
   Alert,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,13 +29,14 @@ interface Props {
   visible: boolean;
   members: Member[];
   memberCount: number;
-  groupID?: string; // Thêm groupID
+  groupID?: string;
+  currentUserID?: string; // Thêm currentUserID để biết quyền
   onClose: () => void;
   onAddMembers?: () => void;
-  onRefresh?: () => void; // Thêm callback để refresh
+  onRefresh?: () => void;
 }
 
-const GroupMembersModal = ({ visible, members, memberCount, groupID, onClose, onAddMembers, onRefresh }: Props) => {
+const GroupMembersModal = ({ visible, members, memberCount, groupID, currentUserID, onClose, onAddMembers, onRefresh }: Props) => {
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddMembersModal, setShowAddMembersModal] = useState(false);
@@ -43,6 +46,12 @@ const GroupMembersModal = ({ visible, members, memberCount, groupID, onClose, on
     avatar?: string;
   }>>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+
+  // Lấy role của current user
+  const currentMember = members.find(m => m.userID === currentUserID);
+  const currentRole = currentMember?.role || 'member';
+  const isOwner = currentRole === 'owner';
+  const isAdmin = currentRole === 'admin';
 
   const filteredMembers = members.filter(m =>
     (m.name || m.userID).toLowerCase().includes(searchQuery.toLowerCase())
@@ -106,6 +115,204 @@ const GroupMembersModal = ({ visible, members, memberCount, groupID, onClose, on
     return '#888';
   };
 
+  // Kiểm tra quyền thao tác với member
+  const canManageMember = (targetMember: Member) => {
+    // Không thể tự quản lý chính mình
+    if (targetMember.userID === currentUserID) return false;
+    
+    // Owner có thể quản lý tất cả (trừ chính mình)
+    if (isOwner) return true;
+    
+    // Admin chỉ có thể kick member thường
+    if (isAdmin && targetMember.role === 'member') return true;
+    
+    return false;
+  };
+
+  // Xử lý kick member
+  const handleKickMember = async (member: Member) => {
+    if (!groupID) return;
+
+    Alert.alert(
+      'Xóa khỏi nhóm',
+      `Bạn có chắc muốn xóa ${member.name || member.userID} khỏi nhóm?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('token');
+              const response = await fetch(
+                `${API_URL}/api/groups/${groupID}/members/${member.userID}`,
+                {
+                  method: 'DELETE',
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                  },
+                }
+              );
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to kick member');
+              }
+
+              Alert.alert('Thành công', 'Đã xóa thành viên khỏi nhóm');
+              if (onRefresh) onRefresh();
+            } catch (error: any) {
+              console.error('❌ Error kicking member:', error);
+              Alert.alert('Lỗi', error.message || 'Không thể xóa thành viên');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Xử lý thêm/gỡ phó nhóm
+  const handlePromoteToAdmin = async (member: Member) => {
+    if (!groupID) return;
+
+    Alert.alert(
+      'Thêm phó nhóm',
+      `Bạn có chắc muốn thêm ${member.name || member.userID} làm phó nhóm?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xác nhận',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('token');
+              const response = await fetch(
+                `${API_URL}/api/groups/${groupID}/members/${member.userID}/role`,
+                {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({ role: 'admin' }),
+                }
+              );
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to promote member');
+              }
+
+              Alert.alert('Thành công', 'Đã thêm phó nhóm');
+              if (onRefresh) onRefresh();
+            } catch (error: any) {
+              console.error('❌ Error promoting member:', error);
+              Alert.alert('Lỗi', error.message || 'Không thể thêm phó nhóm');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDemoteFromAdmin = async (member: Member) => {
+    if (!groupID) return;
+
+    Alert.alert(
+      'Gỡ quyền phó nhóm',
+      `Bạn có chắc muốn gỡ quyền phó nhóm của ${member.name || member.userID}?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xác nhận',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('token');
+              const response = await fetch(
+                `${API_URL}/api/groups/${groupID}/members/${member.userID}/role`,
+                {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({ role: 'member' }),
+                }
+              );
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Failed to demote member');
+              }
+
+              Alert.alert('Thành công', 'Đã gỡ quyền phó nhóm');
+              if (onRefresh) onRefresh();
+            } catch (error: any) {
+              console.error('❌ Error demoting member:', error);
+              Alert.alert('Lỗi', error.message || 'Không thể gỡ quyền phó nhóm');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Hiển thị menu actions cho member
+  const showMemberActions = (member: Member) => {
+    if (!canManageMember(member)) return;
+
+    const options: string[] = [];
+    const actions: (() => void)[] = [];
+
+    // Owner có thể thêm/gỡ phó nhóm
+    if (isOwner) {
+      if (member.role === 'member') {
+        options.push('Thêm phó nhóm');
+        actions.push(() => handlePromoteToAdmin(member));
+      } else if (member.role === 'admin') {
+        options.push('Gỡ quyền phó nhóm');
+        actions.push(() => handleDemoteFromAdmin(member));
+      }
+    }
+
+    // Owner và Admin có thể kick (theo quyền)
+    if (isOwner || (isAdmin && member.role === 'member')) {
+      options.push('Xóa khỏi nhóm');
+      actions.push(() => handleKickMember(member));
+    }
+
+    options.push('Hủy');
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          destructiveButtonIndex: options.length - 2, // "Xóa khỏi nhóm" là destructive
+          cancelButtonIndex: options.length - 1,
+        },
+        (buttonIndex) => {
+          if (buttonIndex < actions.length) {
+            actions[buttonIndex]();
+          }
+        }
+      );
+    } else {
+      // Android: Hiển thị Alert với các options
+      Alert.alert(
+        member.name || member.userID,
+        'Chọn hành động',
+        [
+          ...options.slice(0, -1).map((option, index) => ({
+            text: option,
+            onPress: actions[index],
+            style: option === 'Xóa khỏi nhóm' ? 'destructive' as const : 'default' as const,
+          })),
+          { text: 'Hủy', style: 'cancel' as const },
+        ]
+      );
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -157,7 +364,12 @@ const GroupMembersModal = ({ visible, members, memberCount, groupID, onClose, on
 
         <ScrollView style={styles.memberList}>
           {filteredMembers.map((member) => (
-            <View key={member.userID} style={styles.memberItem}>
+            <TouchableOpacity
+              key={member.userID}
+              style={styles.memberItem}
+              onPress={() => showMemberActions(member)}
+              disabled={!canManageMember(member)}
+            >
               <Image
                 source={{
                   uri: member.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.userID}`,
@@ -170,7 +382,10 @@ const GroupMembersModal = ({ visible, members, memberCount, groupID, onClose, on
                   {getRoleName(member.role)}
                 </Text>
               </View>
-            </View>
+              {canManageMember(member) && (
+                <Ionicons name="ellipsis-horizontal" size={20} color="#888" />
+              )}
+            </TouchableOpacity>
           ))}
         </ScrollView>
 

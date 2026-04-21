@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
 import EditGroupInfoModal from './EditGroupInfoModal';
 import GroupBoardModal from './GroupBoardModal';
+import { TransferOwnershipModal } from './TransferOwnershipModal';
 import './GroupInfoPanel.css';
 
 interface GroupMember {
@@ -178,6 +179,7 @@ const GroupInfoPanel = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showGroupBoard, setShowGroupBoard] = useState(false);
+  const [showTransferOwnership, setShowTransferOwnership] = useState(false);
 
   const currentMember = groupInfo.members.find(m => m.userID === currentUserID);
   const isOwner = currentMember?.role === 'owner';
@@ -646,7 +648,14 @@ const GroupInfoPanel = ({
 
         {/* Footer - Rời nhóm / Giải tán nhóm */}
         <div style={S.footer}>
-          <button style={S.dangerBtn} onClick={() => setShowLeaveConfirm(true)}>
+          <button style={S.dangerBtn} onClick={() => {
+            // Nếu là owner, phải chuyển quyền trước
+            if (isOwner) {
+              setShowTransferOwnership(true);
+            } else {
+              setShowLeaveConfirm(true);
+            }
+          }}>
             <FaSignOutAlt style={{ fontSize: 12 }} />
             Rời nhóm
           </button>
@@ -713,6 +722,35 @@ const GroupInfoPanel = ({
         onPinLimitReached={onPinLimitReached}
         canCreateNotes={canCreateNotes}
       />
+
+      {/* Transfer Ownership Modal */}
+      {showTransferOwnership && (
+        <TransferOwnershipModal
+          members={groupInfo.members}
+          currentOwnerID={currentUserID}
+          onClose={() => setShowTransferOwnership(false)}
+          onTransfer={async (newOwnerID: string) => {
+            try {
+              // Chuyển quyền owner
+              await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${newOwnerID}/role`, {
+                role: 'owner'
+              });
+              
+              toast.success('Đã chuyển quyền trưởng nhóm');
+              setShowTransferOwnership(false);
+              
+              // Sau khi chuyển quyền thành công, cho phép rời nhóm
+              await axiosInstance.post(`/groups/${groupInfo.groupID}/leave`);
+              toast.success('Đã rời khỏi nhóm');
+              
+              // Redirect về home
+              window.location.href = '/home';
+            } catch (error: any) {
+              toast.error(error.response?.data?.message || 'Lỗi khi chuyển quyền');
+            }
+          }}
+        />
+      )}
     </>
   );
 };

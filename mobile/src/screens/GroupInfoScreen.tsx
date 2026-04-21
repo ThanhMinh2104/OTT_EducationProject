@@ -18,6 +18,7 @@ import socket from '../utils/socket';
 import { AddMemberModal } from '../components/AddMemberModal';
 import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
 import { GroupBoardModal } from '../components/GroupBoardModal';
+import { TransferOwnershipModal } from '../components/TransferOwnershipModal';
 
 const { width } = Dimensions.get('window');
 
@@ -90,6 +91,7 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showGroupBoard, setShowGroupBoard] = useState(false);
+  const [showTransferOwnership, setShowTransferOwnership] = useState(false);
 
   useEffect(() => {
     fetchGroupData();
@@ -102,10 +104,30 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
       }
     };
     
+    // Listen for member left event to reload members list
+    const handleMemberLeft = (data: { groupID: string; userID: string; userName: string }) => {
+      if (data.groupID === groupID) {
+        console.log('🔄 Member left, reloading group info...');
+        fetchGroupData();
+      }
+    };
+
+    // Listen for member kicked event to reload members list
+    const handleMemberKicked = (data: { groupID: string; kickedUserID: string; kickedBy: string; kickerName: string; kickedName: string }) => {
+      if (data.groupID === groupID) {
+        console.log('🔄 Member kicked, reloading group info...');
+        fetchGroupData();
+      }
+    };
+    
     socket.on('group_settings_updated', handleSettingsUpdated);
+    socket.on('member_left', handleMemberLeft);
+    socket.on('member_kicked', handleMemberKicked);
     
     return () => {
       socket.off('group_settings_updated', handleSettingsUpdated);
+      socket.off('member_left', handleMemberLeft);
+      socket.off('member_kicked', handleMemberKicked);
     };
   }, [groupID]);
 
@@ -255,6 +277,13 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
   };
 
   const handleLeaveGroup = () => {
+    // Nếu là owner, phải chuyển quyền trước
+    if (isOwner) {
+      // Mở modal chuyển quyền
+      setShowTransferOwnership(true);
+      return;
+    }
+
     Alert.alert(
       'Rời nhóm',
       `Bạn có chắc muốn rời khỏi nhóm "${groupInfo?.name}"?`,
@@ -266,9 +295,15 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
           onPress: async () => {
             try {
               await axiosInstance.post(`/groups/${groupID}/leave`);
-              Alert.alert('Thành công', 'Đã rời khỏi nhóm');
-              onLeaveGroup?.();
-              onClose();
+              Alert.alert('Thành công', 'Đã rời khỏi nhóm', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    onLeaveGroup?.();
+                    onClose();
+                  }
+                }
+              ]);
             } catch (error: any) {
               Alert.alert('Lỗi', error.response?.data?.message || 'Không thể rời nhóm');
             }
@@ -645,6 +680,20 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
         groupID={groupID}
         userID={userID}
         canCreateNotes={canCreateNotes}
+      />
+
+      {/* Transfer Ownership Modal */}
+      <TransferOwnershipModal
+        visible={showTransferOwnership}
+        groupID={groupID}
+        members={groupInfo?.members || []}
+        currentUserID={userID}
+        onClose={() => setShowTransferOwnership(false)}
+        onSuccess={() => {
+          setShowTransferOwnership(false);
+          onLeaveGroup?.();
+          onClose();
+        }}
       />
     </View>
   );
