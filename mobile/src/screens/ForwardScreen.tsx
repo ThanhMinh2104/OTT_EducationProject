@@ -138,6 +138,7 @@ const ForwardScreen = ({ navigation, route }: Props) => {
       selectedChatID,
       messageID: message.messageID,
       userID: user?.userID,
+      chatID,
     });
 
     if (!selectedChatID || !message.messageID || !user?.userID) {
@@ -146,10 +147,21 @@ const ForwardScreen = ({ navigation, route }: Props) => {
       return;
     }
 
+    // Determine target chat type
+    const targetChat = chats.find((c) => c.chatID === selectedChatID);
+    const isTargetGroup = targetChat?.type === 'group';
+    
+    // Determine source chat type from chatID
+    // Group chat IDs start with 'grp_', private chat IDs start with 'chat_'
+    const isSourceGroup = chatID?.startsWith('grp_');
+
     console.log('🔄 Forwarding message:', {
       originalMessageID: message.messageID,
+      sourceChatID: chatID,
       targetChatID: selectedChatID,
       senderID: user.userID,
+      isSourceGroup,
+      isTargetGroup,
       socketConnected: socket.connected,
       socketID: socket.id,
     });
@@ -175,39 +187,74 @@ const ForwardScreen = ({ navigation, route }: Props) => {
       );
     }, 2000);
     
-    // Emit với callback để xác nhận backend đã nhận
-    socket.emit(
-      'forward_message',
-      {
-        originalMessageID: message.messageID,
-        targetChatID: selectedChatID,
-        senderID: user.userID,
-        senderInfo: {
-          name: user.name,
-          avatar: user.anhDaiDien || null,
-        },
+    // Prepare forward data
+    const forwardData = {
+      originalMessageID: message.messageID,
+      originalChatID: isSourceGroup ? undefined : chatID,
+      originalGroupID: isSourceGroup ? chatID : undefined,
+      senderID: user.userID,
+      senderInfo: {
+        name: user.name,
+        avatar: user.anhDaiDien || null,
       },
-      (response: any) => {
-        console.log('📥 Forward callback response:', response);
-        
-        // Clear timeout vì đã nhận callback
-        clearTimeout(timeoutId);
-        setForwarding(false);
-        
-        if (response?.success) {
-          const selectedChat = chats.find((c) => c.chatID === selectedChatID);
-          Alert.alert(
-            'Thành công', 
-            `Tin nhắn đã được chuyển tiếp tới ${getDisplayName(selectedChat!)}`,
-            [{ text: 'OK', onPress: () => navigation.goBack() }]
-          );
-        } else {
-          Alert.alert('Lỗi', response?.error || 'Không thể chuyển tiếp tin nhắn');
-        }
-      }
-    );
+    };
 
-    console.log('✅ Forward message emitted successfully');
+    // Emit appropriate socket event based on target type
+    if (isTargetGroup) {
+      // Forward to group chat
+      socket.emit(
+        'forward_to_group',
+        {
+          ...forwardData,
+          targetGroupID: selectedChatID,
+        },
+        (response: any) => {
+          console.log('📥 Forward to group callback response:', response);
+          
+          clearTimeout(timeoutId);
+          setForwarding(false);
+          
+          if (response?.success) {
+            const selectedChat = chats.find((c) => c.chatID === selectedChatID);
+            Alert.alert(
+              'Thành công', 
+              `Tin nhắn đã được chuyển tiếp tới nhóm ${getDisplayName(selectedChat!)}`,
+              [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
+          } else {
+            Alert.alert('Lỗi', response?.error || 'Không thể chuyển tiếp tin nhắn');
+          }
+        }
+      );
+    } else {
+      // Forward to private chat
+      socket.emit(
+        'forward_message',
+        {
+          ...forwardData,
+          targetChatID: selectedChatID,
+        },
+        (response: any) => {
+          console.log('📥 Forward to private callback response:', response);
+          
+          clearTimeout(timeoutId);
+          setForwarding(false);
+          
+          if (response?.success) {
+            const selectedChat = chats.find((c) => c.chatID === selectedChatID);
+            Alert.alert(
+              'Thành công', 
+              `Tin nhắn đã được chuyển tiếp tới ${getDisplayName(selectedChat!)}`,
+              [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
+          } else {
+            Alert.alert('Lỗi', response?.error || 'Không thể chuyển tiếp tin nhắn');
+          }
+        }
+      );
+    }
+
+    console.log(`✅ Forward message emitted to ${isTargetGroup ? 'group' : 'private'} chat`);
   };
 
   if (loading) {

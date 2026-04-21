@@ -1,8 +1,11 @@
 /* Animations for GroupBoardModal */
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(180deg); }
+}
+
+.spin {
+  animation: spin-full 2s linear infinite;
 }
 
 @keyframes slideInRight {
@@ -16,16 +19,56 @@
   }
 }
 
+@keyframes spin-full {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #3a3a3a;
+  border: 3px solid #e4e6eb;
   border-top-color: #0084ff;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: spin-full 0.8s linear infinite;
+}
+
+.animate-fade-in-right {
+  animation: slideInRight 0.3s ease-out forwards;
+}
+
+.animate-spin-slow {
+  animation: spin-full 3s linear infinite;
+}
+
+.spin-hover:hover:not(.active) {
+  animation: spin-full 2s linear infinite;
+}
+
+.spin-hover.active {
+  animation: none !important;
+  transform: rotate(45deg);
+}
+
+/* Custom Scrollbar for Group Board */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .note-form-container,
 .note-view-container {
-  animation: slideInRight 0.3s ease-out;
+  animation: slideInRight 0.3s ease-out forwards;
 }
