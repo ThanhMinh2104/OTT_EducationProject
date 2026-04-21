@@ -68,6 +68,7 @@ interface GroupBoardModalProps {
   onViewMessage?: (messageID: string) => void;
   onPinLimitReached?: (noteID: string) => void;
   canCreateNotes?: boolean;
+  canCreatePolls?: boolean;
   initialTab?: TabType;
   initialPollId?: string;
 }
@@ -83,6 +84,7 @@ const GroupBoardModal = ({
   onViewMessage,
   onPinLimitReached,
   canCreateNotes = true,
+  canCreatePolls = true,
   initialTab,
   initialPollId
 }: GroupBoardModalProps) => {
@@ -946,7 +948,9 @@ const GroupBoardModal = ({
                     <div className="flex flex-col items-center justify-center py-15 px-5 gap-4">
                       <span className="text-6xl opacity-30">📊</span>
                       <p className="text-base text-gray-500 m-0">Chưa có bình chọn</p>
-                      <button className="py-3 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#0073e6] hover:-translate-y-px" onClick={handleCreatePoll}>Tạo bình chọn</button>
+                      {canCreatePolls && (
+                        <button className="py-3 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#0073e6] hover:-translate-y-px" onClick={handleCreatePoll}>Tạo bình chọn</button>
+                      )}
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
@@ -985,11 +989,20 @@ const GroupBoardModal = ({
                   )}
                   
                   {/* Create Poll Button at bottom */}
+                  {canCreatePolls ? (
                   <div className="sticky bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-50 via-gray-50/80 to-transparent z-10">
                     <button className="w-full py-3.5 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all shadow-[0_4px_12px_rgba(0,132,255,0.3)] hover:bg-[#0073e6] hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,132,255,0.4)]" onClick={handleCreatePoll}>
                       Tạo bình chọn
                     </button>
                   </div>
+                  ) : (
+                  <div className="sticky bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-50 via-gray-50/80 to-transparent z-10">
+                    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-white rounded-lg border border-gray-200">
+                      <span className="text-base">🔒</span>
+                      <span className="text-sm text-gray-600">Chỉ trưởng nhóm và phó nhóm mới có thể tạo bình chọn</span>
+                    </div>
+                  </div>
+                  )}
                 </div>
               )}
 

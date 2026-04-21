@@ -942,11 +942,33 @@ export const GroupChatWindow = ({
   const handleGroupSettingsUpdated = useCallback((data: { groupID: string; settings: any }) => {
     console.log('⚙️ Group settings updated:', data);
     if (data.groupID === groupID) {
-      // Refresh group data to get latest settings
-      fetchGroupData();
+      // Update groupInfo.settings real-time instead of full reload
+      setGroupInfo((prev) =>
+        prev
+          ? {
+              ...prev,
+              settings: data.settings,
+            }
+          : prev
+      );
       toast.success('Cài đặt nhóm đã được cập nhật');
     }
-  }, [groupID, fetchGroupData]);
+  }, [groupID]);
+
+  // Group info updated handler (real-time name/avatar change)
+  const handleGroupInfoUpdated = useCallback((data: { groupID: string; name?: string; avatar?: string }) => {
+    console.log('🖼️ Group info updated:', data);
+    if (data.groupID !== groupID) return;
+    setGroupInfo((prev) =>
+      prev
+        ? {
+            ...prev,
+            name: data.name ?? prev.name,
+            avatar: data.avatar ?? prev.avatar,
+          }
+        : prev
+    );
+  }, [groupID]);
 
   // Group dissolved handler
   const handleGroupDissolved = useCallback((data: { groupID: string; message: string }) => {
@@ -1048,6 +1070,7 @@ export const GroupChatWindow = ({
     socket.on('note_deleted', handleNoteDeleted);
     socket.on('note_pin_toggled', handleNotePinToggled);
     socket.on('group_settings_updated', handleGroupSettingsUpdated);
+    socket.on('group_info_updated', handleGroupInfoUpdated);
     socket.on('group_dissolved', handleGroupDissolved);
     socket.on('member_role_changed', handleMemberRoleChanged);
     socket.on('member_kicked', handleMemberKicked);
@@ -1105,6 +1128,7 @@ export const GroupChatWindow = ({
       socket.off('note_deleted', handleNoteDeleted);
       socket.off('note_pin_toggled', handleNotePinToggled);
       socket.off('group_settings_updated', handleGroupSettingsUpdated);
+      socket.off('group_info_updated', handleGroupInfoUpdated);
       socket.off('group_dissolved', handleGroupDissolved);
       socket.off('member_role_changed', handleMemberRoleChanged);
       socket.off('member_kicked', handleMemberKicked);
@@ -1114,7 +1138,7 @@ export const GroupChatWindow = ({
       socket.off('new_join_request_notification');
       socket.emit('leave_group', { groupID, userID });
     };
-  }, [groupID, userID, fetchGroupData, fetchJoinRequests, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification, handleNoteCreated, handleNoteUpdated, handleNoteDeleted, handleNotePinToggled, handleGroupSettingsUpdated, handleGroupDissolved, handleMemberRoleChanged, handleMemberKicked, handleMemberLeft]);
+  }, [groupID, userID, fetchGroupData, fetchJoinRequests, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification, handleNoteCreated, handleNoteUpdated, handleNoteDeleted, handleNotePinToggled, handleGroupSettingsUpdated, handleGroupInfoUpdated, handleGroupDissolved, handleMemberRoleChanged, handleMemberKicked, handleMemberLeft]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1964,6 +1988,13 @@ export const GroupChatWindow = ({
   // Kiểm tra quyền gửi tin nhắn
   const canSendMessages = isOwner || isAdmin ||
     (groupInfo?.settings?.memberPermissions?.sendMessages ?? true);
+
+  // Kiểm tra quyền tạo ghi chú và bình chọn
+  const canCreateNotes = isOwner || isAdmin ||
+    (groupInfo?.settings?.memberPermissions?.createNotes ?? true);
+
+  const canCreatePolls = isOwner || isAdmin ||
+    (groupInfo?.settings?.memberPermissions?.createPolls ?? true);
 
   console.log('🔐 Send message permission check:', {
     userID,
@@ -3267,6 +3298,17 @@ export const GroupChatWindow = ({
                 toast.error(error.response?.data?.message || 'Lỗi khi giải tán nhóm');
               }
             }}
+            onGroupInfoUpdated={(data) => {
+              setGroupInfo((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      name: data.name ?? prev.name,
+                      avatar: data.avatar ?? prev.avatar,
+                    }
+                  : prev
+              );
+            }}
           />
         )}
 
@@ -3512,9 +3554,13 @@ export const GroupChatWindow = ({
           currentName={groupInfo.name}
           currentAvatar={groupInfo.avatar}
           onClose={() => setShowEditGroupInfoModal(false)}
-          onSuccess={() => {
-            fetchGroupData();
-            toast.success('Đã cập nhật thông tin nhóm');
+          onSuccess={(data) => {
+            setShowEditGroupInfoModal(false);
+            setGroupInfo((prev) =>
+              prev
+                ? { ...prev, name: data.name, avatar: data.avatar ?? prev.avatar }
+                : prev
+            );
           }}
         />
       )}
@@ -3643,6 +3689,8 @@ export const GroupChatWindow = ({
           userID={userID}
           initialTab={boardTab}
           initialPollId={boardInitialPollId}
+          canCreateNotes={canCreateNotes}
+          canCreatePolls={canCreatePolls}
         />
       )}
     </div>

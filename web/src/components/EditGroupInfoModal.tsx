@@ -8,7 +8,7 @@ interface Props {
   currentName: string;
   currentAvatar?: string;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (data: { name: string; avatar?: string }) => void;
 }
 
 const EditGroupInfoModal = ({ groupID, currentName, currentAvatar, onClose, onSuccess }: Props) => {
@@ -65,7 +65,7 @@ const EditGroupInfoModal = ({ groupID, currentName, currentAvatar, onClose, onSu
       });
 
       toast.success('Đã cập nhật thông tin nhóm');
-      onSuccess();
+      onSuccess({ name: groupName.trim(), avatar: avatarUrl });
       onClose();
     } catch (error: any) {
       console.error('Error updating group info:', error);
