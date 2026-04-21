@@ -622,8 +622,18 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
       console.log('✅ Message pinned successfully');
 
-      // Emit to all members in group
-      io.to(groupID).emit('ghim_group_notification', msg);
+      // Emit to all members in group with full message data including pinnedInfo
+      io.to(groupID).emit('ghim_group_notification', {
+        messageID: msg.messageID,
+        groupID: msg.groupID,
+        pinnedInfo: msg.pinnedInfo,
+        content: msg.content,
+        type: msg.type,
+        media_url: msg.media_url,
+        timestamp: msg.timestamp,
+        senderID: msg.senderID,
+      });
+      
       io.to(groupID).emit('new_group_message', {
         ...notificationMsg.toObject(),
         senderInfo: { name: userName, avatar: user?.anhDaiDien || null },
@@ -705,8 +715,18 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
       console.log('✅ Message unpinned successfully');
 
-      // Emit to all members in group
-      io.to(groupID).emit('unghim_group_notification', msg);
+      // Emit to all members in group with message data
+      io.to(groupID).emit('unghim_group_notification', {
+        messageID: msg.messageID,
+        groupID: msg.groupID,
+        pinnedInfo: null,
+        content: msg.content,
+        type: msg.type,
+        media_url: msg.media_url,
+        timestamp: msg.timestamp,
+        senderID: msg.senderID,
+      });
+      
       io.to(groupID).emit('new_group_message', {
         ...notificationMsg.toObject(),
         senderInfo: { name: userName, avatar: user?.anhDaiDien || null },

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axiosInstance from '../utils/axios';
+import socket from '../utils/socket';
 import { FaChevronDown, FaEllipsisH, FaRegEnvelope, FaThumbtack } from 'react-icons/fa';
 import './PinnedMessagesPanel.css';
 import toast from 'react-hot-toast';
@@ -20,6 +21,21 @@ interface PinnedMessage {
   };
 }
 
+interface PinnedNote {
+  noteID: string;
+  groupID: string;
+  creatorID: string;
+  content: string;
+  createdAt: string;
+  isPinned?: boolean;
+  creatorInfo?: {
+    name: string;
+    avatar?: string;
+  };
+}
+
+type PinnedItem = (PinnedMessage & { itemType: 'message' }) | (PinnedNote & { itemType: 'note' });
+
 interface PinnedMessagesPanelProps {
   groupID: string;
   onClose: () => void;
@@ -33,7 +49,7 @@ export const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
   onViewBoard,
   onScrollToMessage
 }) => {
-  const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
+  const [pinnedItems, setPinnedItems] = useState<PinnedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -42,7 +58,33 @@ export const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchPinnedMessages();
+    fetchPinnedItems();
+
+    // Listen to socket events for real-time updates
+    const handlePinNotification = (data: any) => {
+      console.log('📌 PinnedMessagesPanel - Pin notification received:', data);
+      fetchPinnedItems();
+    };
+
+    const handleUnpinNotification = (data: any) => {
+      console.log('📌 PinnedMessagesPanel - Unpin notification received:', data);
+      fetchPinnedItems();
+    };
+
+    const handleNotePinToggled = (data: any) => {
+      console.log('📝 PinnedMessagesPanel - Note pin toggled:', data);
+      fetchPinnedItems();
+    };
+
+    socket.on('ghim_group_notification', handlePinNotification);
+    socket.on('unghim_group_notification', handleUnpinNotification);
+    socket.on('note_pin_toggled', handleNotePinToggled);
+
+    return () => {
+      socket.off('ghim_group_notification', handlePinNotification);
+      socket.off('unghim_group_notification', handleUnpinNotification);
+      socket.off('note_pin_toggled', handleNotePinToggled);
+    };
   }, [groupID]);
 
   useEffect(() => {
@@ -58,31 +100,54 @@ export const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchPinnedMessages = async () => {
+  const fetchPinnedItems = async () => {
     try {
       setLoading(true);
-      // Backend filter pinned messages
-      const response = await axiosInstance.get(`/groups/${groupID}/messages?page=1&limit=100`);
-      const pinned = response.data.messages
-        .filter((msg: any) => msg.pinnedInfo)
-        .sort((a: any, b: any) => new Date(b.pinnedInfo?.pinnedAt || 0).getTime() - new Date(a.pinnedInfo?.pinnedAt || 0).getTime());
       
-      setPinnedMessages(pinned);
+      // Fetch pinned messages
+      const messagesRes = await axiosInstance.get(`/groups/${groupID}/messages?page=1&limit=100`);
+      const pinnedMessages = messagesRes.data.messages
+        .filter((msg: any) => msg.pinnedInfo)
+        .map((msg: any) => ({ ...msg, itemType: 'message' as const }));
+      
+      // Fetch pinned notes
+      const notesRes = await axiosInstance.get(`/groups/${groupID}/notes`);
+      const pinnedNotes = (notesRes.data.notes || [])
+        .filter((note: any) => note.isPinned)
+        .map((note: any) => ({ ...note, itemType: 'note' as const }));
+      
+      // Combine and sort by pinned time
+      const allPinned = [...pinnedMessages, ...pinnedNotes].sort((a, b) => {
+        const timeA = a.itemType === 'message' 
+          ? new Date(a.pinnedInfo?.pinnedAt || 0).getTime()
+          : new Date(a.createdAt || 0).getTime();
+        const timeB = b.itemType === 'message'
+          ? new Date(b.pinnedInfo?.pinnedAt || 0).getTime()
+          : new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+      
+      setPinnedItems(allPinned);
     } catch (error) {
-      console.error('Error fetching pinned messages:', error);
+      console.error('Error fetching pinned items:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUnpin = async (messageID: string) => {
+  const handleUnpin = async (item: PinnedItem) => {
     try {
-      await axiosInstance.post(`/groups/${groupID}/unpin`, { messageID });
-      toast.success('Đã bỏ ghim tin nhắn');
-      fetchPinnedMessages();
+      if (item.itemType === 'message') {
+        await axiosInstance.post(`/groups/${groupID}/messages/${item.messageID}/unpin`);
+        toast.success('Đã bỏ ghim tin nhắn');
+      } else {
+        await axiosInstance.post(`/groups/${groupID}/notes/${item.noteID}/toggle-pin`);
+        toast.success('Đã bỏ ghim ghi chú');
+      }
+      fetchPinnedItems();
       setShowMenu(false);
     } catch (error) {
-      toast.error('Không thể bỏ ghim tin nhắn');
+      toast.error('Không thể bỏ ghim');
     }
   };
 
@@ -92,22 +157,52 @@ export const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
     setShowMenu(false);
   };
 
-  if (pinnedMessages.length === 0 && !loading) return null;
+  const handleItemClick = (item: PinnedItem) => {
+    if (item.itemType === 'message') {
+      onScrollToMessage?.(item.messageID);
+    } else {
+      // Open board modal to view note
+      onViewBoard?.('notes');
+    }
+  };
 
-  const latestMsg = pinnedMessages[0];
-  const otherCount = pinnedMessages.length - 1;
+  if (pinnedItems.length === 0 && !loading) return null;
+
+  const latestItem = pinnedItems[0];
+  const otherCount = pinnedItems.length - 1;
+
+  // Get display info for latest item
+  const getItemDisplayInfo = (item: PinnedItem) => {
+    if (item.itemType === 'message') {
+      return {
+        type: 'Tin nhắn',
+        icon: '💬',
+        name: item.senderInfo?.name || 'Người dùng',
+        content: item.content || (item.type === 'image' ? '[Hình ảnh]' : '[Tệp tin]')
+      };
+    } else {
+      return {
+        type: 'Ghi chú',
+        icon: '📝',
+        name: item.creatorInfo?.name || 'Người dùng',
+        content: item.content
+      };
+    }
+  };
+
+  const latestInfo = latestItem ? getItemDisplayInfo(latestItem) : null;
 
   return (
     <div className="pinned-messages-container">
       <div className="pinned-icon-wrapper">
-        <FaRegEnvelope />
+        {latestInfo?.icon}
       </div>
 
-      <div className="pinned-main-content" onClick={() => latestMsg && onScrollToMessage?.(latestMsg.messageID)}>
-        <div className="pinned-type-label">Tin nhắn</div>
+      <div className="pinned-main-content" onClick={() => latestItem && handleItemClick(latestItem)}>
+        <div className="pinned-type-label">{latestInfo?.type}</div>
         <div className="pinned-text-preview">
-          <span className="font-semibold">{latestMsg?.senderInfo?.name}: </span>
-          {latestMsg?.content || (latestMsg?.type === 'image' ? '[Hình ảnh]' : '[Tệp tin]')}
+          <span className="font-semibold">{latestInfo?.name}: </span>
+          {latestInfo?.content}
         </div>
       </div>
 
@@ -120,27 +215,35 @@ export const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
 
             {showDropdown && (
               <div className="pinned-list-popover custom-scrollbar">
-                {pinnedMessages.map((msg) => (
-                  <div 
-                    key={msg.messageID} 
-                    className="popover-item"
-                    onClick={() => {
-                      onScrollToMessage?.(msg.messageID);
-                      setShowDropdown(false);
-                    }}
-                  >
-                    <div className="popover-icon">
-                       <FaThumbtack size={14} style={{ transform: 'rotate(45deg)' }} />
-                    </div>
-                    <div className="popover-content">
-                      <div className="font-semibold text-[13px]">{msg.senderInfo?.name}</div>
-                      <div className="text-[13px] text-gray-600 truncate">{msg.content || `[${msg.type}]`}</div>
-                      <div className="popover-info">
-                        {new Date(msg.pinnedInfo?.pinnedAt || 0).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                {pinnedItems.map((item) => {
+                  const info = getItemDisplayInfo(item);
+                  const itemKey = item.itemType === 'message' ? item.messageID : item.noteID;
+                  const itemTime = item.itemType === 'message' 
+                    ? item.pinnedInfo?.pinnedAt 
+                    : item.createdAt;
+                  
+                  return (
+                    <div 
+                      key={itemKey} 
+                      className="popover-item"
+                      onClick={() => {
+                        handleItemClick(item);
+                        setShowDropdown(false);
+                      }}
+                    >
+                      <div className="popover-icon">
+                        {info.icon}
+                      </div>
+                      <div className="popover-content">
+                        <div className="font-semibold text-[13px]">{info.name}</div>
+                        <div className="text-[13px] text-gray-600 truncate">{info.content}</div>
+                        <div className="popover-info">
+                          {new Date(itemTime || 0).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -155,7 +258,7 @@ export const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
             <div className="pinned-action-menu">
               <button 
                 className="pinned-menu-item" 
-                onClick={() => handleCopy(latestMsg?.content || '')}
+                onClick={() => handleCopy(latestInfo?.content || '')}
               >
                 Copy
               </button>
@@ -170,7 +273,7 @@ export const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
               </button>
               <button 
                 className="pinned-menu-item danger"
-                onClick={() => handleUnpin(latestMsg.messageID)}
+                onClick={() => latestItem && handleUnpin(latestItem)}
               >
                 Bỏ ghim
               </button>

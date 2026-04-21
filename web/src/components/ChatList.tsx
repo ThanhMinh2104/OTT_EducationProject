@@ -462,6 +462,13 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       fetchStrangerSummary();
     });
 
+    // Listen for new group created
+    socket.on('new_group_created', (data: any) => {
+      console.log('📥 Web received new_group_created:', data);
+      // Reload chat list để hiển thị nhóm mới
+      socket.emit('getChat', user.userID);
+    });
+
     socket.on('updatee_user', (updatedUser: User) => {
       setMemberCache((prev) => ({ ...prev, [updatedUser.userID]: updatedUser }));
     });
@@ -506,6 +513,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.off('unsend_notification');
       socket.off('updatee_user');
       socket.off('friend_unfriended');
+      socket.off('new_group_created');
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
     };

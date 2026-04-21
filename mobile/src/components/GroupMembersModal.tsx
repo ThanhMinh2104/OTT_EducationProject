@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../utils/config';
+import socket from '../utils/socket';
 import AddMembersModal from './AddMembersModal';
 
 interface Member {
@@ -61,11 +62,80 @@ const GroupMembersModal = ({ visible, members, memberCount, groupID, currentUser
   const [menuMemberID, setMenuMemberID] = useState<string | null>(null);
 
   const isAdminOrOwner = currentUserRole === 'owner' || currentUserRole === 'admin';
+  
+  // Get current user ID
+  const [currentUserID, setCurrentUserID] = useState<string>('');
+  
+  useEffect(() => {
+    AsyncStorage.getItem('userID').then(id => {
+      if (id) setCurrentUserID(id);
+    });
+  }, []);
+  
+  // Check roles
+  const isOwner = currentUserRole === 'owner';
+  const isAdmin = currentUserRole === 'admin';
 
   // Sync localMembers khi props thay đổi
   useEffect(() => {
     setLocalMembers(members);
   }, [members]);
+
+  // Socket listeners for real-time updates
+  useEffect(() => {
+    if (!visible || !groupID) return;
+
+    console.log('🔌 [GroupMembersModal] Setting up socket listeners for group:', groupID);
+
+    const handleMemberRoleChanged = (data: { groupID: string; userID: string; newRole: string }) => {
+      console.log('📥 [GroupMembersModal] member_role_changed event received:', data);
+      if (data.groupID === groupID) {
+        console.log('🔄 [GroupMembersModal] Refreshing members after role change');
+        refetchMembers();
+        onRefresh?.();
+      }
+    };
+
+    const handleMemberKicked = (data: { groupID: string; kickedUserID: string }) => {
+      console.log('📥 [GroupMembersModal] member_kicked event received:', data);
+      if (data.groupID === groupID) {
+        console.log('🔄 [GroupMembersModal] Refreshing members after member kicked');
+        refetchMembers();
+        onRefresh?.();
+      }
+    };
+
+    const handleMemberLeft = (data: { groupID: string; userID: string }) => {
+      console.log('📥 [GroupMembersModal] member_left event received:', data);
+      if (data.groupID === groupID) {
+        console.log('🔄 [GroupMembersModal] Refreshing members after member left');
+        refetchMembers();
+        onRefresh?.();
+      }
+    };
+
+    const handleMemberAdded = (data: { groupID: string; userID: string }) => {
+      console.log('📥 [GroupMembersModal] member_added event received:', data);
+      if (data.groupID === groupID) {
+        console.log('🔄 [GroupMembersModal] Refreshing members after member added');
+        refetchMembers();
+        onRefresh?.();
+      }
+    };
+
+    socket.on('member_role_changed', handleMemberRoleChanged);
+    socket.on('member_kicked', handleMemberKicked);
+    socket.on('member_left', handleMemberLeft);
+    socket.on('member_added', handleMemberAdded);
+
+    return () => {
+      console.log('🔌 [GroupMembersModal] Cleaning up socket listeners');
+      socket.off('member_role_changed', handleMemberRoleChanged);
+      socket.off('member_kicked', handleMemberKicked);
+      socket.off('member_left', handleMemberLeft);
+      socket.off('member_added', handleMemberAdded);
+    };
+  }, [visible, groupID, onRefresh]);
 
   const refetchMembers = async () => {
     if (!groupID) return;
@@ -596,11 +666,12 @@ const GroupMembersModal = ({ visible, members, memberCount, groupID, currentUser
                       onPress={() => handleKick(member)}
                     >
                       <Ionicons name="person-remove-outline" size={16} color="#ff3b30" />
+                      <Text style={styles.actionBtnText}>Xóa</Text>
                     </TouchableOpacity>
                   </View>
                 );
               })()}
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
 

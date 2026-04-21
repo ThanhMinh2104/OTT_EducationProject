@@ -142,6 +142,7 @@ const ChatInfoPanel = ({
   const [canCreateNotes, setCanCreateNotes] = useState(true);
   const [blockedMembers, setBlockedMembers] = useState<string[]>([]);
   const [activeGroupMembers, setActiveGroupMembers] = useState<{ userID: string; role: string }[]>([]);
+  const [showTransferOwnership, setShowTransferOwnership] = useState(false);
 
   // Fetch current user ID
   React.useEffect(() => {
@@ -213,15 +214,47 @@ const ChatInfoPanel = ({
         onHistoryDeleted(); // Trigger parent to reload chat data
       }
     };
+
+    // Listen for group dissolved event
+    const handleGroupDissolved = (data: { groupID: string; message: string }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('💥 ChatInfoPanel - Group dissolved');
+        Alert.alert('Thông báo', data.message, [
+          {
+            text: 'OK',
+            onPress: () => {
+              onClose();
+              onHistoryDeleted(); // Trigger parent to go back to chat list
+            }
+          }
+        ]);
+      }
+    };
+
+    // Listen for member role changed event
+    const handleMemberRoleChanged = (data: { groupID: string; userID: string; newRole: string }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('👤 ChatInfoPanel - Member role changed, reloading...');
+        fetchGroupSettings();
+        if (data.userID === currentUserID) {
+          const roleText = data.newRole === 'admin' ? 'Phó nhóm' : data.newRole === 'owner' ? 'Trưởng nhóm' : 'Thành viên';
+          Alert.alert('Thông báo', `Vai trò của bạn đã được thay đổi thành ${roleText}`);
+        }
+      }
+    };
     
     socket.on('group_settings_updated', handleSettingsUpdated);
     socket.on('member_left', handleMemberLeft);
     socket.on('member_kicked', handleMemberKicked);
+    socket.on('group_dissolved', handleGroupDissolved);
+    socket.on('member_role_changed', handleMemberRoleChanged);
     
     return () => {
       socket.off('group_settings_updated', handleSettingsUpdated);
       socket.off('member_left', handleMemberLeft);
       socket.off('member_kicked', handleMemberKicked);
+      socket.off('group_dissolved', handleGroupDissolved);
+      socket.off('member_role_changed', handleMemberRoleChanged);
     };
   }, [visible, chat.type, chat.chatID, currentUserID, chat.members]);
 

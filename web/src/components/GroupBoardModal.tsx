@@ -864,9 +864,11 @@ const GroupBoardModal = ({
                             </button>
                           </div>
                         </div>
-                      )}
+                      ))}
                     </div>
                   )}
+                </div>
+              )}
 
               {/* Notes Tab */}
               {activeTab === 'notes' && (
@@ -881,10 +883,10 @@ const GroupBoardModal = ({
                             className="w-10 h-10 rounded-full object-cover"
                           />
                           <div className="flex-1">
-                            <div className="text-[15px] font-semibold text-gray-900 mb-1">{note.creatorInfo?.name || 'Người dùng'}</div>
+                            <div className="text-[15px] font-semibold text-gray-900 mb-1">{note.creatorInfo?.name || "Nguoi dung"}</div>
                             <div className="flex items-center gap-1.5 text-[13px] text-gray-500">
                               <span className="text-sm">📝</span>
-                              Ghi chú
+                              Ghi chu
                             </div>
                           </div>
                           <div className="flex gap-2 ml-auto">
@@ -903,7 +905,7 @@ const GroupBoardModal = ({
                               >
                                 🗑️
                               </button>
-                            </div>
+                            )}
                           </div>
                         </div>
                         <div className="text-sm text-gray-700 leading-relaxed mb-3 break-words cursor-pointer transition-colors p-2 -m-2 rounded-md hover:bg-gray-100" onClick={() => handleViewNote(note)}>
@@ -944,39 +946,52 @@ const GroupBoardModal = ({
                     <div className="flex flex-col items-center justify-center py-15 px-5 gap-4">
                       <span className="text-6xl opacity-30">📊</span>
                       <p className="text-base text-gray-500 m-0">Chưa có bình chọn</p>
-                      <button className="py-3 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#0073e6] hover:-translate-y-px">Tạo bình chọn</button>
+                      <button className="py-3 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#0073e6] hover:-translate-y-px" onClick={handleCreatePoll}>Tạo bình chọn</button>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
                       {polls.map((poll) => {
-                        const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes, 0);
+                        const totalVotes = poll.options.reduce((sum, opt) => sum + (opt.voters?.length || 0), 0);
+                        const isExpired = poll.endTime ? new Date() > new Date(poll.endTime) : false;
                         return (
-                          <div key={poll.pollID} className="bg-white rounded-xl p-5 transition-all hover:bg-gray-50 border border-gray-200">
+                          <div key={poll.pollID} className="bg-white rounded-xl p-5 transition-all hover:bg-gray-50 border border-gray-200 cursor-pointer" onClick={() => handleViewPoll(poll)}>
                             <div className="text-base font-semibold text-gray-900 mb-2">{poll.question}</div>
-                            <div className="text-[13px] text-gray-500 mb-1">
-                              Kết thúc lúc {formatDateTime(poll.endDate || poll.createdAt)}
-                            </div>
+                            {poll.endTime && (
+                              <div className={`text-[13px] mb-1 ${isExpired ? 'text-red-500' : 'text-gray-500'}`}>
+                                {isExpired ? 'Đã kết thúc' : `Kết thúc lúc ${formatDateTime(poll.endTime)}`}
+                              </div>
+                            )}
                             <div className="text-[13px] text-[#0084ff] my-3">{totalVotes} người bình chọn</div>
                             <div className="flex flex-col gap-2 mb-4">
                               {poll.options.map((option, index) => {
-                                const percentage = totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0;
+                                const voteCount = option.voters?.length || 0;
+                                const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
                                 return (
                                   <div key={index} className="relative bg-gray-100 rounded-lg overflow-hidden min-h-[44px]">
                                     <div className="absolute left-0 top-0 bottom-0 bg-[#0084ff]/30 transition-[width] duration-300" style={{ width: `${percentage}%` }}></div>
                                     <div className="relative flex items-center justify-between px-4 py-3 z-[1]">
                                       <span className="text-sm text-gray-900">{option.text}</span>
-                                      <span className="text-sm font-semibold text-gray-900">{option.votes}</span>
+                                      <span className="text-sm font-semibold text-gray-900">{voteCount}</span>
                                     </div>
                                   </div>
                                 );
                               })}
                             </div>
-                            <button className="w-full py-3 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#0073e6]">Bình chọn</button>
+                            <button className="w-full py-3 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#0073e6]" onClick={(e) => { e.stopPropagation(); handleViewPoll(poll); }}>Xem chi tiết</button>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })}
                     </div>
                   )}
+                  
+                  {/* Create Poll Button at bottom */}
+                  <div className="sticky bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-50 via-gray-50/80 to-transparent z-10">
+                    <button className="w-full py-3.5 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all shadow-[0_4px_12px_rgba(0,132,255,0.3)] hover:bg-[#0073e6] hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,132,255,0.4)]" onClick={handleCreatePoll}>
+                      Tạo bình chọn
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* All Tab */}
               {activeTab === 'all' && (
@@ -1040,35 +1055,6 @@ const GroupBoardModal = ({
                                       Tin nhắn
                                     </div>
                                   </div>
-                                )}
-                                {poll.isMultipleChoice && (
-                                  <div className="text-[11px] text-[#0084ff] font-bold mb-1">Được chọn nhiều</div>
-                                )}
-                                <div className="text-[13px] text-[#0084ff] font-semibold my-3">{totalVotes} lượt bình chọn</div>
-                                <div className="flex flex-col gap-2 mb-4">
-                                  {poll.options.map((option, index) => {
-                                    const voteCount = option.voters?.length || 0;
-                                    const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
-                                    const hasVoted = option.voters?.includes(userID);
-                                    return (
-                                      <button
-                                        key={index}
-                                        className={`relative rounded-lg overflow-hidden min-h-[44px] border transition-all cursor-pointer text-left ${hasVoted ? 'border-[#0084ff] bg-[#0084ff]/5' : 'border-[#e4e6eb] bg-[#f0f2f5] hover:bg-[#e4e6eb]'
-                                          } ${isExpired ? 'cursor-not-allowed opacity-70' : ''}`}
-                                        onClick={() => !isExpired && handleVotePoll(poll.pollID, index)}
-                                        disabled={isExpired}
-                                      >
-                                        <div className="absolute left-0 top-0 bottom-0 bg-[#0084ff]/10 transition-[width] duration-500 ease-out" style={{ width: `${percentage}%` }}></div>
-                                        <div className="relative flex items-center justify-between px-4 py-3 z-[1]">
-                                          <div className="flex items-center gap-2">
-                                            {hasVoted && <span className="text-[#0084ff]">✓</span>}
-                                            <span className={`text-sm ${hasVoted ? 'font-bold text-[#0084ff]' : 'text-[#1c1e21]'}`}>{option.text}</span>
-                                          </div>
-                                          <span className="text-sm font-bold text-[#050505]">{voteCount} ({percentage.toFixed(0)}%)</span>
-                                        </div>
-                                      </button>
-                                    );
-                                  })}
                                 </div>
                                 <div className="text-sm text-gray-700 leading-relaxed mb-3 break-words">{getContentPreview(msg)}</div>
                                 <div className="flex items-center justify-between">
@@ -1084,108 +1070,55 @@ const GroupBoardModal = ({
                                   </button>
                                 </div>
                               </div>
-                            );
-                          })}
-                          {/* Nút tạo poll ở cuối danh sách */}
-                          <div className="sticky bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-sm border-t border-[#e4e6eb] z-10">
-                            <button className="w-full py-3.5 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-bold cursor-pointer transition-all shadow-[0_4px_12px_rgba(0,132,255,0.2)] hover:bg-[#0073e6] hover:-translate-y-0.5" onClick={handleCreatePoll}>
-                              Tạo bình chọn mới
-                            </button>
+                            ))}
                           </div>
                         </div>
                       )}
-                    </div>
-                  )}
 
                       {polls.length > 0 && (
                         <div className="flex flex-col gap-3">
-                          <h3 className="text-base font-semibold text-gray-900 m-0 mb-2">Bình chọn ({polls.length})</h3>
+                          <h3 className="text-base font-bold text-[#050505] m-0 mb-2">Bình chọn ({polls.length})</h3>
                           <div className="flex flex-col gap-3">
                             {polls.slice(0, 3).map((poll) => {
-                              const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes, 0);
+                              const totalVotes = poll.options.reduce((sum, opt) => sum + (opt.voters?.length || 0), 0);
+                              const isExpired = poll.endTime ? new Date() > new Date(poll.endTime) : false;
                               return (
-                                <div key={poll.pollID} className="bg-white rounded-xl p-5 transition-all hover:bg-gray-50 border border-gray-200">
-                                  <div className="text-base font-semibold text-gray-900 mb-2">{poll.question}</div>
-                                  <div className="text-[13px] text-gray-500 mb-1">
-                                    Kết thúc lúc {formatDateTime(poll.endDate || poll.createdAt)}
-                                  </div>
-                                  <div className="text-[13px] text-[#0084ff] my-3">{totalVotes} người bình chọn</div>
+                                <div key={poll.pollID} className="bg-white rounded-xl p-5 transition-all hover:bg-[#f2f2f2] shadow-sm border border-[#e4e6eb] cursor-pointer" onClick={() => handleViewPoll(poll)}>
+                                  <div className="text-base font-bold text-[#050505] mb-2">{poll.question}</div>
+                                  {poll.endTime && (
+                                    <div className={`text-[13px] mb-1 ${isExpired ? 'text-[#ff3b30]' : 'text-[#65676b]'}`}>
+                                      {isExpired ? 'Đã kết thúc' : `Kết thúc lúc ${formatDateTime(poll.endTime)}`}
+                                    </div>
+                                  )}
+                                  <div className="text-[13px] text-[#0084ff] font-semibold my-3">{totalVotes} lượt bình chọn</div>
                                   <div className="flex flex-col gap-2 mb-4">
                                     {poll.options.map((option, index) => {
-                                      const percentage = totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0;
+                                      const voteCount = option.voters?.length || 0;
+                                      const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+                                      const hasVoted = option.voters?.includes(userID);
                                       return (
-                                        <div key={index} className="relative bg-gray-100 rounded-lg overflow-hidden min-h-[44px]">
-                                          <div className="absolute left-0 top-0 bottom-0 bg-[#0084ff]/30 transition-[width] duration-300" style={{ width: `${percentage}%` }}></div>
-                                          <div className="relative flex items-center justify-between px-4 py-3 z-1">
-                                            <span className="text-sm text-gray-900">{option.text}</span>
-                                            <span className="text-sm font-semibold text-gray-900">{option.votes}</span>
+                                        <div key={index} className={`relative rounded-lg overflow-hidden min-h-[44px] border ${hasVoted ? 'border-[#0084ff] bg-[#0084ff]/5' : 'border-[#e4e6eb] bg-[#f0f2f5]'}`}>
+                                          <div className="absolute left-0 top-0 bottom-0 bg-[#0084ff]/10 transition-[width] duration-500 ease-out" style={{ width: `${percentage}%` }}></div>
+                                          <div className="relative flex items-center justify-between px-4 py-3 z-[1]">
+                                            <div className="flex items-center gap-2">
+                                              {hasVoted && <span className="text-[#0084ff]">✓</span>}
+                                              <span className={`text-sm ${hasVoted ? 'font-bold text-[#0084ff]' : 'text-[#1c1e21]'}`}>{option.text}</span>
+                                            </div>
+                                            <span className="text-sm font-bold text-[#050505]">{voteCount} ({percentage.toFixed(0)}%)</span>
                                           </div>
                                         </div>
-                                      </div>
-                                    </div>
-                                    <div className="text-sm text-[#1c1e21] leading-relaxed mb-3 break-words">{getContentPreview(msg)}</div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs text-[#65676b]">{formatDateTime(msg.timestamp)}</span>
-                                      <button
-                                        className="text-[13px] text-[#0084ff] bg-transparent border-none cursor-pointer px-2 py-1 rounded transition-all hover:bg-[#0084ff]/5"
-                                        onClick={() => {
-                                          onViewMessage?.(msg.messageID);
-                                          onClose();
-                                        }}
-                                      >
-                                        Xem tin nhắn gốc
-                                      </button>
-                                    </div>
+                                      );
+                                    })}
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {polls.length > 0 && (
-                            <div className="flex flex-col gap-3">
-                              <h3 className="text-base font-bold text-[#050505] m-0 mb-2">Bình chọn ({polls.length})</h3>
-                              <div className="flex flex-col gap-3">
-                                {polls.slice(0, 3).map((poll) => {
-                                  const totalVotes = poll.options.reduce((sum, opt) => sum + (opt.voters?.length || 0), 0);
-                                  const isExpired = poll.endTime ? new Date() > new Date(poll.endTime) : false;
-                                  return (
-                                    <div key={poll.pollID} className="bg-white rounded-xl p-5 transition-all hover:bg-[#f2f2f2] shadow-sm border border-[#e4e6eb]">
-                                      <div className="text-base font-bold text-[#050505] mb-2">{poll.question}</div>
-                                      {poll.endTime && (
-                                        <div className={`text-[13px] mb-1 ${isExpired ? 'text-[#ff3b30]' : 'text-[#65676b]'}`}>
-                                          {isExpired ? 'Đã kết thúc' : `Kết thúc lúc ${formatDateTime(poll.endTime)}`}
-                                        </div>
-                                      )}
-                                      <div className="text-[13px] text-[#0084ff] font-semibold my-3">{totalVotes} lượt bình chọn</div>
-                                      <div className="flex flex-col gap-2 mb-4">
-                                        {poll.options.map((option, index) => {
-                                          const voteCount = option.voters?.length || 0;
-                                          const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
-                                          const hasVoted = option.voters?.includes(userID);
-                                          return (
-                                            <div key={index} className={`relative rounded-lg overflow-hidden min-h-[44px] border ${hasVoted ? 'border-[#0084ff] bg-[#0084ff]/5' : 'border-[#e4e6eb] bg-[#f0f2f5]'}`}>
-                                              <div className="absolute left-0 top-0 bottom-0 bg-[#0084ff]/10 transition-[width] duration-500 ease-out" style={{ width: `${percentage}%` }}></div>
-                                              <div className="relative flex items-center justify-between px-4 py-3 z-[1]">
-                                                <div className="flex items-center gap-2">
-                                                  {hasVoted && <span className="text-[#0084ff]">✓</span>}
-                                                  <span className={`text-sm ${hasVoted ? 'font-bold text-[#0084ff]' : 'text-[#1c1e21]'}`}>{option.text}</span>
-                                                </div>
-                                                <span className="text-sm font-bold text-[#050505]">{voteCount} ({percentage.toFixed(0)}%)</span>
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                      <div className="text-xs text-[#65676b] text-right">
-                                        Tạo bởi {(poll as any).creatorInfo?.name || 'Người dùng'} • {formatDateTime(poll.createdAt)}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
+                                  <div className="text-xs text-[#65676b] text-right">
+                                    Tạo bởi {(poll as any).creatorInfo?.name || 'Người dùng'} • {formatDateTime(poll.createdAt)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                         </div>
                       )}
                     </div>
