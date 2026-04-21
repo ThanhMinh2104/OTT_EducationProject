@@ -163,6 +163,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [canSendMessages, setCanSendMessages] = useState(true);
   // Quyền thay đổi tên và ảnh đại diện nhóm
   const [canEditGroupInfo, setCanEditGroupInfo] = useState(true);
+  // Highlight tin nhắn từ admin/owner
+  const [highlightAdminMessages, setHighlightAdminMessages] = useState(false);
+  // Join requests (chỉ owner/admin thấy)
+  interface JoinRequest { requestID: string; userID: string; name: string; avatar?: string; requestedByName: string; }
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [pendingApprovalModal, setPendingApprovalModal] = useState<{ requestID: string; inviteeName: string; inviterName: string } | null>(null);
 
   // Forward message states
   const [showForwardModal, setShowForwardModal] = useState(false);
@@ -1009,6 +1015,23 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     socket.on('unghim_group_notification', onUnghimGroupNotification);
     socket.on('connect', onReconnect);
 
+    if (isGroup) {
+      socket.on('new_join_request', () => {
+        if (selectedChat) fetchJoinRequests(chatID, selectedChat.members);
+      });
+      socket.on('join_request_resolved', (data: { requestID: string }) => {
+        setJoinRequests(prev => prev.filter(r => r.requestID !== data.requestID));
+      });
+      socket.on('new_join_request_notification', (data: { groupID: string; message: any }) => {
+        if (data.groupID !== chatID) return;
+        const myRole = selectedChat?.members.find(m => m.userID === user?.userID)?.role;
+        if (myRole === 'owner' || myRole === 'admin') {
+          const msg = { ...data.message, chatID: data.groupID };
+          setMessages(prev => [...prev, msg]);
+        }
+      });
+    }
+
     return () => {
       socket.off('new_message', onNewMessage);
       if (isGroup) {
@@ -1016,6 +1039,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         socket.off('group_typing_start', onTypingStart);
         socket.off('group_typing_stop', onTypingStop);
         socket.off('group_info_updated', onGroupInfoUpdated);
+        socket.off('new_join_request');
+        socket.off('join_request_resolved');
+        socket.off('new_join_request_notification');
         socket.emit('leave_group', { groupID: chatID, userID: user.userID });
       } else {
         socket.off('typing_start', onTypingStart);
@@ -1031,6 +1057,42 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       setTypingUsers([]);
     };
   }, [selectedChat?.chatID, user?.userID]);
+
+  // Refresh settings nhẹ — gọi lại khi đóng GroupManagementModal
+  const refreshGroupSettings = async (chatID: string, members: { userID: string; role: string }[]) => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const settingsRes = await fetch(`${API_URL}/api/groups/${chatID}/settings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!settingsRes.ok) return;
+      const settingsData = await settingsRes.json();
+      const userStored = await AsyncStorage.getItem('user');
+      const me = userStored ? JSON.parse(userStored) : null;
+      const myMember = members.find((m) => m.userID === me?.userID);
+      const isOwnerOrAdmin = myMember?.role === 'owner' || myMember?.role === 'admin';
+      const perms = settingsData.settings?.memberPermissions;
+      setCanPinMessages(isOwnerOrAdmin || (perms?.pinMessages ?? true));
+      setCanSendMessages(isOwnerOrAdmin || (perms?.sendMessages ?? true));
+      setCanEditGroupInfo(isOwnerOrAdmin || (perms?.changeNameAvatar ?? true));
+      setHighlightAdminMessages(settingsData.settings?.highlightAdminMessages ?? false);
+    } catch { /* ignore */ }
+  };
+
+  const fetchJoinRequests = async (chatID: string, members: { userID: string; role: string }[]) => {
+    try {
+      const myRole = members.find(m => m.userID === user?.userID)?.role;
+      if (myRole !== 'owner' && myRole !== 'admin') return;
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${API_URL}/api/groups/${chatID}/join-requests`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setJoinRequests(data);
+      }
+    } catch { /* ignore */ }
+  };
 
   const handleSelectChat = (chat: Chat) => {
     // Đảm bảo chat có trong danh sách
@@ -1157,6 +1219,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             setCanPinMessages(isOwnerOrAdmin || (perms?.pinMessages ?? true));
             setCanSendMessages(isOwnerOrAdmin || (perms?.sendMessages ?? true));
             setCanEditGroupInfo(isOwnerOrAdmin || (perms?.changeNameAvatar ?? true));
+            setHighlightAdminMessages(settingsData.settings?.highlightAdminMessages ?? false);
           }
         } catch { /* fallback: cho phép tất cả */ }
       } else {
@@ -1165,8 +1228,6 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         setCanEditGroupInfo(true);
       }
     };
-
-    // Chạy fetch data SAU KHI animation chuyển màn hình hoàn tất
     // Giúp UX khi mở màn hình chat mượt mà hơn, không bị giật/khựng
     InteractionManager.runAfterInteractions(() => {
       fetchFullMessages();
@@ -1860,7 +1921,59 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       return (
         <View key={item.messageID || item.tempID} style={styles.notificationContainer}>
           <View style={styles.notificationBubble}>
-            <Text style={styles.notificationText}>{item.content}</Text>
+            {(() => {
+              const rawContent = item.content || '';
+              // Quick check trước khi parse
+              if (rawContent.includes('join_request_notification')) {
+                try {
+                  let parsed = JSON.parse(rawContent);
+                  if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+                  return (
+                    <Text style={styles.notificationText}>
+                      <Text style={{ fontWeight: '600' }}>{parsed.inviteeName}</Text>
+                      {' được '}
+                      <Text style={{ fontWeight: '600' }}>{parsed.inviterName}</Text>
+                      {' mời tham gia nhóm và cần bạn phê duyệt. '}
+                      <Text
+                        style={{ color: '#0068ff', fontWeight: '600' }}
+                        onPress={() => setPendingApprovalModal({
+                          requestID: parsed.requestID,
+                          inviteeName: parsed.inviteeName,
+                          inviterName: parsed.inviterName,
+                        })}
+                      >
+                        Chi tiết
+                      </Text>
+                    </Text>
+                  );
+                } catch { /* ignore */ }
+              }
+              try {
+                let parsed = typeof rawContent === 'string' ? JSON.parse(rawContent) : rawContent;
+                if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+                if (String(parsed?.type).trim() === 'join_request_notification') {
+                  return (
+                    <Text style={styles.notificationText}>
+                      <Text style={{ fontWeight: '600' }}>{parsed.inviteeName}</Text>
+                      {' được '}
+                      <Text style={{ fontWeight: '600' }}>{parsed.inviterName}</Text>
+                      {' mời tham gia nhóm và cần bạn phê duyệt. '}
+                      <Text
+                        style={{ color: '#0068ff', fontWeight: '600' }}
+                        onPress={() => setPendingApprovalModal({
+                          requestID: parsed.requestID,
+                          inviteeName: parsed.inviteeName,
+                          inviterName: parsed.inviterName,
+                        })}
+                      >
+                        Chi tiết
+                      </Text>
+                    </Text>
+                  );
+                }
+              } catch { /* không phải JSON */ }
+              return <Text style={styles.notificationText}>{rawContent}</Text>;
+            })()}
           </View>
         </View>
       );
@@ -2047,7 +2160,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         <View style={[
           styles.messageBubble,
           isMine ? styles.bubbleMine : styles.bubbleOther,
-          item.pinnedInfo && styles.bubblePinned
+          item.pinnedInfo && styles.bubblePinned,
+          // Highlight bubble nếu setting bật và sender là admin/owner
+          !isMine && highlightAdminMessages && (() => {
+            const role = selectedChat?.members.find(m => m.userID === item.senderID)?.role;
+            if (role === 'owner') return styles.bubbleHighlightOwner;
+            if (role === 'admin') return styles.bubbleHighlightAdmin;
+            return null;
+          })(),
         ]}>
           {item.pinnedInfo && (
             <View style={styles.pinnedIndicator}>
@@ -2087,6 +2207,26 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           </TouchableOpacity>
         )}
         <View style={[styles.msgContent, isMine ? styles.msgContentMine : styles.msgContentOther]}>
+          {/* Tên người gửi trong group chat (single message) */}
+          {!isMine && selectedChat?.type === 'group' && (
+            <View style={styles.senderNameRow}>
+              <Text style={styles.groupSenderName}>{item.senderInfo?.name || 'Unknown'}</Text>
+              {(() => {
+                const senderRole = selectedChat.members.find(m => m.userID === item.senderID)?.role;
+                if (senderRole === 'owner') return (
+                  <View style={styles.roleBadgeOwner}>
+                    <Text style={styles.roleBadgeText}>Trưởng nhóm</Text>
+                  </View>
+                );
+                if (senderRole === 'admin') return (
+                  <View style={styles.roleBadgeAdmin}>
+                    <Text style={styles.roleBadgeText}>Phó nhóm</Text>
+                  </View>
+                );
+                return null;
+              })()}
+            </View>
+          )}
           {renderBubbleContent()}
         </View>
         {/* Spacer bên phải cho tin nhắn người khác */}
@@ -2560,8 +2700,24 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         >
           <Ionicons name="videocam-outline" size={22} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowChatInfo(true)}>
+        <TouchableOpacity style={[styles.headerIconBtn, { position: 'relative' }]} onPress={() => setShowChatInfo(true)}>
           <Ionicons name="menu-outline" size={24} color="#fff" />
+          {selectedChat?.type === 'group' && joinRequests.length > 0 && (() => {
+            const myRole = selectedChat.members.find(m => m.userID === user?.userID)?.role;
+            if (myRole !== 'owner' && myRole !== 'admin') return null;
+            return (
+              <View style={{
+                position: 'absolute', top: -2, right: -2,
+                minWidth: 16, height: 16, borderRadius: 8,
+                backgroundColor: '#ff3b30', justifyContent: 'center', alignItems: 'center',
+                paddingHorizontal: 3,
+              }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+                  {joinRequests.length > 9 ? '9+' : joinRequests.length}
+                </Text>
+              </View>
+            );
+          })()}
         </TouchableOpacity>
       </View>
 
@@ -3331,6 +3487,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             setMessages([]);
             setShowChatInfo(false);
           }}
+          onGroupSettingsChanged={() => {
+            if (selectedChat?.type === 'group') {
+              refreshGroupSettings(selectedChat.chatID, selectedChat.members);
+            }
+          }}
         />
       )}
 
@@ -3506,6 +3667,82 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           onAcceptFriend={handleAcceptFriendRequest}
           onCancelRequest={handleCancelFriendRequest}
         />
+      )}
+
+      {/* Pending Approval Modal */}
+      {pendingApprovalModal && (
+        <Modal visible={true} transparent animationType="fade" onRequestClose={() => setPendingApprovalModal(null)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 16, width: '100%', maxWidth: 400, overflow: 'hidden' }}>
+              <View style={{ padding: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e0e0e0' }}>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: '#111' }}>Yêu cầu tham gia nhóm</Text>
+              </View>
+
+              {joinRequests.some(r => r.requestID === pendingApprovalModal.requestID) ? (
+                <>
+                  <View style={{ padding: 20 }}>
+                    <Text style={{ fontSize: 14, color: '#333', marginBottom: 8 }}>
+                      <Text style={{ fontWeight: '600' }}>{pendingApprovalModal.inviteeName}</Text>
+                      {' được '}
+                      <Text style={{ fontWeight: '600' }}>{pendingApprovalModal.inviterName}</Text>
+                      {' mời tham gia nhóm.'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#888' }}>Bạn có muốn đồng ý cho họ vào nhóm không?</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8, padding: 16 }}>
+                    <TouchableOpacity
+                      style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#f5f5f5', alignItems: 'center' }}
+                      onPress={async () => {
+                        try {
+                          const token = await AsyncStorage.getItem('token');
+                          await fetch(`${API_URL}/api/groups/${selectedChat?.chatID}/join-requests/${pendingApprovalModal.requestID}/reject`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                          setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
+                          setPendingApprovalModal(null);
+                        } catch { /* ignore */ }
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#666' }}>Từ chối</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#0068ff', alignItems: 'center' }}
+                      onPress={async () => {
+                        try {
+                          const token = await AsyncStorage.getItem('token');
+                          await fetch(`${API_URL}/api/groups/${selectedChat?.chatID}/join-requests/${pendingApprovalModal.requestID}/approve`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                          setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
+                          setPendingApprovalModal(null);
+                        } catch { /* ignore */ }
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>Đồng ý</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={{ padding: 40, alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontSize: 32 }}>✅</Text>
+                    <Text style={{ fontSize: 14, color: '#888' }}>Không còn yêu cầu tham gia nào</Text>
+                  </View>
+                  <View style={{ padding: 16 }}>
+                    <TouchableOpacity
+                      style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: '#f5f5f5', alignItems: 'center' }}
+                      onPress={() => setPendingApprovalModal(null)}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#666' }}>Đóng</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
       )}
     </View>
   );
@@ -4408,6 +4645,45 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0068ff',
     marginBottom: 4,
+  },
+
+  senderNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+
+  roleBadgeOwner: {
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+
+  roleBadgeAdmin: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#555',
+  },
+
+  bubbleHighlightOwner: {
+    backgroundColor: '#fefce8',
+    borderColor: '#fde047',
+    borderWidth: 1,
+  },
+
+  bubbleHighlightAdmin: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#93c5fd',
+    borderWidth: 1,
   },
 
   // Image group action buttons
