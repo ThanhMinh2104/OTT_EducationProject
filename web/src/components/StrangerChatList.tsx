@@ -66,6 +66,29 @@ const getLastMsgPreview = (chat: StrangerChat, userID: string): string => {
       return prefix + (last.content || '');
     case 'unsend':
       return isMine ? 'Bạn đã thu hồi tin nhắn' : 'Tin nhắn đã bị thu hồi';
+    case 'notification':
+      if (last.content?.startsWith('##FRIENDSHIP##')) {
+        const parts = last.content.split('|');
+        const otherName = userID === parts[1] ? parts[4] : parts[3];
+        return `Bạn và ${otherName} đã trở thành bạn bè`;
+      }
+      if (last.content?.startsWith('##POLL_')) {
+        const parts = last.content.split('|');
+        const type = parts[0];
+        const question = parts[2];
+        const personName = parts[3];
+        const isMe = last.senderID === userID;
+        const displayName = isMe ? 'Bạn' : personName;
+        if (type === '##POLL_CREATED##') return `${displayName} đã tạo bình chọn: ${question}`;
+        if (type === '##POLL_VOTED##') return `${displayName} đã tham gia bình chọn: ${question}`;
+        if (type === '##POLL_CLOSED##') return `${displayName} đã khóa bình chọn: ${question}`;
+        if (type === '##POLL_DELETED##') return `Bình chọn đã bị xóa: ${question}`;
+        if (type === '##POLL_OPTION_ADDED##') {
+          const optionText = parts[4];
+          return `${displayName} đã thêm lựa chọn "${optionText}" vào bình chọn: ${question}`;
+        }
+      }
+      return last.content || '';
     default:
       return prefix + (last.content || '');
   }

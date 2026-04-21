@@ -1,82 +1,188 @@
-.pinned-messages-panel {
-  width: 300px;
-  border-left: 1px solid #e0e0e0;
-  background: #fff;
+.pinned-messages-container {
+  position: relative;
+  background: #ffffff;
+  border-bottom: 1px solid #e4e6eb;
+  color: #050505;
+  font-family: 'Inter', sans-serif;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  height: 52px;
+  z-index: 50;
+}
+
+.pinned-icon-wrapper {
+  color: #0068ff;
+  font-size: 20px;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.pinned-main-content {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow-y: auto;
+  cursor: pointer;
 }
 
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid #e0e0e0;
-}
-
-.panel-header h3 {
-  margin: 0;
-  font-size: 16px;
+.pinned-type-label {
+  font-size: 13px;
   font-weight: 600;
+  color: #050505;
+  margin-bottom: 1px;
 }
 
-.btn-close {
+.pinned-text-preview {
+  font-size: 13px;
+  color: #65676b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
+}
+
+.pinned-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pinned-count-dropdown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f0f2f5;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #050505;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.pinned-count-dropdown:hover {
+  background: #e4e6eb;
+}
+
+.pinned-more-btn {
+  background: transparent;
+  border: none;
+  color: #65676b;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.pinned-more-btn:hover {
+  background: #f0f2f5;
+  color: #050505;
+}
+
+/* Floating Menu */
+.pinned-action-menu {
+  position: absolute;
+  top: 48px;
+  right: 16px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e4e6eb;
+  width: 180px;
+  padding: 4px;
+  z-index: 100;
+  animation: slideIn 0.2s ease-out;
+}
+
+.pinned-menu-item {
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #050505;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.pinned-menu-item:hover {
+  background: #f2f2f2;
+}
+
+.pinned-menu-item.danger {
+  color: #d32f2f;
+}
+
+/* Dropdown List for multiples */
+.pinned-list-popover {
+  position: absolute;
+  top: 48px;
+  right: 60px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e4e6eb;
+  width: 320px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 90;
+  padding: 8px 0;
+}
+
+.popover-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.popover-item:hover {
+  background: #f9f9f9;
+}
+
+.popover-icon {
   width: 32px;
   height: 32px;
-  border: none;
-  background: #f0f0f0;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-close:hover {
-  background: #e0e0e0;
-}
-
-.panel-content {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.pinned-message {
-  background: #f0f0f0;
-  padding: 12px;
+  background: #eef3ff;
   border-radius: 8px;
-  margin-bottom: 12px;
-  border-left: 3px solid #0084ff;
-}
-
-.pinned-sender {
-  font-size: 12px;
-  font-weight: 600;
-  color: #0084ff;
-  margin-bottom: 4px;
-}
-
-.pinned-content {
-  font-size: 14px;
-  color: #000;
-  margin-bottom: 8px;
-  word-wrap: break-word;
-}
-
-.pinned-time {
-  font-size: 11px;
-  color: #999;
-}
-
-.empty-pinned {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  color: #0068ff;
+  flex-shrink: 0;
+}
+
+.popover-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.popover-info {
+  font-size: 11px;
   color: #65676b;
-  text-align: center;
+  margin-top: 2px;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #bcc0c4;
+  border-radius: 10px;
 }
