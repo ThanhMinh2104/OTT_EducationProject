@@ -25,6 +25,7 @@ import GroupMembersModal from './GroupMembersModal';
 import AddMembersModal from './AddMembersModal';
 import { EditGroupInfoModal } from './EditGroupInfoModal';
 import { GroupBoardModal } from './GroupBoardModal';
+import { TransferOwnershipModal } from './TransferOwnershipModal';
 
 const { width } = Dimensions.get('window');
 
@@ -137,6 +138,7 @@ const ChatInfoPanel = ({
   const [canEditGroupInfo, setCanEditGroupInfo] = useState(true);
   const [groupSettings, setGroupSettings] = useState<any>(null);
   const [canCreateNotes, setCanCreateNotes] = useState(true);
+  const [showTransferOwnership, setShowTransferOwnership] = useState(false);
 
   // Fetch current user ID
   React.useEffect(() => {
@@ -195,10 +197,30 @@ const ChatInfoPanel = ({
       }
     };
     
+    // Listen for member left event to reload members list
+    const handleMemberLeft = (data: { groupID: string; userID: string; userName: string }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('🔄 ChatInfoPanel - Member left, triggering refresh...');
+        onHistoryDeleted(); // Trigger parent to reload chat data
+      }
+    };
+
+    // Listen for member kicked event to reload members list
+    const handleMemberKicked = (data: { groupID: string; kickedUserID: string; kickedBy: string; kickerName: string; kickedName: string }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('🔄 ChatInfoPanel - Member kicked, triggering refresh...');
+        onHistoryDeleted(); // Trigger parent to reload chat data
+      }
+    };
+    
     socket.on('group_settings_updated', handleSettingsUpdated);
+    socket.on('member_left', handleMemberLeft);
+    socket.on('member_kicked', handleMemberKicked);
     
     return () => {
       socket.off('group_settings_updated', handleSettingsUpdated);
+      socket.off('member_left', handleMemberLeft);
+      socket.off('member_kicked', handleMemberKicked);
     };
   }, [visible, chat.type, chat.chatID, currentUserID, chat.members]);
 
@@ -485,6 +507,16 @@ const ChatInfoPanel = ({
   };
 
   const handleLeaveGroup = () => {
+    // Kiểm tra quyền owner
+    const currentMember = chat.members?.find((m: any) => m.userID === currentUserID);
+    const isOwner = currentMember?.role === 'owner';
+
+    if (isOwner) {
+      // Mở modal chuyển quyền
+      setShowTransferOwnership(true);
+      return;
+    }
+
     Alert.alert(
       'Rời nhóm',
       `Bạn có chắc muốn rời khỏi nhóm "${chatName}"?`,
@@ -500,8 +532,14 @@ const ChatInfoPanel = ({
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
               });
-              Alert.alert('Thành công', 'Đã rời khỏi nhóm');
-              onClose();
+              Alert.alert('Thành công', 'Đã rời khỏi nhóm', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    onClose();
+                  }
+                }
+              ]);
             } catch (error: any) {
               Alert.alert('Lỗi', 'Không thể rời nhóm');
             }
@@ -512,9 +550,18 @@ const ChatInfoPanel = ({
   };
 
   const handleDissolveGroup = () => {
+    // Kiểm tra quyền owner
+    const currentMember = chat.members?.find((m: any) => m.userID === currentUserID);
+    const isOwner = currentMember?.role === 'owner';
+
+    if (!isOwner) {
+      Alert.alert('Không có quyền', 'Chỉ trưởng nhóm mới có thể giải tán nhóm');
+      return;
+    }
+
     Alert.alert(
       'Giải tán nhóm',
-      `Bạn có chắc muốn giải tán nhóm "${chatName}"? Hành động này không thể hoàn tác.`,
+      `Bạn có chắc muốn giải tán nhóm "${chatName}"? Hành động này không thể hoàn tác và tất cả thành viên sẽ bị xóa khỏi nhóm.`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
@@ -954,8 +1001,8 @@ const ChatInfoPanel = ({
               </TouchableOpacity>
             )}
 
-            {/* Giải tán nhóm - chỉ hiện cho group */}
-            {chat.type === 'group' && (
+            {/* Giải tán nhóm - chỉ hiện cho owner */}
+            {chat.type === 'group' && chat.members?.find((m: any) => m.userID === currentUserID)?.role === 'owner' && (
               <TouchableOpacity style={styles.dissolveButton} onPress={handleDissolveGroup}>
                 <Ionicons name="trash-outline" size={18} color="#ff3b30" />
                 <Text style={styles.dissolveButtonText}>Giải tán nhóm</Text>
@@ -1134,6 +1181,7 @@ const ChatInfoPanel = ({
             members={membersWithInfo}
             memberCount={chat.members.length}
             groupID={chat.chatID}
+            currentUserID={currentUserID}
             onClose={() => setShowMembersModal(false)}
             onAddMembers={() => {
               setShowMembersModal(false);
@@ -1256,6 +1304,21 @@ const ChatInfoPanel = ({
             groupID={chat.chatID}
             userID={currentUserID}
             canCreateNotes={canCreateNotes}
+          />
+        )}
+
+        {/* Transfer Ownership Modal */}
+        {chat.type === 'group' && (
+          <TransferOwnershipModal
+            visible={showTransferOwnership}
+            groupID={chat.chatID}
+            members={membersWithInfo}
+            currentUserID={currentUserID}
+            onClose={() => setShowTransferOwnership(false)}
+            onSuccess={() => {
+              setShowTransferOwnership(false);
+              onClose();
+            }}
           />
         )}
       </View>

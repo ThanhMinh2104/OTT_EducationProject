@@ -126,6 +126,9 @@ router.get('/groups/:groupID', authMiddleware, async (req: AuthRequest, res) => 
     // Lấy danh sách thành viên
     const members = await GroupMember.find({ groupID, isActive: true }).populate('userID');
 
+    console.log(`👥 [BACKEND] Group ${groupID} members (isActive=true):`, members.length);
+    console.log(`   Members:`, members.map(m => `${m.userID} (${m.role}, active=${m.isActive})`).join(', '));
+
     res.json({
       ...group.toObject(),
       members,
@@ -472,10 +475,53 @@ router.delete('/groups/:groupID/members/:targetUserID', authMiddleware, async (r
       return;
     }
 
+    // Admin chỉ có thể xóa member thường, không xóa được admin khác
+    if (member.role === 'admin' && targetMember?.role === 'admin') {
+      res.status(403).json({ message: 'Phó nhóm không thể xóa phó nhóm khác' });
+      return;
+    }
+
     await GroupMember.findOneAndUpdate(
       { groupID, userID: targetUserID },
       { isActive: false, leftAt: new Date() }
     );
+
+    // Lấy thông tin người kick và người bị kick
+    const kicker = await Users.findOne({ userID });
+    const kicked = await Users.findOne({ userID: targetUserID });
+    const kickerName = kicker?.name || 'Quản trị viên';
+    const kickedName = kicked?.name || 'Thành viên';
+
+    // Tạo notification message
+    const notifID = `gmsg_${uuidv4()}`;
+    const notif = new GroupMessage({
+      messageID: notifID,
+      groupID,
+      senderID: userID,
+      content: `${kickerName} đã xóa ${kickedName} khỏi nhóm`,
+      type: 'notification',
+      timestamp: new Date(),
+    });
+    await notif.save();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      // Gửi notification message
+      io.to(groupID).emit('new_group_message', {
+        ...notif.toObject(),
+        senderInfo: { name: kickerName },
+      });
+
+      // Gửi event member_kicked
+      io.to(groupID).emit('member_kicked', {
+        groupID,
+        kickedUserID: targetUserID,
+        kickedBy: userID,
+        kickerName,
+        kickedName,
+      });
+    }
 
     res.json({ message: 'Xóa thành viên thành công' });
   } catch (error: any) {
@@ -503,6 +549,45 @@ router.post('/groups/:groupID/leave', authMiddleware, async (req: AuthRequest, r
     member.isActive = false;
     member.leftAt = new Date();
     await member.save();
+
+    // Lấy thông tin người rời nhóm
+    const user = await Users.findOne({ userID });
+    const userName = user?.name || 'Thành viên';
+
+    // Tạo notification message
+    const notifID = `gmsg_${uuidv4()}`;
+    const notif = new GroupMessage({
+      messageID: notifID,
+      groupID,
+      senderID: userID,
+      content: `${userName} đã rời khỏi nhóm`,
+      type: 'notification',
+      timestamp: new Date(),
+    });
+    await notif.save();
+
+    // Emit socket event để notify tất cả members
+    const io = req.app.get('io');
+    if (io) {
+      console.log(`🔔 [BACKEND] Emitting member_left event to group ${groupID}:`, { userID, userName });
+      
+      // Gửi notification message
+      io.to(groupID).emit('new_group_message', {
+        ...notif.toObject(),
+        senderInfo: { name: userName },
+      });
+
+      // Gửi event member_left để frontend xử lý
+      io.to(groupID).emit('member_left', {
+        groupID,
+        userID,
+        userName,
+      });
+      
+      console.log(`✅ [BACKEND] member_left event emitted successfully`);
+    } else {
+      console.error('❌ [BACKEND] Socket.io instance not found!');
+    }
 
     res.json({ message: 'Rời nhóm thành công' });
   } catch (error: any) {
