@@ -94,12 +94,14 @@ const HomePage = () => {
     groupName: string;
     invitedUserIDs: string[];
     allMemberInfos: { userID: string; name: string; avatar?: string }[];
+    allGroupMembers?: { userID: string; name: string; avatar?: string }[];
   } | null>(null);
   const [activeGroupCall, setActiveGroupCall] = useState<{
     groupID: string;
     groupName: string;
     withVideo: boolean;
     initialParticipants: { userID: string; name: string; avatar?: string }[];
+    allGroupMembers?: { userID: string; name: string; avatar?: string }[];
   } | null>(null);
 
   useEffect(() => {
@@ -135,25 +137,20 @@ const HomePage = () => {
 
       const messagePreview = getMessagePreview(msg);
       const senderName = msg.senderInfo?.name || 'Người dùng';
-      const senderAvatar = msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderName}`;
+      const senderAvatar =
+        msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderName}`;
 
       // Show Zalo-style toast notification
-      showZaloToast(
-        senderAvatar,
-        senderName,
-        messagePreview,
-        msg.chatID,
-        (chatID: string) => {
-          // On click, navigate to chat
-          axiosInstance
-            .get(`/chats/${chatID}`)
-            .then((res) => {
-              setSelectedChat(res.data);
-              setActiveTab('chats');
-            })
-            .catch(() => {});
-        }
-      );
+      showZaloToast(senderAvatar, senderName, messagePreview, msg.chatID, (chatID: string) => {
+        // On click, navigate to chat
+        axiosInstance
+          .get(`/chats/${chatID}`)
+          .then((res) => {
+            setSelectedChat(res.data);
+            setActiveTab('chats');
+          })
+          .catch(() => {});
+      });
     });
 
     socket.on(
@@ -183,25 +180,30 @@ const HomePage = () => {
     });
 
     // Global group call incoming listener
-    socket.on('group-call-incoming', (data: {
-      groupID: string;
-      callerID: string;
-      callerInfo: { name: string; avatar?: string };
-      groupName: string;
-      invitedUserIDs: string[];
-      allMemberInfos?: { userID: string; name: string; avatar?: string }[];
-    }) => {
-      if (data.callerID === user?.userID) return;
-      console.log('📞 Incoming group call:', data);
-      setIncomingGroupCall({
-        groupID: data.groupID,
-        callerID: data.callerID,
-        callerInfo: data.callerInfo,
-        groupName: data.groupName,
-        invitedUserIDs: data.invitedUserIDs,
-        allMemberInfos: data.allMemberInfos || [],
-      });
-    });
+    socket.on(
+      'group-call-incoming',
+      (data: {
+        groupID: string;
+        callerID: string;
+        callerInfo: { name: string; avatar?: string };
+        groupName: string;
+        invitedUserIDs: string[];
+        allMemberInfos?: { userID: string; name: string; avatar?: string }[];
+        allGroupMembers?: { userID: string; name: string; avatar?: string }[];
+      }) => {
+        if (data.callerID === user?.userID) return;
+        console.log('📞 Incoming group call:', data);
+        setIncomingGroupCall({
+          groupID: data.groupID,
+          callerID: data.callerID,
+          callerInfo: data.callerInfo,
+          groupName: data.groupName,
+          invitedUserIDs: data.invitedUserIDs,
+          allMemberInfos: data.allMemberInfos || [],
+          allGroupMembers: data.allGroupMembers || [],
+        });
+      }
+    );
 
     const checkSession = async () => {
       try {
@@ -366,9 +368,8 @@ const HomePage = () => {
           callerInfo={incomingGroupCall.callerInfo}
           groupName={incomingGroupCall.groupName}
           invitedNames={incomingGroupCall.allMemberInfos
-            .filter(m => m.userID !== user.userID && m.userID !== incomingGroupCall.callerID)
-            .map(m => m.name)
-          }
+            .filter((m) => m.userID !== user.userID && m.userID !== incomingGroupCall.callerID)
+            .map((m) => m.name)}
           onAccept={(withVideo) => {
             setIncomingGroupCall(null);
             setActiveGroupCall({
@@ -376,10 +377,14 @@ const HomePage = () => {
               groupName: incomingGroupCall.groupName,
               withVideo,
               initialParticipants: incomingGroupCall.allMemberInfos,
+              allGroupMembers: incomingGroupCall.allGroupMembers || [],
             });
           }}
           onReject={() => {
-            socket.emit('group-call-reject', { groupID: incomingGroupCall.groupID, userID: user.userID });
+            socket.emit('group-call-reject', {
+              groupID: incomingGroupCall.groupID,
+              userID: user.userID,
+            });
             setIncomingGroupCall(null);
           }}
         />
@@ -391,7 +396,7 @@ const HomePage = () => {
           user={{ userID: user.userID, name: user.name, anhDaiDien: user.anhDaiDien }}
           groupID={activeGroupCall.groupID}
           groupName={activeGroupCall.groupName}
-          members={[]}
+          members={activeGroupCall.allGroupMembers || []}
           isCallee={true}
           initialWithVideo={activeGroupCall.withVideo}
           initialParticipants={activeGroupCall.initialParticipants}
