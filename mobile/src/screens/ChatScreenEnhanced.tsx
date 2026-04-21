@@ -2087,6 +2087,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           </TouchableOpacity>
         )}
         <View style={[styles.msgContent, isMine ? styles.msgContentMine : styles.msgContentOther]}>
+          {/* Tên người gửi trong nhóm */}
+          {!isMine && selectedChat?.type === 'group' && (
+            <Text style={styles.groupSenderName}>{item.senderInfo?.name || 'Người dùng'}</Text>
+          )}
           {renderBubbleContent()}
         </View>
         {/* Spacer bên phải cho tin nhắn người khác */}
