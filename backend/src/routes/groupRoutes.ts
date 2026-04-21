@@ -7,6 +7,7 @@ import GroupMessage from '../models/GroupMessage';
 import GroupJoinRequest from '../models/GroupJoinRequest';
 import Users from '../models/User';
 import GroupNote from '../models/GroupNote';
+import Poll from '../models/Poll';
 
 const router = Router();
 
@@ -124,6 +125,9 @@ router.get('/groups/:groupID', authMiddleware, async (req: AuthRequest, res) => 
 
     // Lấy danh sách thành viên
     const members = await GroupMember.find({ groupID, isActive: true }).populate('userID');
+
+    console.log(`👥 [BACKEND] Group ${groupID} members (isActive=true):`, members.length);
+    console.log(`   Members:`, members.map(m => `${m.userID} (${m.role}, active=${m.isActive})`).join(', '));
 
     res.json({
       ...group.toObject(),
@@ -471,10 +475,53 @@ router.delete('/groups/:groupID/members/:targetUserID', authMiddleware, async (r
       return;
     }
 
+    // Admin chỉ có thể xóa member thường, không xóa được admin khác
+    if (member.role === 'admin' && targetMember?.role === 'admin') {
+      res.status(403).json({ message: 'Phó nhóm không thể xóa phó nhóm khác' });
+      return;
+    }
+
     await GroupMember.findOneAndUpdate(
       { groupID, userID: targetUserID },
       { isActive: false, leftAt: new Date() }
     );
+
+    // Lấy thông tin người kick và người bị kick
+    const kicker = await Users.findOne({ userID });
+    const kicked = await Users.findOne({ userID: targetUserID });
+    const kickerName = kicker?.name || 'Quản trị viên';
+    const kickedName = kicked?.name || 'Thành viên';
+
+    // Tạo notification message
+    const notifID = `gmsg_${uuidv4()}`;
+    const notif = new GroupMessage({
+      messageID: notifID,
+      groupID,
+      senderID: userID,
+      content: `${kickerName} đã xóa ${kickedName} khỏi nhóm`,
+      type: 'notification',
+      timestamp: new Date(),
+    });
+    await notif.save();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      // Gửi notification message
+      io.to(groupID).emit('new_group_message', {
+        ...notif.toObject(),
+        senderInfo: { name: kickerName },
+      });
+
+      // Gửi event member_kicked
+      io.to(groupID).emit('member_kicked', {
+        groupID,
+        kickedUserID: targetUserID,
+        kickedBy: userID,
+        kickerName,
+        kickedName,
+      });
+    }
 
     res.json({ message: 'Xóa thành viên thành công' });
   } catch (error: any) {
@@ -502,6 +549,45 @@ router.post('/groups/:groupID/leave', authMiddleware, async (req: AuthRequest, r
     member.isActive = false;
     member.leftAt = new Date();
     await member.save();
+
+    // Lấy thông tin người rời nhóm
+    const user = await Users.findOne({ userID });
+    const userName = user?.name || 'Thành viên';
+
+    // Tạo notification message
+    const notifID = `gmsg_${uuidv4()}`;
+    const notif = new GroupMessage({
+      messageID: notifID,
+      groupID,
+      senderID: userID,
+      content: `${userName} đã rời khỏi nhóm`,
+      type: 'notification',
+      timestamp: new Date(),
+    });
+    await notif.save();
+
+    // Emit socket event để notify tất cả members
+    const io = req.app.get('io');
+    if (io) {
+      console.log(`🔔 [BACKEND] Emitting member_left event to group ${groupID}:`, { userID, userName });
+      
+      // Gửi notification message
+      io.to(groupID).emit('new_group_message', {
+        ...notif.toObject(),
+        senderInfo: { name: userName },
+      });
+
+      // Gửi event member_left để frontend xử lý
+      io.to(groupID).emit('member_left', {
+        groupID,
+        userID,
+        userName,
+      });
+      
+      console.log(`✅ [BACKEND] member_left event emitted successfully`);
+    } else {
+      console.error('❌ [BACKEND] Socket.io instance not found!');
+    }
 
     res.json({ message: 'Rời nhóm thành công' });
   } catch (error: any) {
@@ -1415,7 +1501,621 @@ router.get('/groups/mutual/:targetUserID', authMiddleware, async (req: AuthReque
   }
 });
 
-export default router;
+// ==================== POLLS (Bình chọn) ====================
+
+// Tạo bình chọn mới
+router.post('/groups/:groupID/polls', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID;
+
+    // Kiểm tra thành viên
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    // Kiểm tra quyền tạo poll
+    const isOwnerOrAdmin = ['owner', 'admin'].includes(member.role);
+    if (!isOwnerOrAdmin) {
+      const group = await Group.findOne({ groupID });
+      const canCreatePolls = group?.settings?.memberPermissions?.createPolls ?? true;
+      if (!canCreatePolls) {
+        res.status(403).json({ message: 'Bạn không có quyền tạo bình chọn trong nhóm này' });
+        return;
+      }
+    }
+
+    const { question, options, isMultipleChoice, endTime, canAddOptions, hideResultsBeforeVote, isAnonymous, shouldPin } = req.body;
+
+    // Validate
+    if (!question?.trim()) {
+      res.status(400).json({ message: 'Câu hỏi không được để trống' });
+      return;
+    }
+    if (!options || !Array.isArray(options) || options.length < 2) {
+      res.status(400).json({ message: 'Cần ít nhất 2 lựa chọn' });
+      return;
+    }
+
+    if (options.length > 30) {
+      res.status(400).json({ message: 'Tối đa 30 lựa chọn' });
+      return;
+    }
+
+    const pollID = `poll_${uuidv4()}`;
+    const poll = new Poll({
+      pollID,
+      groupID,
+      creatorID: userID,
+      question: question.trim(),
+      options: options.map((opt: string) => ({ text: opt.trim(), voters: [] })),
+      isMultipleChoice: isMultipleChoice || false,
+      endTime: endTime ? new Date(endTime) : undefined,
+      canAddOptions: canAddOptions || false,
+      hideResultsBeforeVote: hideResultsBeforeVote || false,
+      isAnonymous: isAnonymous || false,
+    });
+    await poll.save();
+
+    // Tạo tin nhắn poll trong chat
+    const creator = await Users.findOne({ userID });
+    const messageID = `gmsg_${uuidv4()}`;
+    const pollMessage = new GroupMessage({
+      messageID,
+      groupID,
+      senderID: userID,
+      content: question.trim(),
+      type: 'poll',
+      pollID,
+      timestamp: new Date(),
+      media_url: [],
+      status: 'sent',
+      pinnedInfo: shouldPin ? {
+        pinnedBy: userID,
+        pinnedAt: new Date(),
+      } : undefined,
+    });
+    await pollMessage.save();
+
+    // Lấy thông tin poll đầy đủ để trả về
+    const pollData = {
+      ...poll.toObject(),
+      creatorInfo: {
+        name: creator?.name || 'Người dùng',
+        avatar: creator?.anhDaiDien || null,
+      },
+    };
+
+    // Emit socket events
+    const io = req.app.get('io');
+    if (io) {
+      // Thông báo poll mới
+      io.to(groupID).emit('poll_created', pollData);
+
+      // [UPDATE] Gửi tin nhắn poll vào chat dưới dạng CARD (type: poll)
+      io.to(groupID).emit('new_group_message', {
+        ...pollMessage.toObject(),
+        senderInfo: {
+          name: creator?.name || 'Người dùng',
+          avatar: creator?.anhDaiDien || null,
+        },
+      });
+
+      // [NEW] Gửi thêm một thông báo hệ thống về việc tạo bình chọn
+      const pollNotifID = `gmsg_${uuidv4()}`;
+      const pollNotif = new GroupMessage({
+        messageID: pollNotifID,
+        groupID,
+        senderID: userID,
+        content: `##POLL_CREATED##|${pollID}|${question.trim()}|${creator?.name || 'Ai đó'}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      await pollNotif.save();
+
+      io.to(groupID).emit('new_group_message', {
+        ...pollNotif.toObject(),
+        senderInfo: { name: creator?.name || 'Người dùng', avatar: creator?.anhDaiDien || null },
+      });
+    }
+
+    res.status(201).json({ message: 'Tạo bình chọn thành công', poll: pollData });
+  } catch (error: any) {
+    console.error('❌ Lỗi tạo bình chọn:', error);
+    res.status(500).json({ message: 'Lỗi tạo bình chọn', error: error.message });
+  }
+});
+
+// Lấy danh sách bình chọn của nhóm
+router.get('/groups/:groupID/polls', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const polls = await Poll.find({ groupID, isActive: true }).sort({ createdAt: -1 });
+
+    // Enrich với creator info và xử lý ẩn danh
+    const enriched = await Promise.all(
+      polls.map(async (poll) => {
+        const creator = await Users.findOne({ userID: poll.creatorID });
+        const pollObj = poll.toObject();
+        
+        // Nếu ẩn danh, xóa thông tin voters khỏi options
+        if (poll.isAnonymous) {
+          pollObj.options = pollObj.options.map((opt: any) => ({
+            ...opt,
+            voters: opt.voters.map(() => 'hidden') // Chỉ giữ lại số lượng thông qua length, ẩn ID
+          }));
+        }
+
+        return {
+          ...pollObj,
+          creatorInfo: {
+            name: creator?.name || 'Người dùng',
+            avatar: creator?.anhDaiDien || null,
+          },
+        };
+      })
+    );
+
+    res.json({ polls: enriched });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi lấy danh sách bình chọn', error: error.message });
+  }
+});
+
+// Lấy chi tiết 1 bình chọn
+router.get('/groups/:groupID/polls/:pollID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, pollID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const poll = await Poll.findOne({ pollID, groupID });
+    if (!poll) {
+      res.status(404).json({ message: 'Bình chọn không tồn tại' });
+      return;
+    }
+
+    const creator = await Users.findOne({ userID: poll.creatorID });
+    const pollObj = poll.toObject();
+
+    // Nếu ẩn danh, ẩn thông tin voters
+    if (poll.isAnonymous) {
+      pollObj.options = pollObj.options.map((opt: any) => ({
+        ...opt,
+        voters: opt.voters.map(() => 'hidden')
+      }));
+    }
+
+    res.json({
+      ...pollObj,
+      creatorInfo: {
+        name: creator?.name || 'Người dùng',
+        avatar: creator?.anhDaiDien || null,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi lấy chi tiết bình chọn', error: error.message });
+  }
+});
+
+// Vote / Bỏ vote cho 1 option
+router.post('/groups/:groupID/polls/:pollID/vote', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, pollID } = req.params;
+    const { optionIndex } = req.body;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const poll = await Poll.findOne({ pollID, groupID, isActive: true });
+    if (!poll) {
+      res.status(404).json({ message: 'Bình chọn không tồn tại hoặc đã kết thúc' });
+      return;
+    }
+
+    // Kiểm tra thời gian kết thúc
+    if (poll.endTime && new Date() > poll.endTime) {
+      res.status(400).json({ message: 'Bình chọn đã kết thúc' });
+      return;
+    }
+
+    // Kiểm tra optionIndex hợp lệ
+    if (optionIndex < 0 || optionIndex >= poll.options.length) {
+      res.status(400).json({ message: 'Lựa chọn không hợp lệ' });
+      return;
+    }
+
+    const option = poll.options[optionIndex];
+    const currentUserID = userID as string;
+    const alreadyVoted = option.voters.includes(currentUserID);
+
+    if (alreadyVoted) {
+      // Bỏ vote (toggle)
+      option.voters = option.voters.filter(id => id !== currentUserID);
+    } else {
+      // Nếu không cho chọn nhiều → xóa vote cũ ở các option khác
+      if (!poll.isMultipleChoice) {
+        poll.options.forEach(opt => {
+          opt.voters = opt.voters.filter(id => id !== currentUserID);
+        });
+      }
+      // Thêm vote
+      option.voters.push(currentUserID);
+    }
+
+    await poll.save();
+
+    // Lấy creator info
+    const creator = await Users.findOne({ userID: poll.creatorID });
+    const updatedPoll = {
+      ...poll.toObject(),
+      creatorInfo: {
+        name: creator?.name || 'Người dùng',
+        avatar: creator?.anhDaiDien || null,
+      },
+    };
+
+    // Emit socket realtime
+    const io = req.app.get('io');
+    if (io) {
+      // Nếu ẩn danh, ẩn voters khi emit
+      const pollForEmit = {
+        ...updatedPoll,
+        options: updatedPoll.options.map((opt: any) => ({
+          ...opt,
+          voters: poll.isAnonymous ? opt.voters.map(() => 'hidden') : opt.voters
+        }))
+      };
+      io.to(groupID).emit('poll_updated', pollForEmit);
+
+      // [NEW] Gửi thông báo hệ thống khi có người bình chọn (toggle)
+      const user = await Users.findOne({ userID });
+      const voteNotifID = `gmsg_${uuidv4()}`;
+      const actionText = alreadyVoted ? 'đã bỏ bình chọn' : 'đã tham gia bình chọn';
+      const pollNotif = new GroupMessage({
+        messageID: voteNotifID,
+        groupID,
+        senderID: userID,
+        content: `##POLL_VOTED##|${pollID}|${poll.question}|${user?.name || 'Ai đó'}|${actionText}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      await pollNotif.save();
+
+      io.to(groupID).emit('new_group_message', {
+        ...pollNotif.toObject(),
+        senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
+      });
+    }
+
+    res.json({ message: alreadyVoted ? 'Đã bỏ bình chọn' : 'Đã bình chọn', poll: updatedPoll });
+  } catch (error: any) {
+    console.error('❌ Lỗi vote:', error);
+    res.status(500).json({ message: 'Lỗi bình chọn', error: error.message });
+  }
+});
+
+// Thêm phương án mới vào cuộc bình chọn
+router.post('/groups/:groupID/polls/:pollID/add-option', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, pollID } = req.params;
+    const { text } = req.body;
+    const userID = req.userID;
+
+    if (!text || !text.trim()) {
+      res.status(400).json({ message: 'Vui lòng nhập nội dung phương án' });
+      return;
+    }
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không có quyền tham gia nhóm này' });
+      return;
+    }
+
+    const poll = await Poll.findOne({ pollID, groupID, isActive: true });
+    if (!poll) {
+      res.status(404).json({ message: 'Bình chọn không tồn tại hoặc đã kết thúc' });
+      return;
+    }
+
+    if (!poll.canAddOptions) {
+      res.status(403).json({ message: 'Cuộc bình chọn này không cho phép thêm phương án mới' });
+      return;
+    }
+
+    if (poll.options.length >= 30) {
+      res.status(400).json({ message: 'Đã đạt giới hạn tối đa 30 lựa chọn' });
+      return;
+    }
+
+    // Kiểm tra trùng lặp
+    const exists = poll.options.some(opt => opt.text.toLowerCase() === text.trim().toLowerCase());
+    if (exists) {
+      res.status(400).json({ message: 'Phương án này đã tồn tại' });
+      return;
+    }
+
+    poll.options.push({ text: text.trim(), voters: [] });
+    await poll.save();
+
+    const creator = await Users.findOne({ userID: poll.creatorID });
+    const updatedPoll = {
+      ...poll.toObject(),
+      creatorInfo: {
+        name: creator?.name || 'Người dùng',
+        avatar: creator?.anhDaiDien || null,
+      },
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      const pollForEmit = {
+        ...updatedPoll,
+        options: updatedPoll.options.map((opt: any) => ({
+          ...opt,
+          voters: poll.isAnonymous ? opt.voters.map(() => 'hidden') : opt.voters
+        }))
+      };
+      io.to(groupID).emit('poll_updated', pollForEmit);
+
+      // [NEW] Gửi thông báo hệ thống khi thêm phương án mới
+      const user = await Users.findOne({ userID });
+      const addOptionNotifID = `gmsg_${uuidv4()}`;
+      const pollNotif = new GroupMessage({
+        messageID: addOptionNotifID,
+        groupID,
+        senderID: userID,
+        content: `##POLL_OPTION_ADDED##|${pollID}|${poll.question}|${user?.name || 'Ai đó'}|${text.trim()}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      await pollNotif.save();
+
+      io.to(groupID).emit('new_group_message', {
+        ...pollNotif.toObject(),
+        senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
+      });
+    }
+
+    res.json({ message: 'Thêm phương án thành công', poll: updatedPoll });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi khi thêm phương án', error: error.message });
+  }
+});
+
+// Xóa bình chọn (chỉ người tạo hoặc admin/owner)
+router.delete('/groups/:groupID/polls/:pollID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, pollID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const poll = await Poll.findOne({ pollID, groupID });
+    if (!poll) {
+      res.status(404).json({ message: 'Bình chọn không tồn tại' });
+      return;
+    }
+
+    // Chỉ người tạo hoặc admin/owner mới được xóa
+    const isOwnerOrAdmin = ['owner', 'admin'].includes(member.role);
+    if (poll.creatorID !== userID && !isOwnerOrAdmin) {
+      res.status(403).json({ message: 'Bạn không có quyền xóa bình chọn này' });
+      return;
+    }
+
+    // Soft delete
+    poll.isActive = false;
+    await poll.save();
+
+    // Cập nhật tin nhắn poll trong chat thành notification
+    await GroupMessage.findOneAndUpdate(
+      { pollID, groupID },
+      { type: 'notification', content: 'Bình chọn đã bị xóa', pollID: undefined }
+    );
+
+    // Emit socket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('poll_deleted', { pollID, groupID });
+
+      // [NEW] Gửi thông báo hệ thống về việc xóa bình chọn
+      const user = await Users.findOne({ userID });
+      const deleteNotifID = `gmsg_${uuidv4()}`;
+      const pollNotif = new GroupMessage({
+        messageID: deleteNotifID,
+        groupID,
+        senderID: userID,
+        content: `##POLL_DELETED##|${pollID}|${poll.question}|${user?.name || 'Ai đó'}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      await pollNotif.save();
+
+      io.to(groupID).emit('new_group_message', {
+        ...pollNotif.toObject(),
+        senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
+      });
+    }
+
+    res.json({ message: 'Đã xóa bình chọn' });
+  } catch (error: any) {
+    console.error('❌ Lỗi xóa bình chọn:', error);
+    res.status(500).json({ message: 'Lỗi xóa bình chọn', error: error.message });
+  }
+});
+
+// Khóa bình chọn (Dừng nhận vote)
+router.post('/groups/:groupID/polls/:pollID/lock', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, pollID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const poll = await Poll.findOne({ pollID, groupID, isActive: true });
+    if (!poll) {
+      res.status(404).json({ message: 'Bình chọn không tồn tại hoặc đã bị đóng' });
+      return;
+    }
+
+    // Bỏ qua kiểm tra quyền, cho phép mọi thành viên trong nhóm khóa bình chọn
+    // (hoặc nếu vẫn muốn giữ lại quyền cho người tạo thì bỏ comment)
+    // const isOwnerOrAdmin = ['owner', 'admin'].includes(member.role);
+    // if (poll.creatorID !== userID && !isOwnerOrAdmin) {
+    //   res.status(403).json({ message: 'Bạn không có quyền khóa bình chọn này' });
+    //   return;
+    // }
+
+    // Khóa bằng cách set endTime về quá khứ hoặc dùng flag mới (ở đây ta set endTime nếu chưa có)
+    if (!poll.endTime || poll.endTime > new Date()) {
+      poll.endTime = new Date(); // Dừng ngay lập tức
+    }
+    // Ta cũng có thể thêm field isLocked vào model nếu muốn, nhưng hiện tại logic endTime đang được dùng để check
+    await poll.save();
+
+    const user = await Users.findOne({ userID });
+    const creator = await Users.findOne({ userID: poll.creatorID });
+    
+    const updatedPoll = {
+      ...poll.toObject(),
+      creatorInfo: { name: creator?.name || 'Người dùng', avatar: creator?.anhDaiDien || null }
+    };
+
+    // Emit socket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('poll_updated', updatedPoll);
+
+      // Gửi thông báo hệ thống khóa bình chọn
+      const lockNotifID = `gmsg_${uuidv4()}`;
+      const pollNotif = new GroupMessage({
+        messageID: lockNotifID,
+        groupID,
+        senderID: userID,
+        content: `##POLL_CLOSED##|${pollID}|${poll.question}|${user?.name || 'Ai đó'}`,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      await pollNotif.save();
+
+      io.to(groupID).emit('new_group_message', {
+        ...pollNotif.toObject(),
+        senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
+      });
+    }
+
+    res.json({ message: 'Đã khóa bình chọn', poll: updatedPoll });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi khóa bình chọn', error: error.message });
+  }
+});
+
+// Gửi lại (share) bình chọn vào nhóm
+router.post('/groups/:groupID/polls/:pollID/share', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, pollID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const poll = await Poll.findOne({ pollID, groupID });
+    if (!poll) {
+      res.status(404).json({ message: 'Bình chọn không tồn tại' });
+      return;
+    }
+
+    const user = await Users.findOne({ userID });
+
+    // Tạo tin nhắn thông báo "X đã chia sẻ cuộc bình chọn"
+    const shareNotifID = `gmsg_${uuidv4()}`;
+    const pollNotif = new GroupMessage({
+      messageID: shareNotifID,
+      groupID,
+      senderID: userID,
+      content: `${user?.name || 'Ai đó'} đã chia sẻ cuộc bình chọn:`,
+      type: 'notification',
+      timestamp: new Date(),
+      media_url: [],
+      status: 'sent',
+    });
+    await pollNotif.save();
+
+    // Tạo tin nhắn poll
+    const pollMessageID = `gmsg_${uuidv4()}`;
+    const pollMessage = new GroupMessage({
+      messageID: pollMessageID,
+      groupID,
+      senderID: userID,
+      content: poll.question, // PollMessage front-end thường dùng content làm header / fallback
+      type: 'poll',
+      pollID,
+      timestamp: new Date(Date.now() + 1000), // Thêm 1s để thứ tự hiện sau thông báo
+      media_url: [],
+      status: 'sent',
+    });
+    await pollMessage.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('new_group_message', {
+        ...pollNotif.toObject(),
+        senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
+      });
+      io.to(groupID).emit('new_group_message', {
+        ...pollMessage.toObject(),
+        senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
+      });
+    }
+
+    res.json({ message: 'Đã chia sẻ bình chọn' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi chia sẻ bình chọn', error: error.message });
+  }
+});
+
 
 // ==================== GROUP NOTES ====================
 
@@ -1674,3 +2374,5 @@ router.get('/groups/:groupID/pinned-messages', authMiddleware, async (req: AuthR
     res.status(500).json({ message: 'Lỗi lấy tin nhắn ghim', error: error.message });
   }
 });
+
+export default router;

@@ -326,9 +326,14 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
   };
 
   const handleDeleteGroup = () => {
+    if (!isOwner) {
+      Alert.alert('Không có quyền', 'Chỉ trưởng nhóm mới có thể giải tán nhóm');
+      return;
+    }
+
     Alert.alert(
       'Giải tán nhóm',
-      `Bạn có chắc muốn giải tán nhóm "${groupInfo.name}"? Hành động này không thể hoàn tác.`,
+      `Bạn có chắc muốn giải tán nhóm "${groupInfo.name}"? Hành động này không thể hoàn tác và tất cả thành viên sẽ bị xóa khỏi nhóm.`,
       [
         { text: 'Hủy', style: 'cancel' },
         {

@@ -201,8 +201,14 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
     msgByGroup[m.groupID].push(m);
   });
 
-  // Get all group members for each group
-  const allGroupMembers = groupIDs.length > 0 ? await GroupMember.find({ groupID: { $in: groupIDs } }).lean() : [];
+  // Get all group members for each group (CHỈ LẤY ACTIVE MEMBERS)
+  const allGroupMembers = groupIDs.length > 0 ? await GroupMember.find({ 
+    groupID: { $in: groupIDs },
+    isActive: true  // ⭐ CHỈ LẤY MEMBERS ĐANG ACTIVE
+  }).lean() : [];
+  
+  console.log(`👥 [BACKEND] getChatsForUser - Total active group members:`, allGroupMembers.length);
+  
   const membersByGroup: Record<string, { userID: string; role: string }[]> = {};
   allGroupMembers.forEach((gm) => {
     if (!membersByGroup[gm.groupID]) membersByGroup[gm.groupID] = [];

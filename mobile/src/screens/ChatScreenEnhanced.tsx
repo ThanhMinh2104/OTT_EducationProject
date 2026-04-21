@@ -28,6 +28,7 @@ import VideoViewer from '../components/VideoViewer';
 import ChatInfoPanel from '../components/ChatInfoPanel';
 import AddFriendModal from '../components/AddFriendModal';
 import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
+import FilePreviewModal from '../components/FilePreviewModal';
 import { Swipeable } from 'react-native-gesture-handler';
 import { CreateGroupModal } from '../components/CreateGroupModal';
 import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
@@ -175,6 +176,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [selectedChatsForForward, setSelectedChatsForForward] = useState<string[]>([]);
 
+  // File preview states
+  const [showFilePreview, setShowFilePreview] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ fileName: string; fileUrl: string } | null>(null);
+
   // Audio recording states
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -219,6 +224,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [showStrangerInbox, setShowStrangerInbox] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [addFriendTarget, setAddFriendTarget] = useState<any>(null);
   const [otherProfile, setOtherProfile] = useState<OtherUser | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -247,7 +253,15 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     })();
 
     socket.on('ChatByUserID', (data: Chat[]) => {
-      console.log('📥 Received ChatByUserID:', data.length, 'chats');
+      console.log('📥 [MOBILE] Received ChatByUserID:', data.length, 'chats');
+
+      // Log members của từng group để debug
+      data.forEach(c => {
+        if (c.type === 'group') {
+          console.log(`👥 [MOBILE] Group ${c.name} (${c.chatID}):`, c.members.length, 'members');
+          console.log(`   Members:`, c.members.map(m => `${m.userID} (${m.role})`).join(', '));
+        }
+      });
 
       // Phân loại chat thành bạn bè và người lạ
       const friendChats = data.filter(c => !c.isStranger);
@@ -272,6 +286,13 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           const me = JSON.parse(stored);
           const otherId = c.members.find((m) => m.userID !== me.userID)?.userID;
           if (otherId) fetchMember(otherId);
+        } else if (c.type === 'group') {
+          // Join tất cả group rooms để nhận events
+          const stored = await AsyncStorage.getItem('user');
+          if (!stored) return;
+          const me = JSON.parse(stored);
+          console.log('🚪 [MOBILE] Joining group room:', c.chatID, 'for user:', me.userID);
+          socket.emit('join_group', { groupID: c.chatID, userID: me.userID });
         }
       });
     });
@@ -478,12 +499,43 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
     });
 
+    // Lắng nghe member_left ở global level để reload chat list
+    socket.on('member_left', async (data: { groupID: string; userID: string; userName: string }) => {
+      console.log('📥 [MOBILE] Global member_left event received:', data);
+      console.log('📥 [MOBILE] Current user:', user?.userID);
+      
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const me = JSON.parse(stored);
+      
+      console.log('🔄 [MOBILE] Reloading chat list after member_left...');
+      // Reload chat list để cập nhật members
+      socket.emit('getChat', me.userID);
+    });
+
+    // Lắng nghe member_kicked ở global level để reload chat list
+    socket.on('member_kicked', async (data: { groupID: string; kickedUserID: string; kickedBy: string; kickerName: string; kickedName: string }) => {
+      console.log('📥 [MOBILE] Global member_kicked event received:', data);
+      
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const me = JSON.parse(stored);
+      
+      console.log('🔄 [MOBILE] Reloading chat list after member_kicked...');
+      // Reload chat list để cập nhật members
+      socket.emit('getChat', me.userID);
+    });
+
     return () => {
       socket.off('ChatByUserID');
       socket.off('call-made');
       socket.off('call-cancelled');
       socket.off('newChat1-1');
       socket.off('friend_request_accepted');
+      socket.off('friend_status_update');
+      socket.off('group-call-incoming');
+      socket.off('member_left');
+      socket.off('member_kicked');
       socket.off('friend_status_update');
       socket.off('group-call-incoming');
     };
@@ -536,6 +588,21 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       const data = await res.json();
       setMemberCache((prev) => ({ ...prev, [memberID]: data }));
     } catch { /* ignore */ }
+  };
+
+  const onRefresh = async () => {
+    if (!user) return;
+    setRefreshing(true);
+    try {
+      // Reload chat list
+      socket.emit('getChat', user.userID);
+      // Wait a bit for the response
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (error) {
+      console.error('Error refreshing chats:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const [deletingChat, setDeletingChat] = useState<Chat | null>(null);
@@ -967,6 +1034,28 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
     };
 
+    // ⭐ Group chat unsend event
+    const onUnsendGroupNotification = (data: { messageID: string; groupID: string; senderID: string }) => {
+      console.log("🔄 Received unsend_group_notification:", data);
+      if (data.groupID === chatID) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.messageID === data.messageID
+              ? { ...m, type: 'notification', content: 'Tin nhắn đã bị thu hồi', media_url: [] }
+              : m
+          )
+        );
+      }
+    };
+
+    // ⭐ Group chat delete local event
+    const onMessageDeletedLocalGroup = (data: { messageID: string; userID: string; groupID: string }) => {
+      console.log("🗑️ Received message_deleted_local (group):", data);
+      if (data.userID === user.userID && data.groupID === chatID) {
+        setMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
+      }
+    };
+
     // Rejoin group khi socket reconnect
     const onReconnect = () => {
       if (isGroup) {
@@ -996,6 +1085,54 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       ));
     };
 
+    // Xử lý khi có thành viên rời nhóm
+    const onMemberLeft = (data: { groupID: string; userID: string; userName: string }) => {
+      if (data.groupID !== chatID) return;
+      
+      // Nếu chính user hiện tại rời nhóm
+      if (data.userID === user.userID) {
+        Alert.alert(
+          'Đã rời nhóm',
+          'Bạn đã rời khỏi nhóm này',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Đóng chat window
+                setSelectedChat(null);
+                // Xóa nhóm khỏi danh sách
+                setChats(prev => prev.filter(c => c.chatID !== data.groupID));
+              }
+            }
+          ]
+        );
+      }
+    };
+
+    // Xử lý khi có thành viên bị kick
+    const onMemberKicked = (data: { groupID: string; kickedUserID: string; kickedBy: string; kickerName: string; kickedName: string }) => {
+      if (data.groupID !== chatID) return;
+      
+      // Nếu chính user hiện tại bị kick
+      if (data.kickedUserID === user.userID) {
+        Alert.alert(
+          'Đã bị xóa khỏi nhóm',
+          `Bạn đã bị ${data.kickerName} xóa khỏi nhóm`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Đóng chat window
+                setSelectedChat(null);
+                // Xóa nhóm khỏi danh sách
+                setChats(prev => prev.filter(c => c.chatID !== data.groupID));
+              }
+            }
+          ]
+        );
+      }
+    };
+
     socket.on('new_message', onNewMessage);
     // Lắng nghe group messages
     if (isGroup) {
@@ -1003,12 +1140,19 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       socket.on('group_typing_start', onTypingStart);
       socket.on('group_typing_stop', onTypingStop);
       socket.on('group_info_updated', onGroupInfoUpdated);
+
+      socket.on('member_left', onMemberLeft);
+      socket.on('member_kicked', onMemberKicked);
+
+      socket.on('unsend_group_notification', onUnsendGroupNotification);  // ⭐ MỚI THÊM
+      socket.on('message_deleted_local', onMessageDeletedLocalGroup);  // ⭐ MỚI THÊM
+
     } else {
       socket.on('typing_start', onTypingStart);
       socket.on('typing_stop', onTypingStop);
+      socket.on('unsend_notification', onUnsend);
+      socket.on('message_deleted_local', onDeletedLocal);
     }
-    socket.on('unsend_notification', onUnsend);
-    socket.on('message_deleted_local', onDeletedLocal);
     socket.on('ghim_notification', onGhimNotification);
     socket.on('unghim_notification', onUnghimNotification);
     socket.on('ghim_group_notification', onGhimGroupNotification);
@@ -1042,13 +1186,20 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         socket.off('new_join_request');
         socket.off('join_request_resolved');
         socket.off('new_join_request_notification');
+
+        socket.off('member_left', onMemberLeft);
+        socket.off('member_kicked', onMemberKicked);
+
+        socket.off('unsend_group_notification', onUnsendGroupNotification);  // ⭐ MỚI THÊM
+        socket.off('message_deleted_local', onMessageDeletedLocalGroup);  // ⭐ MỚI THÊM
+
         socket.emit('leave_group', { groupID: chatID, userID: user.userID });
       } else {
         socket.off('typing_start', onTypingStart);
         socket.off('typing_stop', onTypingStop);
+        socket.off('unsend_notification', onUnsend);
+        socket.off('message_deleted_local', onDeletedLocal);
       }
-      socket.off('unsend_notification', onUnsend);
-      socket.off('message_deleted_local', onDeletedLocal);
       socket.off('ghim_notification', onGhimNotification);
       socket.off('unghim_notification', onUnghimNotification);
       socket.off('ghim_group_notification', onGhimGroupNotification);
@@ -1686,6 +1837,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const handleDeleteLocal = (msg: Message) => {
     if (!msg.messageID || !user?.userID || !selectedChat) return;
 
+    const isGroup = selectedChat.type === 'group';
+
     // ⭐ Tìm tất cả messages trong cùng group (nếu có)
     let messagesToDelete: Message[] = [msg];
     if (msg.type === 'image' && msg.groupId) {
@@ -1695,11 +1848,21 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
     // Gửi socket event cho từng message
     messagesToDelete.forEach((message) => {
-      socket.emit('delete_message_local', {
-        messageID: message.messageID,
-        userID: user.userID,
-        chatID: selectedChat.chatID
-      });
+      if (isGroup) {
+        // ⭐ Group chat: emit delete_group_message_local
+        socket.emit('delete_group_message_local', {
+          messageID: message.messageID,
+          userID: user.userID,
+          groupID: selectedChat.chatID
+        });
+      } else {
+        // Private chat: emit delete_message_local
+        socket.emit('delete_message_local', {
+          messageID: message.messageID,
+          userID: user.userID,
+          chatID: selectedChat.chatID
+        });
+      }
     });
 
     setShowMenu(false);
@@ -1708,15 +1871,27 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const handleUnsend = (msg: Message) => {
     if (!msg.messageID || msg.senderID !== user?.userID) return;
 
+    const isGroup = selectedChat?.type === 'group';
+
     // ⭐ Backend sẽ tự động xử lý toàn bộ group nếu message thuộc group
     // Chỉ cần gửi 1 lần cho message đầu tiên
     console.log('🔄 Unsending message:', msg.messageID, msg.groupId ? `(group: ${msg.groupId})` : '');
 
-    socket.emit('unsend_message', {
-      messageID: msg.messageID,
-      chatID: selectedChat!.chatID,
-      senderID: user.userID
-    });
+    if (isGroup) {
+      // ⭐ Group chat: emit unsend_group_message
+      socket.emit('unsend_group_message', {
+        messageID: msg.messageID,
+        groupID: selectedChat!.chatID,
+        senderID: user.userID
+      });
+    } else {
+      // Private chat: emit unsend_message
+      socket.emit('unsend_message', {
+        messageID: msg.messageID,
+        chatID: selectedChat!.chatID,
+        senderID: user.userID
+      });
+    }
 
     setShowMenu(false);
   };
@@ -1741,19 +1916,53 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     try {
       console.log('🔄 Forwarding message to', selectedChatsForForward.length, 'chats');
 
+      // Determine source chat type
+      const isSourceGroup = selectedChat?.type === 'group';
+      const sourceChatID = selectedChat?.chatID;
+
       // Sử dụng socket event thay vì API
       for (const targetChatID of selectedChatsForForward) {
         console.log('📤 Forwarding to chat:', targetChatID);
 
-        socket.emit('forward_message', {
-          originalMessageID: forwardingMessage.messageID,
+        // Determine target chat type
+        const targetChat = chats.find(c => c.chatID === targetChatID);
+        const isTargetGroup = targetChat?.type === 'group';
+
+        console.log('📊 Forward info:', {
+          isSourceGroup,
+          isTargetGroup,
+          sourceChatID,
           targetChatID,
-          senderID: user.userID,
-          senderInfo: {
-            name: user.name,
-            avatar: user.anhDaiDien || null,
-          },
         });
+
+        // Emit appropriate socket event based on target type
+        if (isTargetGroup) {
+          // Forward to group chat
+          socket.emit('forward_to_group', {
+            originalMessageID: forwardingMessage.messageID,
+            originalChatID: isSourceGroup ? undefined : sourceChatID,
+            originalGroupID: isSourceGroup ? sourceChatID : undefined,
+            targetGroupID: targetChatID,
+            senderID: user.userID,
+            senderInfo: {
+              name: user.name,
+              avatar: user.anhDaiDien || null,
+            },
+          });
+        } else {
+          // Forward to private chat
+          socket.emit('forward_message', {
+            originalMessageID: forwardingMessage.messageID,
+            originalChatID: isSourceGroup ? undefined : sourceChatID,
+            originalGroupID: isSourceGroup ? sourceChatID : undefined,
+            targetChatID,
+            senderID: user.userID,
+            senderInfo: {
+              name: user.name,
+              avatar: user.anhDaiDien || null,
+            },
+          });
+        }
       }
 
       Alert.alert('Thành công', `Đã chuyển tiếp tin nhắn đến ${selectedChatsForForward.length} cuộc trò chuyện`);
@@ -2124,12 +2333,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           <TouchableOpacity
             style={[styles.fileCard, isMine ? styles.fileCardMine : styles.fileCardOther]}
             onPress={() => {
-              // Import ở đầu file: import { downloadAndOpenFile } from '../utils/fileDownload';
-              downloadAndOpenFile(
-                item.media_url![0],
-                fileName,
-                undefined // mimeType - có thể thêm vào Message interface nếu cần
-              );
+              // Open file preview modal
+              setPreviewFile({ fileName, fileUrl: item.media_url![0] });
+              setShowFilePreview(true);
             }}
             onLongPress={() => handleLongPress(item)}
             delayLongPress={500}
@@ -2146,7 +2352,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                 {fileName}
               </Text>
               <Text style={[styles.fileCardSub, isMine ? styles.fileCardSubMine : styles.fileCardSubOther]}>
-                Nhấn để tải xuống
+                Nhấn để xem trước
               </Text>
             </View>
             <Text style={[styles.messageTime, isMine ? styles.timeMine : styles.timeOther, { marginTop: 4 }]}>
@@ -2226,6 +2432,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                 return null;
               })()}
             </View>
+          {/* Tên người gửi trong nhóm */}
+          {!isMine && selectedChat?.type === 'group' && (
+            <Text style={styles.groupSenderName}>{item.senderInfo?.name || 'Người dùng'}</Text>
           )}
           {renderBubbleContent()}
         </View>
@@ -2341,6 +2550,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         <FlatList
           data={filteredChats}
           keyExtractor={item => item.chatID}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#0084ff"
+              colors={['#0084ff']}
+            />
+          }
           ListHeaderComponent={
             strangerChats.length > 0 ? (
               <TouchableOpacity
@@ -2472,6 +2689,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             <FlatList
               data={strangerChats}
               keyExtractor={c => c.chatID}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor="#0084ff"
+                  colors={['#0084ff']}
+                />
+              }
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.chatItem}
@@ -3132,6 +3357,19 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               <Text style={styles.menuItemText}>↩️ Trả lời</Text>
             </TouchableOpacity>
 
+            {/* Nút Chuyển tiếp */}
+            {selectedMessage?.messageID && selectedMessage?.type !== 'notification' && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  handleForwardMessage(selectedMessage);
+                }}
+              >
+                <Text style={styles.menuItemText}>↗️ Chuyển tiếp</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Nút Ghim tin nhắn */}
             {selectedMessage?.messageID && (
               <TouchableOpacity
@@ -3257,6 +3495,19 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         videoUrl={selectedVideo}
         onClose={() => setVideoViewerVisible(false)}
       />
+
+      {/* File Preview Modal */}
+      {previewFile && (
+        <FilePreviewModal
+          visible={showFilePreview}
+          fileName={previewFile.fileName}
+          fileUrl={previewFile.fileUrl}
+          onClose={() => {
+            setShowFilePreview(false);
+            setPreviewFile(null);
+          }}
+        />
+      )}
 
       {/* Info Panel Modal - Danh sách ghim */}
       <Modal
@@ -3486,6 +3737,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           onHistoryDeleted={() => {
             setMessages([]);
             setShowChatInfo(false);
+            // Reload chat list to get updated members
+            if (user) {
+              socket.emit('getChat', user.userID);
+            }
           }}
           onGroupSettingsChanged={() => {
             if (selectedChat?.type === 'group') {
