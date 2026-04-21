@@ -307,6 +307,7 @@ const HomePage = () => {
               userID={user.userID}
               onShowGroupInfo={() => {}}
               onSelectChat={handleSelectChat}
+              onGroupDissolved={() => handleSelectChat(null)}
             />
           )
         ) : (

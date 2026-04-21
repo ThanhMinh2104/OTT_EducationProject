@@ -91,7 +91,6 @@ const getLastMsgPreview = (chat: Chat, userID: string, userName?: string): strin
     case 'notification':
       if (last.content?.startsWith('##FRIENDSHIP##')) {
         const parts = last.content.split('|');
-        // ##FRIENDSHIP##|senderID|receiverID|senderName|receiverName|...
         const senderID = parts[1];
         const receiverID = parts[2];
         const senderName = parts[3];
@@ -99,6 +98,24 @@ const getLastMsgPreview = (chat: Chat, userID: string, userName?: string): strin
         
         const otherName = userID === senderID ? receiverName : senderName;
         return `Bạn và ${otherName} đã trở thành bạn bè`;
+      }
+      
+      if (last.content?.startsWith('##POLL_')) {
+        const parts = last.content.split('|');
+        const type = parts[0];
+        const question = parts[2];
+        const personName = parts[3];
+        const isMe = last.senderID === userID;
+        const displayName = isMe ? 'Bạn' : personName;
+
+        if (type === '##POLL_CREATED##') return `${displayName} đã tạo bình chọn: ${question}`;
+        if (type === '##POLL_VOTED##') return `${displayName} đã tham gia bình chọn: ${question}`;
+        if (type === '##POLL_CLOSED##') return `${displayName} đã khóa bình chọn: ${question}`;
+        if (type === '##POLL_DELETED##') return `Bình chọn đã bị xóa: ${question}`;
+        if (type === '##POLL_OPTION_ADDED##') {
+          const optionText = parts[4];
+          return `${displayName} đã thêm lựa chọn "${optionText}" vào bình chọn: ${question}`;
+        }
       }
       return last.content || '';
     case 'call-missed':
@@ -328,14 +345,16 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       });
     });
 
-    socket.on('new_message', (msg: Message) => {
-      console.log('📥 ChatList received new_message:', msg);
+    const handleNewRawMessage = (msg: any) => {
+      console.log('📥 ChatList received new_message/new_group_message:', msg);
+      // Chuyển đổi ID nhất quán: gmsg dùng groupID, msg dùng chatID
+      const targetChatID = msg.groupID || msg.chatID;
+      if (!targetChatID) return;
+
       setChats((prev) => {
-        const chatExists = prev.some(c => c.chatID === msg.chatID);
-        console.log('  → chatExists:', chatExists, 'chatID:', msg.chatID);
+        const chatExists = prev.some(c => c.chatID === targetChatID);
         
         if (!chatExists) {
-          // Chat chưa tồn tại trong danh sách, refetch để backend phân loại đúng
           console.log('📥 New message from unknown chat, refetching...');
           socket.emit('getChat', user.userID);
           fetchStrangerSummary();
@@ -343,31 +362,41 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         }
         
         const updated = prev.map((c) => {
-          if (c.chatID !== msg.chatID) return c;
+          if (c.chatID !== targetChatID) return c;
           const msgs = c.lastMessage || [];
           const exists = msgs.find((m) => m.messageID === msg.messageID || m.tempID === msg.tempID);
           const newMsgs = exists
             ? msgs.map((m) =>
-                m.messageID === msg.messageID || m.tempID === msg.tempID ? { ...m, ...msg } : m
+                m.messageID === msg.messageID || m.tempID === msg.tempID ? { ...m, ...msg, chatID: targetChatID } : m
               )
-            : [...msgs, msg];
+            : [...msgs, { ...msg, chatID: targetChatID }];
+            
           const unread = msg.senderID !== user.userID ? (c.unreadCount || 0) + 1 : c.unreadCount;
-          // Phát âm thanh khi có tin nhắn mới từ người khác và không phải chat đang chọn
-          if (msg.senderID !== user.userID && selectedChatId !== msg.chatID) {
+          
+          if (msg.senderID !== user.userID && selectedChatId !== targetChatID) {
             notifAudioRef.current?.play().catch(() => {});
           }
-          console.log('  → Updated chat:', c.chatID, 'newMsgs count:', newMsgs.length);
           return { ...c, lastMessage: newMsgs, unreadCount: unread };
         });
         
-        const sorted = updated.sort((a, b) => {
+        return [...updated].sort((a, b) => {
           const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
           const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
           return new Date(bT).getTime() - new Date(aT).getTime();
         });
-        console.log('  → Sorted chats, first chat:', sorted[0]?.chatID);
-        return sorted;
       });
+    };
+
+    socket.on('new_message', handleNewRawMessage);
+    socket.on('new_group_message', handleNewRawMessage);
+
+    // Xử lý các sự kiện Poll để cập nhật Last Message
+    socket.on('poll_created', (data) => {
+       // Poll created cũng gửi notification message nên handleNewRawMessage sẽ lo phần badge
+       // Ở đây ta chỉ đảm bảo UI sync
+    });
+    socket.on('poll_updated', (data) => {
+       // Tương tự cho updated
     });
 
     socket.on(
@@ -433,6 +462,13 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       fetchStrangerSummary();
     });
 
+    // Listen for new group created
+    socket.on('new_group_created', (data: any) => {
+      console.log('📥 Web received new_group_created:', data);
+      // Reload chat list để hiển thị nhóm mới
+      socket.emit('getChat', user.userID);
+    });
+
     socket.on('updatee_user', (updatedUser: User) => {
       setMemberCache((prev) => ({ ...prev, [updatedUser.userID]: updatedUser }));
     });
@@ -466,7 +502,10 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     return () => {
       socket.off('connect', handleConnect);
       socket.off('ChatByUserID');
-      socket.off('new_message');
+      socket.off('new_message', handleNewRawMessage);
+      socket.off('new_group_message', handleNewRawMessage);
+      socket.off('poll_created');
+      socket.off('poll_updated');
       socket.off('status_update_all');
       socket.off('newChat1-1');
       socket.off('friend_request_accepted');
@@ -474,6 +513,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.off('unsend_notification');
       socket.off('updatee_user');
       socket.off('friend_unfriended');
+      socket.off('new_group_created');
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
     };

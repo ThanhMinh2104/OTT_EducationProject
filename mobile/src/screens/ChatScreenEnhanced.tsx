@@ -569,6 +569,66 @@ const ChatScreenEnhanced = ({
       },
     );
 
+    // Lắng nghe member_left ở global level để reload chat list
+    socket.on('member_left', async (data: { groupID: string; userID: string; userName: string }) => {
+      console.log('📥 [MOBILE] Global member_left event received:', data);
+      
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const me = JSON.parse(stored);
+      
+      console.log('🔄 [MOBILE] Reloading chat list after member_left...');
+      socket.emit('getChat', me.userID);
+    });
+
+    // Lắng nghe member_kicked ở global level để reload chat list
+    socket.on('member_kicked', async (data: { groupID: string; kickedUserID: string }) => {
+      console.log('📥 [MOBILE] Global member_kicked event received:', data);
+      
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const me = JSON.parse(stored);
+      
+      console.log('🔄 [MOBILE] Reloading chat list after member_kicked...');
+      socket.emit('getChat', me.userID);
+    });
+
+    // Lắng nghe group_dissolved ở global level để reload chat list và xóa nhóm
+    socket.on('group_dissolved', async (data: { groupID: string; message: string }) => {
+      console.log('💥 [MOBILE] Global group_dissolved event received:', data);
+      
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const me = JSON.parse(stored);
+      
+      // Nếu đang xem nhóm bị giải tán, đóng chat
+      if (selectedChat?.chatID === data.groupID) {
+        Alert.alert('Thông báo', data.message, [
+          {
+            text: 'OK',
+            onPress: () => {
+              setSelectedChat(null);
+            }
+          }
+        ]);
+      }
+      
+      console.log('🔄 [MOBILE] Reloading chat list after group_dissolved...');
+      socket.emit('getChat', me.userID);
+    });
+
+    // Lắng nghe new_group_created để reload chat list khi có nhóm mới
+    socket.on('new_group_created', async (data: any) => {
+      console.log('📥 [MOBILE] Global new_group_created event received:', data);
+      
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const me = JSON.parse(stored);
+      
+      console.log('🔄 [MOBILE] Reloading chat list after new group created...');
+      socket.emit('getChat', me.userID);
+    });
+
     return () => {
       socket.off("ChatByUserID");
       socket.off("call-made");
@@ -577,6 +637,10 @@ const ChatScreenEnhanced = ({
       socket.off("friend_request_accepted");
       socket.off("friend_status_update");
       socket.off("group-call-incoming");
+      socket.off('member_left');
+      socket.off('member_kicked');
+      socket.off('group_dissolved');
+      socket.off('new_group_created');
     };
   }, [navigation]);
 

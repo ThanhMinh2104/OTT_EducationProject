@@ -25,6 +25,7 @@ import GroupMembersModal from './GroupMembersModal';
 import AddMembersModal from './AddMembersModal';
 import { EditGroupInfoModal } from './EditGroupInfoModal';
 import { GroupBoardModal } from './GroupBoardModal';
+import { TransferOwnershipModal } from './TransferOwnershipModal';
 
 const { width } = Dimensions.get('window');
 
@@ -67,6 +68,7 @@ interface Props {
   messages: Message[];
   onClose: () => void;
   onHistoryDeleted: () => void;
+  onGroupSettingsChanged?: () => void;
 }
 
 type Tab = 'media' | 'files' | 'links';
@@ -98,6 +100,7 @@ const ChatInfoPanel = ({
   messages,
   onClose,
   onHistoryDeleted,
+  onGroupSettingsChanged,
 }: Props) => {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('media');
@@ -137,6 +140,9 @@ const ChatInfoPanel = ({
   const [canEditGroupInfo, setCanEditGroupInfo] = useState(true);
   const [groupSettings, setGroupSettings] = useState<any>(null);
   const [canCreateNotes, setCanCreateNotes] = useState(true);
+  const [blockedMembers, setBlockedMembers] = useState<string[]>([]);
+  const [activeGroupMembers, setActiveGroupMembers] = useState<{ userID: string; role: string }[]>([]);
+  const [showTransferOwnership, setShowTransferOwnership] = useState(false);
 
   // Fetch current user ID
   React.useEffect(() => {
@@ -165,20 +171,18 @@ const ChatInfoPanel = ({
         if (res.ok) {
           const data = await res.json();
           setGroupSettings(data.settings);
+          setBlockedMembers(data.blockedMembers || []);
+          // Cập nhật active members (sau khi block, member bị kick ra)
+          const activeMembers = (data.members || [])
+            .filter((m: any) => m.isActive !== false)
+            .map((m: any) => ({ userID: m.userID, role: m.role }));
+          setActiveGroupMembers(activeMembers);
           
           const myMember = chat.members.find((m: any) => m.userID === currentUserID);
           const isOwnerOrAdmin = myMember?.role === 'owner' || myMember?.role === 'admin';
           const createNotesPerm = data.settings?.memberPermissions?.createNotes ?? true;
           
           setCanCreateNotes(isOwnerOrAdmin || createNotesPerm);
-          
-          console.log('🔐 ChatInfoPanel - canCreateNotes:', {
-            userID: currentUserID,
-            role: myMember?.role,
-            isOwnerOrAdmin,
-            createNotesSetting: createNotesPerm,
-            canCreateNotes: isOwnerOrAdmin || createNotesPerm,
-          });
         }
       } catch (error) {
         console.error('Error fetching group settings:', error);
@@ -195,10 +199,62 @@ const ChatInfoPanel = ({
       }
     };
     
+    // Listen for member left event to reload members list
+    const handleMemberLeft = (data: { groupID: string; userID: string; userName: string }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('🔄 ChatInfoPanel - Member left, triggering refresh...');
+        onHistoryDeleted(); // Trigger parent to reload chat data
+      }
+    };
+
+    // Listen for member kicked event to reload members list
+    const handleMemberKicked = (data: { groupID: string; kickedUserID: string; kickedBy: string; kickerName: string; kickedName: string }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('🔄 ChatInfoPanel - Member kicked, triggering refresh...');
+        onHistoryDeleted(); // Trigger parent to reload chat data
+      }
+    };
+
+    // Listen for group dissolved event
+    const handleGroupDissolved = (data: { groupID: string; message: string }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('💥 ChatInfoPanel - Group dissolved');
+        Alert.alert('Thông báo', data.message, [
+          {
+            text: 'OK',
+            onPress: () => {
+              onClose();
+              onHistoryDeleted(); // Trigger parent to go back to chat list
+            }
+          }
+        ]);
+      }
+    };
+
+    // Listen for member role changed event
+    const handleMemberRoleChanged = (data: { groupID: string; userID: string; newRole: string }) => {
+      if (data.groupID === chat.chatID) {
+        console.log('👤 ChatInfoPanel - Member role changed, reloading...');
+        fetchGroupSettings();
+        if (data.userID === currentUserID) {
+          const roleText = data.newRole === 'admin' ? 'Phó nhóm' : data.newRole === 'owner' ? 'Trưởng nhóm' : 'Thành viên';
+          Alert.alert('Thông báo', `Vai trò của bạn đã được thay đổi thành ${roleText}`);
+        }
+      }
+    };
+    
     socket.on('group_settings_updated', handleSettingsUpdated);
+    socket.on('member_left', handleMemberLeft);
+    socket.on('member_kicked', handleMemberKicked);
+    socket.on('group_dissolved', handleGroupDissolved);
+    socket.on('member_role_changed', handleMemberRoleChanged);
     
     return () => {
       socket.off('group_settings_updated', handleSettingsUpdated);
+      socket.off('member_left', handleMemberLeft);
+      socket.off('member_kicked', handleMemberKicked);
+      socket.off('group_dissolved', handleGroupDissolved);
+      socket.off('member_role_changed', handleMemberRoleChanged);
     };
   }, [visible, chat.type, chat.chatID, currentUserID, chat.members]);
 
@@ -231,10 +287,13 @@ const ChatInfoPanel = ({
     const fetchMembersInfo = async () => {
       if (!showMembersModal || chat.type !== 'group') return;
       
+      // Dùng activeGroupMembers nếu có (đã loại bỏ người bị chặn/kick), fallback về chat.members
+      const sourceMembers = activeGroupMembers.length > 0 ? activeGroupMembers : chat.members;
+      
       try {
         const token = await AsyncStorage.getItem('token');
         const membersInfo = await Promise.all(
-          chat.members.map(async (m) => {
+          sourceMembers.map(async (m) => {
             try {
               const res = await fetch(`${API_URL}/api/usersID`, {
                 method: 'POST',
@@ -267,7 +326,34 @@ const ChatInfoPanel = ({
     };
     
     fetchMembersInfo();
-  }, [showMembersModal, chat.type, chat.members]);
+  }, [showMembersModal, chat.type, chat.members, activeGroupMembers]);
+
+  // Fetch members khi mở management modal (để có tên/avatar thật)
+  React.useEffect(() => {
+    if (!showManagementModal || chat.type !== 'group') return;
+    const fetchForManagement = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const membersInfo = await Promise.all(
+          chat.members.map(async (m) => {
+            try {
+              const res = await fetch(`${API_URL}/api/usersID`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ userID: m.userID }),
+              });
+              const data = await res.json();
+              return { userID: m.userID, name: data.name || m.userID, avatar: data.anhDaiDien, role: m.role as 'owner' | 'admin' | 'member' };
+            } catch {
+              return { userID: m.userID, name: m.userID, role: m.role as 'owner' | 'admin' | 'member' };
+            }
+          })
+        );
+        setMembersWithInfo(membersInfo);
+      } catch { /* ignore */ }
+    };
+    fetchForManagement();
+  }, [showManagementModal, chat.type, chat.members]);
 
   // Fetch available friends when opening add members modal
   React.useEffect(() => {
@@ -485,6 +571,16 @@ const ChatInfoPanel = ({
   };
 
   const handleLeaveGroup = () => {
+    // Kiểm tra quyền owner
+    const currentMember = chat.members?.find((m: any) => m.userID === currentUserID);
+    const isOwner = currentMember?.role === 'owner';
+
+    if (isOwner) {
+      // Mở modal chuyển quyền
+      setShowTransferOwnership(true);
+      return;
+    }
+
     Alert.alert(
       'Rời nhóm',
       `Bạn có chắc muốn rời khỏi nhóm "${chatName}"?`,
@@ -500,8 +596,14 @@ const ChatInfoPanel = ({
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
               });
-              Alert.alert('Thành công', 'Đã rời khỏi nhóm');
-              onClose();
+              Alert.alert('Thành công', 'Đã rời khỏi nhóm', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    onClose();
+                  }
+                }
+              ]);
             } catch (error: any) {
               Alert.alert('Lỗi', 'Không thể rời nhóm');
             }
@@ -512,9 +614,18 @@ const ChatInfoPanel = ({
   };
 
   const handleDissolveGroup = () => {
+    // Kiểm tra quyền owner
+    const currentMember = chat.members?.find((m: any) => m.userID === currentUserID);
+    const isOwner = currentMember?.role === 'owner';
+
+    if (!isOwner) {
+      Alert.alert('Không có quyền', 'Chỉ trưởng nhóm mới có thể giải tán nhóm');
+      return;
+    }
+
     Alert.alert(
       'Giải tán nhóm',
-      `Bạn có chắc muốn giải tán nhóm "${chatName}"? Hành động này không thể hoàn tác.`,
+      `Bạn có chắc muốn giải tán nhóm "${chatName}"? Hành động này không thể hoàn tác và tất cả thành viên sẽ bị xóa khỏi nhóm.`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
@@ -616,7 +727,7 @@ const ChatInfoPanel = ({
                   ? memberInfo?.trangThai === 'online'
                     ? 'Đang hoạt động'
                     : 'Ngoại tuyến'
-                  : `${chat.members.length} thành viên`}
+                  : `${activeGroupMembers.length > 0 ? activeGroupMembers.length : chat.members.length} thành viên`}
               </Text>
             </View>
           </View>
@@ -669,7 +780,7 @@ const ChatInfoPanel = ({
               <Ionicons name="people" size={20} color="#0068ff" />
               <View style={styles.viewMembersContent}>
                 <Text style={styles.viewMembersTitle}>Xem thành viên</Text>
-                <Text style={styles.viewMembersCount}>({chat.members.length})</Text>
+                <Text style={styles.viewMembersCount}>({activeGroupMembers.length > 0 ? activeGroupMembers.length : chat.members.length})</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#888" />
             </TouchableOpacity>
@@ -954,8 +1065,8 @@ const ChatInfoPanel = ({
               </TouchableOpacity>
             )}
 
-            {/* Giải tán nhóm - chỉ hiện cho group */}
-            {chat.type === 'group' && (
+            {/* Giải tán nhóm - chỉ hiện cho owner */}
+            {chat.type === 'group' && chat.members?.find((m: any) => m.userID === currentUserID)?.role === 'owner' && (
               <TouchableOpacity style={styles.dissolveButton} onPress={handleDissolveGroup}>
                 <Ionicons name="trash-outline" size={18} color="#ff3b30" />
                 <Text style={styles.dissolveButtonText}>Giải tán nhóm</Text>
@@ -1110,20 +1221,54 @@ const ChatInfoPanel = ({
               groupID: chat.chatID,
               name: chat.name,
               avatar: chat.avatar,
-              ownerID: chat.members.find(m => m.role === 'owner')?.userID || '',
-              members: chat.members.map(m => ({
-                _id: m.userID,
-                userID: m.userID,
-                name: memberInfo?.name || m.userID,
-                role: m.role as 'owner' | 'admin' | 'member',
-                joinedAt: new Date(),
-                isActive: true,
-              })),
+              ownerID: (activeGroupMembers.length > 0 ? activeGroupMembers : chat.members).find(m => m.role === 'owner')?.userID || '',
+              members: membersWithInfo.length > 0
+                ? membersWithInfo
+                    // Chỉ hiển thị active members (loại bỏ người bị chặn/kick)
+                    .filter(m => activeGroupMembers.length === 0 || activeGroupMembers.some(am => am.userID === m.userID))
+                    .map(m => ({
+                      _id: m.userID,
+                      userID: m.userID,
+                      name: m.name,
+                      avatar: m.avatar,
+                      role: (activeGroupMembers.find(am => am.userID === m.userID)?.role || m.role) as 'owner' | 'admin' | 'member',
+                      joinedAt: new Date(),
+                      isActive: true,
+                    }))
+                : chat.members.map(m => ({
+                    _id: m.userID,
+                    userID: m.userID,
+                    name: m.userID,
+                    role: m.role as 'owner' | 'admin' | 'member',
+                    joinedAt: new Date(),
+                    isActive: true,
+                  })),
               memberCount: chat.members.length,
+              blockedMembers,
             }}
             currentUserID={currentUserID}
-            onClose={() => setShowManagementModal(false)}
-            onUpdate={() => onHistoryDeleted()}
+            onClose={() => {
+              setShowManagementModal(false);
+              onGroupSettingsChanged?.();
+            }}
+            onUpdate={async () => {
+              // Refresh group data sau khi block/unblock/promote
+              try {
+                const token = await AsyncStorage.getItem('token');
+                const res = await fetch(`${API_URL}/api/groups/${chat.chatID}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  setBlockedMembers(data.blockedMembers || []);
+                  const activeMembers = (data.members || [])
+                    .filter((m: any) => m.isActive !== false)
+                    .map((m: any) => ({ userID: m.userID, role: m.role }));
+                  setActiveGroupMembers(activeMembers);
+                }
+              } catch { /* ignore */ }
+              onGroupSettingsChanged?.();
+            }}
           />
         )}
 
@@ -1131,17 +1276,25 @@ const ChatInfoPanel = ({
         {chat.type === 'group' && (
           <GroupMembersModal
             visible={showMembersModal}
-            members={membersWithInfo}
-            memberCount={chat.members.length}
+            members={
+              activeGroupMembers.length > 0
+                ? membersWithInfo.filter(m => activeGroupMembers.some(am => am.userID === m.userID))
+                    .map(m => ({
+                      ...m,
+                      role: (activeGroupMembers.find(am => am.userID === m.userID)?.role || m.role) as 'owner' | 'admin' | 'member',
+                    }))
+                : membersWithInfo
+            }
+            memberCount={activeGroupMembers.length > 0 ? activeGroupMembers.length : chat.members.length}
             groupID={chat.chatID}
+            currentUserRole={chat.members.find(m => m.userID === currentUserID)?.role as 'owner' | 'admin' | 'member' | undefined}
             onClose={() => setShowMembersModal(false)}
             onAddMembers={() => {
               setShowMembersModal(false);
               setShowAddMembersModal(true);
             }}
             onRefresh={() => {
-              // Trigger refresh by calling onHistoryDeleted
-              onHistoryDeleted();
+              onGroupSettingsChanged?.();
             }}
           />
         )}
@@ -1157,72 +1310,58 @@ const ChatInfoPanel = ({
               setShowAddMembersModal(false);
               if (selectedUserIDs.length > 0) {
                 try {
-                  console.log('➕ Adding members:', selectedUserIDs);
                   const token = await AsyncStorage.getItem('token');
-                  
-                  // Add members one by one
-                  const results = await Promise.allSettled(
-                    selectedUserIDs.map(async (userID) => {
-                      try {
-                        const url = `${API_URL}/api/groups/${chat.chatID}/members`;
-                        console.log(`➕ Adding member ${userID} to group ${chat.chatID}`);
-                        console.log(`📡 Request URL:`, url);
-                        console.log(`📡 API_URL:`, API_URL);
-                        
-                        const response = await fetch(
-                          url,
-                          {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              Authorization: `Bearer ${token}`,
-                            },
-                            body: JSON.stringify({ userID }),
-                          }
-                        );
-                        
-                        console.log(`📡 Response status for ${userID}:`, response.status);
-                        console.log(`📡 Response headers:`, response.headers);
-                        
-                        const responseText = await response.text();
-                        console.log(`📡 Response text:`, responseText.substring(0, 200));
-                        
-                        if (!response.ok) {
-                          let error;
-                          try {
-                            error = JSON.parse(responseText);
-                          } catch {
-                            error = { message: responseText };
-                          }
-                          console.error(`❌ Error adding ${userID}:`, error);
-                          throw new Error(error.message || 'Failed to add member');
+                  let successCount = 0;
+                  let pendingCount = 0;
+                  let blockedCount = 0;
+
+                  for (const uid of selectedUserIDs) {
+                    try {
+                      const response = await fetch(`${API_URL}/api/groups/${chat.chatID}/members`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ userID: uid }),
+                      });
+                      const data = await response.json();
+
+                      if (response.ok) {
+                        if (data.requireApproval) {
+                          pendingCount++;
+                        } else {
+                          successCount++;
                         }
-                        
-                        const result = JSON.parse(responseText);
-                        console.log(`✅ Successfully added ${userID}:`, result);
-                        return result;
-                      } catch (err) {
-                        console.error(`❌ Exception adding ${userID}:`, err);
-                        throw err;
+                      } else if (data.errorCode === 'USER_BLOCKED') {
+                        blockedCount++;
+                        const name = (await fetch(`${API_URL}/api/usersID`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ userID: uid }),
+                        }).then(r => r.json()).catch(() => ({ name: uid }))).name || uid;
+                        Alert.alert('Không thể thêm', `${name} đã bị trưởng/phó nhóm chặn tham gia nhóm`);
                       }
-                    })
-                  );
-                  
-                  const successCount = results.filter(r => r.status === 'fulfilled').length;
-                  const failCount = results.filter(r => r.status === 'rejected').length;
-                  
-                  console.log('✅ Add members result:', { successCount, failCount });
-                  console.log('📋 Detailed results:', results);
-                  
-                  if (successCount > 0) {
-                    Alert.alert(
-                      'Thành công',
-                      `Đã thêm ${successCount} thành viên vào nhóm${failCount > 0 ? `. ${failCount} thất bại.` : ''}`
-                    );
-                    // Trigger refresh by calling onHistoryDeleted
-                    onHistoryDeleted();
-                  } else {
-                    Alert.alert('Lỗi', 'Không thể thêm thành viên vào nhóm');
+                    } catch { /* ignore per-user error */ }
+                  }
+
+                  // Refresh group data
+                  try {
+                    const res = await fetch(`${API_URL}/api/groups/${chat.chatID}`, {
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setBlockedMembers(data.blockedMembers || []);
+                      const activeMembers = (data.members || [])
+                        .filter((m: any) => m.isActive !== false)
+                        .map((m: any) => ({ userID: m.userID, role: m.role }));
+                      setActiveGroupMembers(activeMembers);
+                    }
+                  } catch { /* ignore */ }
+                  onGroupSettingsChanged?.();
+
+                  if (pendingCount > 0) {
+                    Alert.alert('Cần phê duyệt', `${pendingCount} yêu cầu đang chờ trưởng/phó nhóm phê duyệt`);
+                  } else if (successCount > 0) {
+                    Alert.alert('Thành công', `Đã thêm ${successCount} thành viên vào nhóm`);
                   }
                 } catch (error) {
                   console.error('❌ Error adding members:', error);
@@ -1256,6 +1395,21 @@ const ChatInfoPanel = ({
             groupID={chat.chatID}
             userID={currentUserID}
             canCreateNotes={canCreateNotes}
+          />
+        )}
+
+        {/* Transfer Ownership Modal */}
+        {chat.type === 'group' && (
+          <TransferOwnershipModal
+            visible={showTransferOwnership}
+            groupID={chat.chatID}
+            members={membersWithInfo}
+            currentUserID={currentUserID}
+            onClose={() => setShowTransferOwnership(false)}
+            onSuccess={() => {
+              setShowTransferOwnership(false);
+              onClose();
+            }}
           />
         )}
       </View>

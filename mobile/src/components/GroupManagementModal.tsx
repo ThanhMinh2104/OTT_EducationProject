@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import axiosInstance from '../utils/axios';
+import socket from '../utils/socket';
 
 interface GroupMember {
   _id: string;
@@ -152,6 +153,87 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
     fetchLatestSettings();
   }, [visible, groupInfo.groupID]);
 
+  // Socket listeners for real-time updates
+  useEffect(() => {
+    if (!visible) return;
+
+    console.log('🔌 [GroupManagementModal] Setting up socket listeners for group:', groupInfo.groupID);
+
+    const handleGroupSettingsUpdated = (data: { groupID: string; settings: any }) => {
+      console.log('📥 [GroupManagementModal] group_settings_updated event received:', data);
+      if (data.groupID === groupInfo.groupID) {
+        console.log('🔄 [GroupManagementModal] Updating settings from socket event');
+        // Update local state immediately
+        if (data.settings) {
+          setSettings({
+            requireApproval: data.settings.requireApproval ?? false,
+            highlightAdminMessages: data.settings.highlightAdminMessages ?? false,
+            allowNewMembersReadHistory: data.settings.allowNewMembersReadHistory ?? false,
+            allowInviteLink: data.settings.allowInviteLink ?? true,
+          });
+          if (data.settings.memberPermissions) {
+            setMemberPermissions({
+              changeNameAvatar: data.settings.memberPermissions.changeNameAvatar ?? true,
+              pinMessages: data.settings.memberPermissions.pinMessages ?? true,
+              createNotes: data.settings.memberPermissions.createNotes ?? true,
+              createPolls: data.settings.memberPermissions.createPolls ?? true,
+              sendMessages: data.settings.memberPermissions.sendMessages ?? true,
+            });
+          }
+        }
+        // Also refresh parent component
+        onUpdate?.();
+      }
+    };
+
+    const handleMemberRoleChanged = (data: { groupID: string; userID: string; newRole: string }) => {
+      console.log('📥 [GroupManagementModal] member_role_changed event received:', data);
+      if (data.groupID === groupInfo.groupID) {
+        console.log('🔄 [GroupManagementModal] Refreshing group data after role change');
+        onUpdate?.();
+      }
+    };
+
+    const handleMemberKicked = (data: { groupID: string; kickedUserID: string }) => {
+      console.log('📥 [GroupManagementModal] member_kicked event received:', data);
+      if (data.groupID === groupInfo.groupID) {
+        console.log('🔄 [GroupManagementModal] Refreshing group data after member kicked');
+        onUpdate?.();
+      }
+    };
+
+    const handleMemberLeft = (data: { groupID: string; userID: string }) => {
+      console.log('📥 [GroupManagementModal] member_left event received:', data);
+      if (data.groupID === groupInfo.groupID) {
+        console.log('🔄 [GroupManagementModal] Refreshing group data after member left');
+        onUpdate?.();
+      }
+    };
+
+    const handleMemberAdded = (data: { groupID: string; userID: string }) => {
+      console.log('📥 [GroupManagementModal] member_added event received:', data);
+      if (data.groupID === groupInfo.groupID) {
+        console.log('🔄 [GroupManagementModal] Refreshing group data after member added');
+        onUpdate?.();
+      }
+    };
+
+    socket.on('group_settings_updated', handleGroupSettingsUpdated);
+    socket.on('member_role_changed', handleMemberRoleChanged);
+    socket.on('member_kicked', handleMemberKicked);
+    socket.on('member_left', handleMemberLeft);
+    socket.on('member_added', handleMemberAdded);
+
+    return () => {
+      console.log('🔌 [GroupManagementModal] Cleaning up socket listeners');
+      socket.off('group_settings_updated', handleGroupSettingsUpdated);
+      socket.off('member_role_changed', handleMemberRoleChanged);
+      socket.off('member_kicked', handleMemberKicked);
+      socket.off('member_left', handleMemberLeft);
+      socket.off('member_added', handleMemberAdded);
+    };
+  }, [visible, groupInfo.groupID, onUpdate]);
+
   const handleCopyLink = () => {
     Clipboard.setStringAsync(groupInviteLink);
     Alert.alert('Thành công', 'Đã sao chép link tham gia nhóm');
@@ -177,11 +259,7 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
       });
       
       console.log('✅ Settings saved successfully:', response.data);
-      
-      // Reload group info để có settings mới NGAY LẬP TỨC
-      await onUpdate?.();
-      
-      Alert.alert('Thành công', 'Đã cập nhật cài đặt');
+      // Không gọi onUpdate và không Alert để tránh đóng modal
     } catch (error: any) {
       console.error('❌ Error saving settings:', error.response?.data);
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể cập nhật cài đặt');
@@ -215,10 +293,10 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
   const handlePromoteAdmin = async (member: GroupMember) => {
     try {
       await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'admin' });
-      Alert.alert('Thành công', `Đã thêm ${member.name} làm phó nhóm`);
       setAdminSubView('main');
       setAdminSearchQuery('');
-      onUpdate?.();
+      await onUpdate?.();
+      Alert.alert('Thành công', `Đã thêm ${member.name} làm phó nhóm`);
     } catch (error: any) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể thêm phó nhóm');
     }
@@ -236,8 +314,8 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
           onPress: async () => {
             try {
               await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'member' });
+              await onUpdate?.();
               Alert.alert('Thành công', `Đã xóa quyền phó nhóm của ${member.name}`);
-              onUpdate?.();
             } catch (error: any) {
               Alert.alert('Lỗi', error.response?.data?.message || 'Không thể xóa quyền');
             }
@@ -251,10 +329,11 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
     if (!selectedNewOwner) return;
     try {
       await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${selectedNewOwner.userID}/role`, { role: 'owner' });
-      Alert.alert('Thành công', `Đã chuyển quyền trưởng nhóm cho ${selectedNewOwner.name}`);
       setAdminSubView('main');
       setSelectedNewOwner(null);
-      onUpdate?.();
+      setAdminSearchQuery('');
+      await onUpdate?.();
+      Alert.alert('Thành công', `Đã chuyển quyền trưởng nhóm cho ${selectedNewOwner.name}`);
     } catch (error: any) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể chuyển quyền');
     }
@@ -329,9 +408,14 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
   };
 
   const handleDeleteGroup = () => {
+    if (!isOwner) {
+      Alert.alert('Không có quyền', 'Chỉ trưởng nhóm mới có thể giải tán nhóm');
+      return;
+    }
+
     Alert.alert(
       'Giải tán nhóm',
-      `Bạn có chắc muốn giải tán nhóm "${groupInfo.name}"? Hành động này không thể hoàn tác.`,
+      `Bạn có chắc muốn giải tán nhóm "${groupInfo.name}"? Hành động này không thể hoàn tác và tất cả thành viên sẽ bị xóa khỏi nhóm.`,
       [
         { text: 'Hủy', style: 'cancel' },
         {

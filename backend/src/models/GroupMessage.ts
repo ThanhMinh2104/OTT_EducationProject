@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-type MessageType = 'text' | 'image' | 'video' | 'file' | 'audio' | 'emoji' | 'sticker' | 'notification' | 'gif' | 'group-call';
+type MessageType = 'text' | 'image' | 'video' | 'file' | 'audio' | 'emoji' | 'sticker' | 'notification' | 'gif' | 'group-call' | 'poll';
 
 export interface IGroupMessage extends Document {
   messageID: string;
@@ -29,6 +29,7 @@ export interface IGroupMessage extends Document {
   forwardedFrom?: string;
   groupId?: string; // Thêm groupId để gom nhóm ảnh
   mentions: string[]; // Danh sách UserID được nhắc tên
+  pollID?: string; // Liên kết tới Poll document
 }
 
 const GroupMessageSchema = new Schema<IGroupMessage>(
@@ -39,7 +40,7 @@ const GroupMessageSchema = new Schema<IGroupMessage>(
     content: { type: String },
     type: {
       type: String,
-      enum: ['text', 'image', 'video', 'file', 'audio', 'emoji', 'sticker', 'notification', 'gif', 'group-call'],
+      enum: ['text', 'image', 'video', 'file', 'audio', 'emoji', 'sticker', 'notification', 'gif', 'group-call', 'poll'],
       default: 'text',
     },
     media_url: { type: [String], default: [] },
@@ -66,6 +67,7 @@ const GroupMessageSchema = new Schema<IGroupMessage>(
     forwardedFrom: { type: String },
     groupId: { type: String }, // Thêm groupId để gom nhóm ảnh
     mentions: { type: [String], default: [] },
+    pollID: { type: String }, // Liên kết tới Poll document
   },
   { versionKey: false }
 );
