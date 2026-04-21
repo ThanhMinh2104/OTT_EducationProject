@@ -363,22 +363,22 @@ const GroupBoardModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-1000 p-5" onClick={onClose}>
-      <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-[800px] max-h-[90vh] flex flex-col overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.5)]" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl w-full max-w-[800px] max-h-[90vh] flex flex-col overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.3)]" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#3a3a3a] bg-[#2a2a2a]">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 bg-white">
           {viewMode !== 'list' && (
             <button className="flex items-center gap-2 bg-transparent border-none text-[#0084ff] text-sm font-medium cursor-pointer px-3 py-2 rounded-md transition-all hover:bg-[#0084ff]/10" onClick={handleBackToList}>
               <FaArrowLeft /> Quay lại
             </button>
           )}
-          <h2 className="text-xl font-semibold text-white m-0">
+          <h2 className="text-xl font-semibold text-gray-900 m-0">
             {viewMode === 'list' && 'Bảng tin nhóm'}
             {viewMode === 'create-note' && 'Tạo ghi chú'}
             {viewMode === 'view-note' && 'Xem ghi chú'}
             {viewMode === 'edit-note' && 'Chỉnh sửa ghi chú'}
           </h2>
           <div className="flex items-center gap-3">
-            <button className="w-9 h-9 rounded-full border-none bg-[#3a3a3a] text-white flex items-center justify-center cursor-pointer transition-all hover:bg-[#4a4a4a] hover:scale-105" onClick={onClose}>
+            <button className="w-9 h-9 rounded-full border-none bg-gray-100 text-gray-700 flex items-center justify-center cursor-pointer transition-all hover:bg-gray-200 hover:scale-105" onClick={onClose}>
               <FaTimes />
             </button>
           </div>
@@ -386,12 +386,12 @@ const GroupBoardModal = ({
 
         {/* Tabs - only show in list view */}
         {viewMode === 'list' && (
-          <div className="flex bg-[#2a2a2a] border-b border-[#3a3a3a]">
+          <div className="flex bg-white border-b border-gray-200">
             <button
               className={`flex-1 px-4 py-3.5 border-none bg-transparent text-sm font-medium cursor-pointer border-b-2 transition-all ${
                 activeTab === 'all' 
                   ? 'text-[#0084ff] border-b-[#0084ff]' 
-                  : 'text-[#999] border-b-transparent hover:text-[#0084ff] hover:bg-[#0084ff]/5'
+                  : 'text-gray-600 border-b-transparent hover:text-[#0084ff] hover:bg-gray-50'
               }`}
               onClick={() => setActiveTab('all')}
             >
@@ -401,7 +401,7 @@ const GroupBoardModal = ({
               className={`flex-1 px-4 py-3.5 border-none bg-transparent text-sm font-medium cursor-pointer border-b-2 transition-all ${
                 activeTab === 'pinned' 
                   ? 'text-[#0084ff] border-b-[#0084ff]' 
-                  : 'text-[#999] border-b-transparent hover:text-[#0084ff] hover:bg-[#0084ff]/5'
+                  : 'text-gray-600 border-b-transparent hover:text-[#0084ff] hover:bg-gray-50'
               }`}
               onClick={() => setActiveTab('pinned')}
             >
@@ -411,7 +411,7 @@ const GroupBoardModal = ({
               className={`flex-1 px-4 py-3.5 border-none bg-transparent text-sm font-medium cursor-pointer border-b-2 transition-all ${
                 activeTab === 'notes' 
                   ? 'text-[#0084ff] border-b-[#0084ff]' 
-                  : 'text-[#999] border-b-transparent hover:text-[#0084ff] hover:bg-[#0084ff]/5'
+                  : 'text-gray-600 border-b-transparent hover:text-[#0084ff] hover:bg-gray-50'
               }`}
               onClick={() => setActiveTab('notes')}
             >
@@ -421,7 +421,7 @@ const GroupBoardModal = ({
               className={`flex-1 px-4 py-3.5 border-none bg-transparent text-sm font-medium cursor-pointer border-b-2 transition-all ${
                 activeTab === 'polls' 
                   ? 'text-[#0084ff] border-b-[#0084ff]' 
-                  : 'text-[#999] border-b-transparent hover:text-[#0084ff] hover:bg-[#0084ff]/5'
+                  : 'text-gray-600 border-b-transparent hover:text-[#0084ff] hover:bg-gray-50'
               }`}
               onClick={() => setActiveTab('polls')}
             >
@@ -431,7 +431,7 @@ const GroupBoardModal = ({
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 bg-[#1a1a1a]">
+        <div className="flex-1 overflow-y-auto px-6 py-6 bg-gray-50">
           {/* LIST VIEW */}
           {viewMode === 'list' && (
             <>
@@ -447,12 +447,12 @@ const GroupBoardModal = ({
                   {pinnedMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-15 px-5 gap-4">
                       <span className="text-6xl opacity-30">📌</span>
-                      <p className="text-base text-[#999] m-0">Chưa có tin ghim</p>
+                      <p className="text-base text-gray-500 m-0">Chưa có tin ghim</p>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
                       {pinnedMessages.map((msg) => (
-                        <div key={msg.messageID} className="bg-[#2a2a2a] rounded-xl p-4 transition-all hover:bg-[#2f2f2f]">
+                        <div key={msg.messageID} className="bg-white rounded-xl p-4 transition-all hover:bg-gray-50 border border-gray-200">
                           <div className="flex items-center gap-3 mb-3">
                             <img
                               src={msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`}
@@ -460,16 +460,16 @@ const GroupBoardModal = ({
                               className="w-10 h-10 rounded-full object-cover"
                             />
                             <div className="flex-1">
-                              <div className="text-[15px] font-semibold text-white mb-1">{msg.senderInfo?.name || 'Người dùng'}</div>
-                              <div className="flex items-center gap-1.5 text-[13px] text-[#999]">
+                              <div className="text-[15px] font-semibold text-gray-900 mb-1">{msg.senderInfo?.name || 'Người dùng'}</div>
+                              <div className="flex items-center gap-1.5 text-[13px] text-gray-500">
                                 <span className="text-sm">📌</span>
                                 Tin ghim
                               </div>
                             </div>
                           </div>
-                          <div className="text-sm text-[#e0e0e0] leading-relaxed mb-3 break-words">{getContentPreview(msg)}</div>
+                          <div className="text-sm text-gray-700 leading-relaxed mb-3 break-words">{getContentPreview(msg)}</div>
                           <div className="flex items-center justify-between">
-                            <span className="text-xs text-[#999]">{formatDateTime(msg.timestamp)}</span>
+                            <span className="text-xs text-gray-500">{formatDateTime(msg.timestamp)}</span>
                             <button
                               className="text-[13px] text-[#0084ff] bg-transparent border-none cursor-pointer px-2 py-1 rounded transition-all hover:bg-[#0084ff]/10"
                               onClick={() => {
@@ -492,7 +492,7 @@ const GroupBoardModal = ({
                 <div>
                   <div className="flex flex-col gap-3">
                     {notes.map((note) => (
-                      <div key={note.noteID} className="bg-[#2a2a2a] rounded-xl p-4 transition-all hover:bg-[#2f2f2f]">
+                      <div key={note.noteID} className="bg-white rounded-xl p-4 transition-all hover:bg-gray-50 border border-gray-200">
                         <div className="flex items-center gap-3 mb-3">
                           <img
                             src={note.creatorInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${note.creatorID}`}
@@ -500,15 +500,15 @@ const GroupBoardModal = ({
                             className="w-10 h-10 rounded-full object-cover"
                           />
                           <div className="flex-1">
-                            <div className="text-[15px] font-semibold text-white mb-1">{note.creatorInfo?.name || 'Người dùng'}</div>
-                            <div className="flex items-center gap-1.5 text-[13px] text-[#999]">
+                            <div className="text-[15px] font-semibold text-gray-900 mb-1">{note.creatorInfo?.name || 'Người dùng'}</div>
+                            <div className="flex items-center gap-1.5 text-[13px] text-gray-500">
                               <span className="text-sm">📝</span>
                               Ghi chú
                             </div>
                           </div>
                           <div className="flex gap-2 ml-auto">
                             <button
-                              className="w-8 h-8 rounded-full border-none bg-[#3a3a3a] text-white text-base cursor-pointer transition-all flex items-center justify-center hover:bg-[#4a4a4a] hover:scale-110"
+                              className="w-8 h-8 rounded-full border-none bg-gray-100 text-gray-700 text-base cursor-pointer transition-all flex items-center justify-center hover:bg-gray-200 hover:scale-110"
                               onClick={() => handleTogglePinNote(note)}
                               title={note.isPinned ? 'Bỏ ghim' : 'Ghim'}
                             >
@@ -516,7 +516,7 @@ const GroupBoardModal = ({
                             </button>
                             {note.creatorID === userID && (
                               <button
-                                className="w-8 h-8 rounded-full border-none bg-[#3a3a3a] text-white text-base cursor-pointer transition-all flex items-center justify-center hover:bg-[#ff3b30] hover:scale-110"
+                                className="w-8 h-8 rounded-full border-none bg-gray-100 text-gray-700 text-base cursor-pointer transition-all flex items-center justify-center hover:bg-red-100 hover:text-red-600 hover:scale-110"
                                 onClick={() => handleDeleteNote(note.noteID)}
                                 title="Xóa"
                               >
@@ -525,11 +525,11 @@ const GroupBoardModal = ({
                             )}
                           </div>
                         </div>
-                        <div className="text-sm text-[#e0e0e0] leading-relaxed mb-3 break-words cursor-pointer transition-colors p-2 -m-2 rounded-md hover:bg-white/5" onClick={() => handleViewNote(note)}>
+                        <div className="text-sm text-gray-700 leading-relaxed mb-3 break-words cursor-pointer transition-colors p-2 -m-2 rounded-md hover:bg-gray-100" onClick={() => handleViewNote(note)}>
                           {note.content}
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-[#999]">{formatDateTime(note.createdAt)}</span>
+                          <span className="text-xs text-gray-500">{formatDateTime(note.createdAt)}</span>
                           <button className="text-[13px] text-[#0084ff] bg-transparent border-none cursor-pointer px-2 py-1 rounded transition-all hover:bg-[#0084ff]/10" onClick={() => handleViewNote(note)}>
                             Xem ghi chú
                           </button>
@@ -540,16 +540,16 @@ const GroupBoardModal = ({
                   
                   {/* Create Note Button at bottom */}
                   {canCreateNotes ? (
-                  <div className="sticky bottom-0 left-0 right-0 p-4 bg-linear-to-t from-[#1a1a1a] via-[#1a1a1a]/80 to-transparent z-10">
+                  <div className="sticky bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-50 via-gray-50/80 to-transparent z-10">
                     <button className="w-full py-3.5 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all shadow-[0_4px_12px_rgba(0,132,255,0.3)] hover:bg-[#0073e6] hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,132,255,0.4)]" onClick={handleCreateNote}>
                       Tạo ghi chú
                     </button>
                   </div>
                   ) : (
-                  <div className="sticky bottom-0 left-0 right-0 p-4 bg-linear-to-t from-[#1a1a1a] via-[#1a1a1a]/80 to-transparent z-10">
-                    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-[#2a2a2a] rounded-lg border border-[#3a3a3a]">
+                  <div className="sticky bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-50 via-gray-50/80 to-transparent z-10">
+                    <div className="flex items-center justify-center gap-2 py-3 px-4 bg-white rounded-lg border border-gray-200">
                       <span className="text-base">🔒</span>
-                      <span className="text-sm text-[#999]">Chỉ trưởng nhóm và phó nhóm mới có thể tạo ghi chú</span>
+                      <span className="text-sm text-gray-600">Chỉ trưởng nhóm và phó nhóm mới có thể tạo ghi chú</span>
                     </div>
                   </div>
                   )}
@@ -562,7 +562,7 @@ const GroupBoardModal = ({
                   {polls.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-15 px-5 gap-4">
                       <span className="text-6xl opacity-30">📊</span>
-                      <p className="text-base text-[#999] m-0">Chưa có bình chọn</p>
+                      <p className="text-base text-gray-500 m-0">Chưa có bình chọn</p>
                       <button className="py-3 px-6 bg-[#0084ff] text-white border-none rounded-lg text-[15px] font-semibold cursor-pointer transition-all hover:bg-[#0073e6] hover:-translate-y-px">Tạo bình chọn</button>
                     </div>
                   ) : (
@@ -570,9 +570,9 @@ const GroupBoardModal = ({
                       {polls.map((poll) => {
                         const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes, 0);
                         return (
-                          <div key={poll.pollID} className="bg-[#2a2a2a] rounded-xl p-5 transition-all hover:bg-[#2f2f2f]">
-                            <div className="text-base font-semibold text-white mb-2">{poll.question}</div>
-                            <div className="text-[13px] text-[#999] mb-1">
+                          <div key={poll.pollID} className="bg-white rounded-xl p-5 transition-all hover:bg-gray-50 border border-gray-200">
+                            <div className="text-base font-semibold text-gray-900 mb-2">{poll.question}</div>
+                            <div className="text-[13px] text-gray-500 mb-1">
                               Kết thúc lúc {formatDateTime(poll.endDate || poll.createdAt)}
                             </div>
                             <div className="text-[13px] text-[#0084ff] my-3">{totalVotes} người bình chọn</div>
@@ -580,11 +580,11 @@ const GroupBoardModal = ({
                               {poll.options.map((option, index) => {
                                 const percentage = totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0;
                                 return (
-                                  <div key={index} className="relative bg-[#3a3a3a] rounded-lg overflow-hidden min-h-[44px]">
+                                  <div key={index} className="relative bg-gray-100 rounded-lg overflow-hidden min-h-[44px]">
                                     <div className="absolute left-0 top-0 bottom-0 bg-[#0084ff]/30 transition-[width] duration-300" style={{ width: `${percentage}%` }}></div>
                                     <div className="relative flex items-center justify-between px-4 py-3 z-[1]">
-                                      <span className="text-sm text-white">{option.text}</span>
-                                      <span className="text-sm font-semibold text-white">{option.votes}</span>
+                                      <span className="text-sm text-gray-900">{option.text}</span>
+                                      <span className="text-sm font-semibold text-gray-900">{option.votes}</span>
                                     </div>
                                   </div>
                                 );
@@ -605,20 +605,20 @@ const GroupBoardModal = ({
                   {pinnedMessages.length === 0 && notes.filter(n => n.isPinned).length === 0 && polls.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-15 px-5 gap-4">
                       <span className="text-6xl opacity-30">📂</span>
-                      <p className="text-base text-[#999] m-0">Chưa có nội dung được ghim</p>
+                      <p className="text-base text-gray-500 m-0">Chưa có nội dung được ghim</p>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-8">
                       {/* Combined pinned messages and notes */}
                       {(pinnedMessages.length > 0 || notes.filter(n => n.isPinned).length > 0) && (
                         <div className="flex flex-col gap-3">
-                          <h3 className="text-base font-semibold text-white m-0 mb-2">
+                          <h3 className="text-base font-semibold text-gray-900 m-0 mb-2">
                             Danh sách ghim ({pinnedMessages.length + notes.filter(n => n.isPinned).length})
                           </h3>
                           <div className="flex flex-col gap-3">
                             {/* Pinned Notes */}
                             {notes.filter(n => n.isPinned).map((note) => (
-                              <div key={note.noteID} className="bg-[#2a2a2a] rounded-xl p-4 transition-all hover:bg-[#2f2f2f]">
+                              <div key={note.noteID} className="bg-white rounded-xl p-4 transition-all hover:bg-gray-50 border border-gray-200">
                                 <div className="flex items-center gap-3 mb-3">
                                   <img
                                     src={note.creatorInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${note.creatorID}`}
@@ -626,18 +626,18 @@ const GroupBoardModal = ({
                                     className="w-10 h-10 rounded-full object-cover"
                                   />
                                   <div className="flex-1">
-                                    <div className="text-[15px] font-semibold text-white mb-1">{note.creatorInfo?.name || 'Người dùng'}</div>
-                                    <div className="flex items-center gap-1.5 text-[13px] text-[#999]">
+                                    <div className="text-[15px] font-semibold text-gray-900 mb-1">{note.creatorInfo?.name || 'Người dùng'}</div>
+                                    <div className="flex items-center gap-1.5 text-[13px] text-gray-500">
                                       <span className="text-sm">📝</span>
                                       Ghi chú
                                     </div>
                                   </div>
                                 </div>
-                                <div className="text-sm text-[#e0e0e0] leading-relaxed mb-3 break-words cursor-pointer transition-colors p-2 -m-2 rounded-md hover:bg-white/5" onClick={() => handleViewNote(note)}>
+                                <div className="text-sm text-gray-700 leading-relaxed mb-3 break-words cursor-pointer transition-colors p-2 -m-2 rounded-md hover:bg-gray-100" onClick={() => handleViewNote(note)}>
                                   {note.content}
                                 </div>
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs text-[#999]">{formatDateTime(note.createdAt)}</span>
+                                  <span className="text-xs text-gray-500">{formatDateTime(note.createdAt)}</span>
                                   <button className="text-[13px] text-[#0084ff] bg-transparent border-none cursor-pointer px-2 py-1 rounded transition-all hover:bg-[#0084ff]/10" onClick={() => handleViewNote(note)}>
                                     Xem ghi chú
                                   </button>
@@ -647,7 +647,7 @@ const GroupBoardModal = ({
                             
                             {/* Pinned Messages */}
                             {pinnedMessages.slice(0, 3).map((msg) => (
-                              <div key={msg.messageID} className="bg-[#2a2a2a] rounded-xl p-4 transition-all hover:bg-[#2f2f2f]">
+                              <div key={msg.messageID} className="bg-white rounded-xl p-4 transition-all hover:bg-gray-50 border border-gray-200">
                                 <div className="flex items-center gap-3 mb-3">
                                   <img
                                     src={msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`}
@@ -655,16 +655,16 @@ const GroupBoardModal = ({
                                     className="w-10 h-10 rounded-full object-cover"
                                   />
                                   <div className="flex-1">
-                                    <div className="text-[15px] font-semibold text-white mb-1">{msg.senderInfo?.name || 'Người dùng'}</div>
-                                    <div className="flex items-center gap-1.5 text-[13px] text-[#999]">
+                                    <div className="text-[15px] font-semibold text-gray-900 mb-1">{msg.senderInfo?.name || 'Người dùng'}</div>
+                                    <div className="flex items-center gap-1.5 text-[13px] text-gray-500">
                                       <span className="text-sm">📌</span>
                                       Tin nhắn
                                     </div>
                                   </div>
                                 </div>
-                                <div className="text-sm text-[#e0e0e0] leading-relaxed mb-3 break-words">{getContentPreview(msg)}</div>
+                                <div className="text-sm text-gray-700 leading-relaxed mb-3 break-words">{getContentPreview(msg)}</div>
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs text-[#999]">{formatDateTime(msg.timestamp)}</span>
+                                  <span className="text-xs text-gray-500">{formatDateTime(msg.timestamp)}</span>
                                   <button
                                     className="text-[13px] text-[#0084ff] bg-transparent border-none cursor-pointer px-2 py-1 rounded transition-all hover:bg-[#0084ff]/10"
                                     onClick={() => {
@@ -683,14 +683,14 @@ const GroupBoardModal = ({
 
                       {polls.length > 0 && (
                         <div className="flex flex-col gap-3">
-                          <h3 className="text-base font-semibold text-white m-0 mb-2">Bình chọn ({polls.length})</h3>
+                          <h3 className="text-base font-semibold text-gray-900 m-0 mb-2">Bình chọn ({polls.length})</h3>
                           <div className="flex flex-col gap-3">
                             {polls.slice(0, 3).map((poll) => {
                               const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes, 0);
                               return (
-                                <div key={poll.pollID} className="bg-[#2a2a2a] rounded-xl p-5 transition-all hover:bg-[#2f2f2f]">
-                                  <div className="text-base font-semibold text-white mb-2">{poll.question}</div>
-                                  <div className="text-[13px] text-[#999] mb-1">
+                                <div key={poll.pollID} className="bg-white rounded-xl p-5 transition-all hover:bg-gray-50 border border-gray-200">
+                                  <div className="text-base font-semibold text-gray-900 mb-2">{poll.question}</div>
+                                  <div className="text-[13px] text-gray-500 mb-1">
                                     Kết thúc lúc {formatDateTime(poll.endDate || poll.createdAt)}
                                   </div>
                                   <div className="text-[13px] text-[#0084ff] my-3">{totalVotes} người bình chọn</div>
@@ -698,11 +698,11 @@ const GroupBoardModal = ({
                                     {poll.options.map((option, index) => {
                                       const percentage = totalVotes > 0 ? (option.votes / totalVotes) * 100 : 0;
                                       return (
-                                        <div key={index} className="relative bg-[#3a3a3a] rounded-lg overflow-hidden min-h-[44px]">
+                                        <div key={index} className="relative bg-gray-100 rounded-lg overflow-hidden min-h-[44px]">
                                           <div className="absolute left-0 top-0 bottom-0 bg-[#0084ff]/30 transition-[width] duration-300" style={{ width: `${percentage}%` }}></div>
                                           <div className="relative flex items-center justify-between px-4 py-3 z-1">
-                                            <span className="text-sm text-white">{option.text}</span>
-                                            <span className="text-sm font-semibold text-white">{option.votes}</span>
+                                            <span className="text-sm text-gray-900">{option.text}</span>
+                                            <span className="text-sm font-semibold text-gray-900">{option.votes}</span>
                                           </div>
                                         </div>
                                       );
@@ -728,13 +728,13 @@ const GroupBoardModal = ({
           {viewMode === 'create-note' && (
             <div className="p-6 note-form-container">
               <div className="mb-4">
-                <label className="block mb-2 text-sm font-semibold text-[#e0e0e0]">Nội dung</label>
+                <label className="block mb-2 text-sm font-semibold text-gray-700">Nội dung</label>
                 <textarea
                   value={noteContent}
                   onChange={(e) => setNoteContent(e.target.value)}
                   placeholder="Nhập nội dung ghi chú..."
                   rows={10}
-                  className="w-full min-h-[200px] p-3 rounded-lg border border-[#3a3a3a] bg-[#2a2a2a] text-[#e0e0e0] text-[15px] font-[inherit] leading-relaxed resize-y transition-all focus:outline-none focus:border-[#0084ff] focus:bg-[#2f2f2f] placeholder:text-[#666]"
+                  className="w-full min-h-[200px] p-3 rounded-lg border border-gray-300 bg-white text-gray-900 text-[15px] font-[inherit] leading-relaxed resize-y transition-all focus:outline-none focus:border-[#0084ff] focus:ring-2 focus:ring-[#0084ff]/20 placeholder:text-gray-400"
                   autoFocus
                 />
               </div>
@@ -747,12 +747,12 @@ const GroupBoardModal = ({
                   onChange={(e) => setNotePinToTop(e.target.checked)}
                   className="w-[18px] h-[18px] cursor-pointer accent-[#0084ff]"
                 />
-                <label htmlFor="pin-to-top" className="text-sm text-[#e0e0e0] cursor-pointer select-none">Ghim lên đầu trò chuyện</label>
+                <label htmlFor="pin-to-top" className="text-sm text-gray-700 cursor-pointer select-none">Ghim lên đầu trò chuyện</label>
               </div>
               
               <div className="flex gap-3 justify-end">
                 <button 
-                  className="py-2.5 px-6 border-none rounded-lg text-sm font-semibold cursor-pointer transition-all bg-[#3a3a3a] text-white hover:bg-[#4a4a4a]"
+                  className="py-2.5 px-6 border-none rounded-lg text-sm font-semibold cursor-pointer transition-all bg-gray-200 text-gray-700 hover:bg-gray-300"
                   onClick={handleBackToList}
                 >
                   Đóng
@@ -771,7 +771,7 @@ const GroupBoardModal = ({
           {/* VIEW NOTE VIEW */}
           {viewMode === 'view-note' && selectedNote && (
             <div className="p-6 note-view-container">
-              <div className="flex justify-between items-center mb-5 pb-4 border-b border-[#3a3a3a]">
+              <div className="flex justify-between items-center mb-5 pb-4 border-b border-gray-200">
                 <div className="flex items-center gap-3">
                   <img 
                     src={selectedNote.creatorInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedNote.creatorID}`}
@@ -779,16 +779,16 @@ const GroupBoardModal = ({
                     className="w-10 h-10 rounded-full object-cover"
                   />
                   <div>
-                    <div className="text-sm font-semibold text-white">
+                    <div className="text-sm font-semibold text-gray-900">
                       {selectedNote.creatorInfo?.name || 'Người dùng'}
                     </div>
-                    <div className="text-xs text-[#999] mt-0.5">
+                    <div className="text-xs text-gray-500 mt-0.5">
                       {formatDateTime(selectedNote.createdAt)}
                     </div>
                   </div>
                 </div>
                 
-                {selectedNote.creatorID === userID && canCreateNotes && (
+                {selectedNote.creatorID === userID && (
                   <button 
                     className="px-4 py-2 bg-transparent border border-[#0084ff] rounded-md text-[#0084ff] text-[13px] font-medium cursor-pointer transition-all hover:bg-[#0084ff]/10"
                     onClick={() => handleEditNote(selectedNote)}
@@ -798,7 +798,7 @@ const GroupBoardModal = ({
                 )}
               </div>
               
-              <div className="text-sm leading-relaxed text-[#e0e0e0] whitespace-pre-wrap mb-5 min-h-[100px] break-words">
+              <div className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap mb-5 min-h-[100px] break-words">
                 {selectedNote.content}
               </div>
               
@@ -812,7 +812,7 @@ const GroupBoardModal = ({
                 
                 {selectedNote.creatorID === userID && (
                   <button 
-                    className="flex-1 py-2.5 px-4 border-none rounded-lg text-sm font-medium cursor-pointer transition-all bg-[#ff3b30]/10 text-[#ff3b30] hover:bg-[#ff3b30]/20"
+                    className="flex-1 py-2.5 px-4 border-none rounded-lg text-sm font-medium cursor-pointer transition-all bg-red-50 text-red-600 hover:bg-red-100"
                     onClick={() => handleDeleteNote(selectedNote.noteID)}
                   >
                     🗑️ Xóa
@@ -825,27 +825,27 @@ const GroupBoardModal = ({
           {/* EDIT NOTE VIEW */}
           {viewMode === 'edit-note' && selectedNote && (
             <div className="p-6 note-form-container">
-              <div className="flex items-center gap-3 pb-4 mb-4 border-b border-[#3a3a3a]">
+              <div className="flex items-center gap-3 pb-4 mb-4 border-b border-gray-200">
                 <img
                   src={selectedNote.creatorInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedNote.creatorID}`}
                   alt="avatar"
                   className="w-10 h-10 rounded-full object-cover"
                 />
                 <div className="flex-1">
-                  <div className="text-[13px] text-[#999]">
+                  <div className="text-[13px] text-gray-500">
                     Tạo bởi {selectedNote.creatorInfo?.name || 'Người dùng'} - {formatDateTime(selectedNote.createdAt)}
                   </div>
                 </div>
               </div>
 
               <div className="mb-4">
-                <label className="block mb-2 text-sm font-semibold text-[#e0e0e0]">Nội dung</label>
+                <label className="block mb-2 text-sm font-semibold text-gray-700">Nội dung</label>
                 <textarea
                   value={noteContent}
                   onChange={(e) => setNoteContent(e.target.value)}
                   placeholder="Nhập nội dung ghi chú..."
                   rows={10}
-                  className="w-full min-h-[200px] p-3 rounded-lg border border-[#3a3a3a] bg-[#2a2a2a] text-[#e0e0e0] text-[15px] font-[inherit] leading-relaxed resize-y transition-all focus:outline-none focus:border-[#0084ff] focus:bg-[#2f2f2f] placeholder:text-[#666]"
+                  className="w-full min-h-[200px] p-3 rounded-lg border border-gray-300 bg-white text-gray-900 text-[15px] font-[inherit] leading-relaxed resize-y transition-all focus:outline-none focus:border-[#0084ff] focus:ring-2 focus:ring-[#0084ff]/20 placeholder:text-gray-400"
                   autoFocus
                 />
               </div>
@@ -858,12 +858,12 @@ const GroupBoardModal = ({
                   onChange={(e) => setNotePinToTop(e.target.checked)}
                   className="w-[18px] h-[18px] cursor-pointer accent-[#0084ff]"
                 />
-                <label htmlFor="pin-to-top-edit" className="text-sm text-[#e0e0e0] cursor-pointer select-none">Ghim lên đầu trò chuyện</label>
+                <label htmlFor="pin-to-top-edit" className="text-sm text-gray-700 cursor-pointer select-none">Ghim lên đầu trò chuyện</label>
               </div>
               
               <div className="flex gap-3 justify-end">
                 <button 
-                  className="py-2.5 px-6 border-none rounded-lg text-sm font-semibold cursor-pointer transition-all bg-[#3a3a3a] text-white hover:bg-[#4a4a4a]"
+                  className="py-2.5 px-6 border-none rounded-lg text-sm font-semibold cursor-pointer transition-all bg-gray-200 text-gray-700 hover:bg-gray-300"
                   onClick={handleBackToList}
                 >
                   Hủy
