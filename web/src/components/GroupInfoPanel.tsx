@@ -73,6 +73,7 @@ interface Props {
   onLeaveGroup: () => void;
   onDeleteGroup?: () => void;
   onPinLimitReached?: (noteID: string) => void;
+  onGroupInfoUpdated?: (data: { name?: string; avatar?: string }) => void;
 }
 
 type Tab = 'reminders' | 'notes' | 'media' | 'files' | 'links';
@@ -167,6 +168,7 @@ const GroupInfoPanel = ({
   onLeaveGroup,
   onDeleteGroup,
   onPinLimitReached,
+  onGroupInfoUpdated,
 }: Props) => {
   const [tab, setTab] = useState<Tab>('media');
   const [viewerUrls, setViewerUrls] = useState<string[] | null>(null);
@@ -190,6 +192,9 @@ const GroupInfoPanel = ({
 
   const canCreateNotes = isOwner || isAdmin ||
     (groupInfo.settings?.memberPermissions?.createNotes ?? true);
+
+  const canCreatePolls = isOwner || isAdmin ||
+    (groupInfo.settings?.memberPermissions?.createPolls ?? true);
 
   const mediaImages = messages
     .filter((m) => m.type === 'image' && m.media_url?.length)
@@ -725,7 +730,7 @@ const GroupInfoPanel = ({
           currentName={groupInfo.name}
           currentAvatar={groupInfo.avatar}
           onClose={() => setShowEditModal(false)}
-          onSuccess={() => { window.location.reload(); }}
+          onSuccess={(data) => { setShowEditModal(false); onGroupInfoUpdated && onGroupInfoUpdated(data); }}
         />
       )}
 
@@ -738,6 +743,7 @@ const GroupInfoPanel = ({
         onViewMessage={onViewMessage}
         onPinLimitReached={onPinLimitReached}
         canCreateNotes={canCreateNotes}
+        canCreatePolls={canCreatePolls}
       />
 
       {/* Transfer Ownership Modal */}

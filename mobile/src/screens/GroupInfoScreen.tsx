@@ -119,15 +119,32 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
         fetchGroupData();
       }
     };
+
+    // Listen for group name/avatar changes (real-time update)
+    const handleGroupInfoUpdated = (data: { groupID: string; name?: string; avatar?: string }) => {
+      if (data.groupID !== groupID) return;
+      console.log('🖼️ Group info updated via socket:', data);
+      setGroupInfo((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: data.name ?? prev.name,
+              avatar: data.avatar ?? prev.avatar,
+            }
+          : prev
+      );
+    };
     
     socket.on('group_settings_updated', handleSettingsUpdated);
     socket.on('member_left', handleMemberLeft);
     socket.on('member_kicked', handleMemberKicked);
+    socket.on('group_info_updated', handleGroupInfoUpdated);
     
     return () => {
       socket.off('group_settings_updated', handleSettingsUpdated);
       socket.off('member_left', handleMemberLeft);
       socket.off('member_kicked', handleMemberKicked);
+      socket.off('group_info_updated', handleGroupInfoUpdated);
     };
   }, [groupID]);
 

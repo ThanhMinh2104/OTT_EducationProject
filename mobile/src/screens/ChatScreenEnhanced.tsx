@@ -1296,6 +1296,17 @@ const ChatScreenEnhanced = ({
       );
     };
 
+// Cập nhật real-time khi settings nhóm thay đổi (vd: tắt/bật quyền gửi tin nhắn)
+    const onGroupSettingsUpdated = (data: { groupID: string; settings: any }) => {
+      if (data.groupID !== chatID) return;
+      const perms = data.settings?.memberPermissions;
+      const myMember = selectedChat?.members?.find((m: any) => m.userID === user.userID);
+      const isOwnerOrAdmin = myMember?.role === 'owner' || myMember?.role === 'admin';
+      setCanPinMessages(isOwnerOrAdmin || (perms?.pinMessages ?? true));
+      setCanSendMessages(isOwnerOrAdmin || (perms?.sendMessages ?? true));
+      setCanEditGroupInfo(isOwnerOrAdmin || (perms?.changeNameAvatar ?? true));
+    };
+
     socket.on("new_message", onNewMessage);
     // Lắng nghe group messages
     if (isGroup) {
@@ -1303,6 +1314,7 @@ const ChatScreenEnhanced = ({
       socket.on("group_typing_start", onTypingStart);
       socket.on("group_typing_stop", onTypingStop);
       socket.on("group_info_updated", onGroupInfoUpdated);
+      socket.on("group_settings_updated", onGroupSettingsUpdated);
     } else {
       socket.on("typing_start", onTypingStart);
       socket.on("typing_stop", onTypingStop);
@@ -1322,6 +1334,7 @@ const ChatScreenEnhanced = ({
         socket.off("group_typing_start", onTypingStart);
         socket.off("group_typing_stop", onTypingStop);
         socket.off("group_info_updated", onGroupInfoUpdated);
+        socket.off("group_settings_updated", onGroupSettingsUpdated);
         socket.emit("leave_group", { groupID: chatID, userID: user.userID });
       } else {
         socket.off("typing_start", onTypingStart);

@@ -13,9 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axiosInstance from '../utils/axios';
-import { API_URL } from '../utils/config';
 
 interface EditGroupInfoModalProps {
   visible: boolean;
@@ -112,7 +110,6 @@ export const EditGroupInfoModal: React.FC<EditGroupInfoModalProps> = ({
 
       // Upload avatar nếu có thay đổi
       if (avatarFile) {
-        const token = await AsyncStorage.getItem('token');
         const formData = new FormData();
         // React Native yêu cầu append object với uri/name/type
         formData.append('files', {
@@ -121,22 +118,13 @@ export const EditGroupInfoModal: React.FC<EditGroupInfoModalProps> = ({
           type: avatarFile.type || 'image/jpeg',
         } as any);
 
-        const uploadRes = await fetch(`${API_URL}/api/upload`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
+        // KHÔNG set Content-Type thủ công — fetch/axios tự thêm boundary cho multipart
+        const uploadRes = await axiosInstance.post('/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
 
-        if (!uploadRes.ok) {
-          throw new Error('Upload ảnh thất bại');
-        }
-
-        const uploadData = await uploadRes.json();
-        if (uploadData.urls && uploadData.urls.length > 0) {
-          avatarUrl = uploadData.urls[0];
+        if (uploadRes.data.urls && uploadRes.data.urls.length > 0) {
+          avatarUrl = uploadRes.data.urls[0];
         }
       }
 
