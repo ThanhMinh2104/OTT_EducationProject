@@ -66,6 +66,30 @@ router.post('/groups/create', authMiddleware, async (req: AuthRequest, res) => {
       await GroupMember.insertMany(members);
     }
 
+    // Lấy thông tin owner để gửi notification
+    const owner = await Users.findOne({ userID });
+    const ownerName = owner?.name || 'Người dùng';
+
+    // Emit socket event để notify tất cả members về nhóm mới
+    const io = req.app.get('io');
+    if (io) {
+      // Emit đến từng member (bao gồm owner)
+      const allMemberIDs = [userID, ...(memberIDs || [])];
+      allMemberIDs.forEach((memberID) => {
+        io.to(memberID).emit('new_group_created', {
+          groupID,
+          name,
+          avatar,
+          ownerID: userID,
+          ownerName,
+          memberCount: totalMembers,
+          createdAt: new Date(),
+        });
+      });
+
+      console.log(`✅ [CREATE GROUP] Emitted new_group_created to ${allMemberIDs.length} members`);
+    }
+
     res.status(201).json({
       message: 'Tạo nhóm thành công',
       group: {
@@ -449,6 +473,43 @@ router.post('/groups/:groupID/members', authMiddleware, async (req: AuthRequest,
       await newMember.save();
     }
 
+    // Lấy thông tin người thêm và người được thêm
+    const adder = await Users.findOne({ userID });
+    const added = await Users.findOne({ userID: newUserID });
+    const adderName = adder?.name || 'Thành viên';
+    const addedName = added?.name || 'Thành viên';
+
+    // Tạo notification message
+    const notifID = `gmsg_${uuidv4()}`;
+    const notif = new GroupMessage({
+      messageID: notifID,
+      groupID,
+      senderID: userID,
+      content: `${adderName} đã thêm ${addedName} vào nhóm`,
+      type: 'notification',
+      timestamp: new Date(),
+    });
+    await notif.save();
+
+    // Emit socket events
+    const io = req.app.get('io');
+    if (io) {
+      // Gửi notification message
+      io.to(groupID).emit('new_group_message', {
+        ...notif.toObject(),
+        senderInfo: { name: adderName },
+      });
+
+      // Gửi event member_added để frontend refresh member list
+      io.to(groupID).emit('member_added', {
+        groupID,
+        userID: newUserID,
+        addedBy: userID,
+        adderName,
+        addedName,
+      });
+    }
+
     res.json({ message: 'Thêm thành viên thành công' });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi thêm thành viên', error: error.message });
@@ -657,6 +718,13 @@ router.put('/groups/:groupID/members/:targetUserID/role', authMiddleware, async 
           ...notif.toObject(),
           senderInfo: { name: actorName },
         });
+        // Emit role change event for real-time UI update
+        io.to(groupID).emit('member_role_changed', {
+          groupID,
+          userID: targetUserID,
+          newRole: role,
+          changedBy: userID,
+        });
       }
     }
 
@@ -678,8 +746,31 @@ router.delete('/groups/:groupID', authMiddleware, async (req: AuthRequest, res) 
       return;
     }
 
-    await Group.findOneAndUpdate({ groupID }, { isActive: false });
-    await GroupMember.updateMany({ groupID }, { isActive: false });
+    // Get all members before deleting
+    const allMembers = await GroupMember.find({ groupID, isActive: true });
+    const memberIDs = allMembers.map(m => m.userID);
+
+    // Soft delete group and members
+    await Group.findOneAndUpdate({ groupID }, { isActive: false, updatedAt: new Date() });
+    await GroupMember.updateMany({ groupID }, { isActive: false, leftAt: new Date() });
+
+    // Emit socket event to all members
+    const io = req.app.get('io');
+    if (io) {
+      // Emit to group room (for members currently in the group chat)
+      io.to(groupID).emit('group_dissolved', { 
+        groupID,
+        message: 'Nhóm đã bị giải tán bởi trưởng nhóm'
+      });
+      
+      // Also emit to each member's personal room (for members not currently in chat)
+      memberIDs.forEach(memberID => {
+        io.to(memberID).emit('group_dissolved', { 
+          groupID,
+          message: 'Nhóm đã bị giải tán bởi trưởng nhóm'
+        });
+      });
+    }
 
     res.json({ message: 'Xóa nhóm thành công' });
   } catch (error: any) {
@@ -1091,6 +1182,14 @@ router.post('/groups/:groupID/join-requests/:requestID/approve', authMiddleware,
     if (io) {
       io.to(groupID).emit('new_group_message', { ...notif.toObject(), senderInfo: { name: approver?.name || '' } });
       io.to(groupID).emit('join_request_resolved', { requestID, groupID, status: 'approved' });
+      // Emit member_added event để frontend refresh member list
+      io.to(groupID).emit('member_added', {
+        groupID,
+        userID: request.userID,
+        addedBy: userID,
+        adderName: approver?.name || 'Quản trị viên',
+        addedName: newUser?.name || 'Thành viên',
+      });
     }
 
     res.json({ message: 'Đã đồng ý yêu cầu tham gia' });

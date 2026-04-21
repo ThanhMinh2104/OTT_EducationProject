@@ -27,6 +27,11 @@ export const GroupChatPage: React.FC = () => {
     }
   }, []);
 
+  const handleGroupDissolved = () => {
+    // Navigate back to home without hard reload
+    navigate('/home');
+  };
+
   if (!user || !groupID) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -55,6 +60,7 @@ export const GroupChatPage: React.FC = () => {
           <GroupChatWindow 
             groupID={groupID} 
             userID={user.userID}
+            onGroupDissolved={handleGroupDissolved}
           />
         </div>
       </div>

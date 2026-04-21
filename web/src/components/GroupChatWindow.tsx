@@ -129,6 +129,7 @@ interface GroupChatWindowProps {
   userID: string;
   onShowGroupInfo?: () => void;
   onSelectChat?: (chat: any) => void;
+  onGroupDissolved?: () => void;
 }
 
 const formatTime = (ts: string | Date) => {
@@ -379,7 +380,8 @@ export const GroupChatWindow = ({
   groupID,
   userID,
   onShowGroupInfo,
-  onSelectChat
+  onSelectChat,
+  onGroupDissolved
 }: GroupChatWindowProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [groupInfo, setGroupInfo] = useState<GroupInfo | null>(null);
@@ -936,6 +938,73 @@ export const GroupChatWindow = ({
     fetchPinnedNotes();
   }, [fetchPinnedNotes]);
 
+  // Group settings updated handler
+  const handleGroupSettingsUpdated = useCallback((data: { groupID: string; settings: any }) => {
+    console.log('⚙️ Group settings updated:', data);
+    if (data.groupID === groupID) {
+      // Refresh group data to get latest settings
+      fetchGroupData();
+      toast.success('Cài đặt nhóm đã được cập nhật');
+    }
+  }, [groupID, fetchGroupData]);
+
+  // Group dissolved handler
+  const handleGroupDissolved = useCallback((data: { groupID: string; message: string }) => {
+    console.log('💥 Group dissolved:', data);
+    if (data.groupID === groupID) {
+      toast.error(data.message);
+      // Use callback to navigate without hard reload
+      setTimeout(() => {
+        if (onGroupDissolved) {
+          onGroupDissolved();
+        } else if (onSelectChat) {
+          // Fallback: clear selected chat if used in HomePage
+          onSelectChat(null);
+        } else {
+          // Last resort: navigate to home (but this shouldn't happen)
+          window.location.href = '/home';
+        }
+      }, 2000);
+    }
+  }, [groupID, onGroupDissolved, onSelectChat]);
+
+  // Member role changed handler
+  const handleMemberRoleChanged = useCallback((data: { groupID: string; userID: string; newRole: string }) => {
+    console.log('👤 Member role changed:', data);
+    if (data.groupID === groupID) {
+      // Refresh group data to get latest member roles
+      fetchGroupData();
+      if (data.userID === userID) {
+        toast.success(`Vai trò của bạn đã được thay đổi thành ${data.newRole === 'admin' ? 'Phó nhóm' : 'Thành viên'}`);
+      }
+    }
+  }, [groupID, userID, fetchGroupData]);
+
+  // Member kicked handler
+  const handleMemberKicked = useCallback((data: { groupID: string; kickedUserID: string; kickedName: string }) => {
+    console.log('👢 Member kicked:', data);
+    if (data.groupID === groupID) {
+      if (data.kickedUserID === userID) {
+        toast.error('Bạn đã bị xóa khỏi nhóm');
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+      } else {
+        // Refresh group data to update member list
+        fetchGroupData();
+      }
+    }
+  }, [groupID, userID, fetchGroupData]);
+
+  // Member left handler
+  const handleMemberLeft = useCallback((data: { groupID: string; userID: string; userName: string }) => {
+    console.log('🚪 Member left:', data);
+    if (data.groupID === groupID) {
+      // Refresh group data to update member list
+      fetchGroupData();
+    }
+  }, [groupID, fetchGroupData]);
+
   useEffect(() => {
     fetchGroupData();
 
@@ -978,6 +1047,11 @@ export const GroupChatWindow = ({
     socket.on('note_updated', handleNoteUpdated);
     socket.on('note_deleted', handleNoteDeleted);
     socket.on('note_pin_toggled', handleNotePinToggled);
+    socket.on('group_settings_updated', handleGroupSettingsUpdated);
+    socket.on('group_dissolved', handleGroupDissolved);
+    socket.on('member_role_changed', handleMemberRoleChanged);
+    socket.on('member_kicked', handleMemberKicked);
+    socket.on('member_left', handleMemberLeft);
     socket.on('new_join_request', () => fetchJoinRequests());
     socket.on('join_request_resolved', (data: { requestID: string }) => {
       setJoinRequests((prev) => prev.filter((r) => r.requestID !== data.requestID));
@@ -1030,12 +1104,17 @@ export const GroupChatWindow = ({
       socket.off('note_updated', handleNoteUpdated);
       socket.off('note_deleted', handleNoteDeleted);
       socket.off('note_pin_toggled', handleNotePinToggled);
+      socket.off('group_settings_updated', handleGroupSettingsUpdated);
+      socket.off('group_dissolved', handleGroupDissolved);
+      socket.off('member_role_changed', handleMemberRoleChanged);
+      socket.off('member_kicked', handleMemberKicked);
+      socket.off('member_left', handleMemberLeft);
       socket.off('new_join_request');
       socket.off('join_request_resolved');
       socket.off('new_join_request_notification');
       socket.emit('leave_group', { groupID, userID });
     };
-  }, [groupID, userID, fetchGroupData, fetchJoinRequests, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification, handleNoteCreated, handleNoteUpdated, handleNoteDeleted, handleNotePinToggled]);
+  }, [groupID, userID, fetchGroupData, fetchJoinRequests, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification, handleNoteCreated, handleNoteUpdated, handleNoteDeleted, handleNotePinToggled, handleGroupSettingsUpdated, handleGroupDissolved, handleMemberRoleChanged, handleMemberKicked, handleMemberLeft]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1316,8 +1395,18 @@ export const GroupChatWindow = ({
     if (!msg.messageID) return;
 
     if (msg.pinnedInfo) {
-      // Unpin message
+      // Unpin message - Optimistic update
       console.log('📌 Unpinning message:', msg.messageID);
+      
+      // Update UI immediately
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.messageID === msg.messageID ? { ...m, pinnedInfo: null } : m
+        )
+      );
+      setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
+      
+      // Send to server
       socket.emit('unghim_group_message', {
         messageID: msg.messageID,
         groupID,
@@ -1334,8 +1423,26 @@ export const GroupChatWindow = ({
         return;
       }
 
-      // Pin message
+      // Pin message - Optimistic update
       console.log('📌 Pinning message:', msg.messageID);
+      
+      const pinnedInfo = {
+        pinnedBy: userID,
+        pinnedAt: new Date().toISOString()
+      };
+      
+      // Update UI immediately
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.messageID === msg.messageID ? { ...m, pinnedInfo } : m
+        )
+      );
+      
+      // Add to pinned messages list
+      const updatedMsg = { ...msg, pinnedInfo };
+      setPinnedMessages((prev) => [updatedMsg, ...prev]);
+      
+      // Send to server
       socket.emit('ghim_group_message', {
         messageID: msg.messageID,
         groupID,
@@ -1375,6 +1482,16 @@ export const GroupChatWindow = ({
 
   const handleUnpinFromMenu = (msg: Message) => {
     if (!msg.messageID) return;
+    
+    // Optimistic update
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.messageID === msg.messageID ? { ...m, pinnedInfo: null } : m
+      )
+    );
+    setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
+    
+    // Send to server
     socket.emit('unghim_group_message', {
       messageID: msg.messageID,
       groupID,
