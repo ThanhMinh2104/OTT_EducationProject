@@ -210,7 +210,8 @@
 
 /* Highlight message animation */
 @keyframes highlightPulse {
-  0%, 100% {
+  0%,
+  100% {
     background-color: transparent;
   }
   50% {
@@ -223,4 +224,36 @@
   border-radius: 12px;
   padding: 4px;
   margin: -4px;
+}
+
+/* Animation for notification slide down */
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.3s ease-out;
+}
+
+/* Animation for notification slide up */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
 }
