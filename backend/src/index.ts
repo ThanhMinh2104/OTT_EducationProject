@@ -23,6 +23,7 @@ import chatRoutes, { getChatsForUser } from './routes/chatRoutes';
 import reminderRoutes from './routes/reminderRoutes';
 import groupRoutes from './routes/groupRoutes';
 import groupMediaRoutes from './routes/groupMediaRoutes';
+import filePreviewRoutes from './routes/filePreview';
 import { registerMessageEvents } from './socket/messageEvents';
 import { registerNotificationEvents } from './socket/notificationEvents';
 import { registerCallEvents, getActiveCallsMap, clearActiveCallsMap } from './socket/index';
@@ -55,6 +56,7 @@ app.use('/api', chatRoutes(io));
 app.use('/api/reminders', reminderRoutes);
 app.use('/api', groupRoutes);
 app.use('/api', groupMediaRoutes);
+app.use('/api/files', filePreviewRoutes);
 
 // Lưu io vào app để các routes có thể truy cập
 app.set('io', io);

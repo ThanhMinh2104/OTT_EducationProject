@@ -28,6 +28,7 @@ import VideoViewer from '../components/VideoViewer';
 import ChatInfoPanel from '../components/ChatInfoPanel';
 import AddFriendModal from '../components/AddFriendModal';
 import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
+import FilePreviewModal from '../components/FilePreviewModal';
 import { Swipeable } from 'react-native-gesture-handler';
 import { CreateGroupModal } from '../components/CreateGroupModal';
 import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
@@ -168,6 +169,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [selectedChatsForForward, setSelectedChatsForForward] = useState<string[]>([]);
+
+  // File preview states
+  const [showFilePreview, setShowFilePreview] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ fileName: string; fileUrl: string } | null>(null);
 
   // Audio recording states
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -2095,12 +2100,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           <TouchableOpacity
             style={[styles.fileCard, isMine ? styles.fileCardMine : styles.fileCardOther]}
             onPress={() => {
-              // Import ở đầu file: import { downloadAndOpenFile } from '../utils/fileDownload';
-              downloadAndOpenFile(
-                item.media_url![0],
-                fileName,
-                undefined // mimeType - có thể thêm vào Message interface nếu cần
-              );
+              // Open file preview modal
+              setPreviewFile({ fileName, fileUrl: item.media_url![0] });
+              setShowFilePreview(true);
             }}
             onLongPress={() => handleLongPress(item)}
             delayLongPress={500}
@@ -2117,7 +2119,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                 {fileName}
               </Text>
               <Text style={[styles.fileCardSub, isMine ? styles.fileCardSubMine : styles.fileCardSubOther]}>
-                Nhấn để tải xuống
+                Nhấn để xem trước
               </Text>
             </View>
             <Text style={[styles.messageTime, isMine ? styles.timeMine : styles.timeOther, { marginTop: 4 }]}>
@@ -3198,6 +3200,19 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         videoUrl={selectedVideo}
         onClose={() => setVideoViewerVisible(false)}
       />
+
+      {/* File Preview Modal */}
+      {previewFile && (
+        <FilePreviewModal
+          visible={showFilePreview}
+          fileName={previewFile.fileName}
+          fileUrl={previewFile.fileUrl}
+          onClose={() => {
+            setShowFilePreview(false);
+            setPreviewFile(null);
+          }}
+        />
+      )}
 
       {/* Info Panel Modal - Danh sách ghim */}
       <Modal
