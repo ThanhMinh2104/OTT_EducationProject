@@ -177,11 +177,7 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
       });
       
       console.log('✅ Settings saved successfully:', response.data);
-      
-      // Reload group info để có settings mới NGAY LẬP TỨC
-      await onUpdate?.();
-      
-      Alert.alert('Thành công', 'Đã cập nhật cài đặt');
+      // Không gọi onUpdate và không Alert để tránh đóng modal
     } catch (error: any) {
       console.error('❌ Error saving settings:', error.response?.data);
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể cập nhật cài đặt');
@@ -215,10 +211,10 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
   const handlePromoteAdmin = async (member: GroupMember) => {
     try {
       await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'admin' });
-      Alert.alert('Thành công', `Đã thêm ${member.name} làm phó nhóm`);
       setAdminSubView('main');
       setAdminSearchQuery('');
-      onUpdate?.();
+      await onUpdate?.();
+      Alert.alert('Thành công', `Đã thêm ${member.name} làm phó nhóm`);
     } catch (error: any) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể thêm phó nhóm');
     }
@@ -236,8 +232,8 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
           onPress: async () => {
             try {
               await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${member.userID}/role`, { role: 'member' });
+              await onUpdate?.();
               Alert.alert('Thành công', `Đã xóa quyền phó nhóm của ${member.name}`);
-              onUpdate?.();
             } catch (error: any) {
               Alert.alert('Lỗi', error.response?.data?.message || 'Không thể xóa quyền');
             }
@@ -251,10 +247,11 @@ const GroupManagementModal = ({ visible, groupInfo, currentUserID, onClose, onUp
     if (!selectedNewOwner) return;
     try {
       await axiosInstance.put(`/groups/${groupInfo.groupID}/members/${selectedNewOwner.userID}/role`, { role: 'owner' });
-      Alert.alert('Thành công', `Đã chuyển quyền trưởng nhóm cho ${selectedNewOwner.name}`);
       setAdminSubView('main');
       setSelectedNewOwner(null);
-      onUpdate?.();
+      setAdminSearchQuery('');
+      await onUpdate?.();
+      Alert.alert('Thành công', `Đã chuyển quyền trưởng nhóm cho ${selectedNewOwner.name}`);
     } catch (error: any) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể chuyển quyền');
     }
