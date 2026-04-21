@@ -34,6 +34,7 @@ import StickerEmojiPicker from './StickerEmojiPicker';
 import ForwardMessageModal from './ForwardMessageModal';
 import ImageViewerModal from './ImageViewerModal';
 import ImageGrid from './ImageGrid';
+import FilePreviewModal from './FilePreviewModal';
 import { getToken } from '../utils/auth';
 import { AddMembersModal } from './AddMembersModal';
 import GroupInfoPanel from './GroupInfoPanel';
@@ -214,6 +215,7 @@ const FileDisplay = ({
   isMine?: boolean;
 }) => {
   const [fileSize, setFileSize] = useState<number | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     fetch(fileUrl, { method: 'HEAD' })
@@ -243,27 +245,43 @@ const FileDisplay = ({
   };
 
   return (
-    <div
-      className="flex items-center gap-3 px-3 py-2.5 min-w-[280px] max-w-[400px]"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {getFileIcon(fileName)}
-      <div className="flex-1 min-w-0">
-        <p className={`font-semibold text-[14px] truncate mb-0.5 ${isMine ? 'text-gray-900' : 'text-gray-900'}`}>{fileName}</p>
-        <div className={`text-[12px] ${isMine ? 'text-gray-500' : 'text-gray-500'}`}>
-          <span>{fileSize ? formatFileSize(fileSize) : 'Đang tải...'}</span>
-        </div>
-      </div>
-      <button
-        onClick={handleDownload}
-        className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors shrink-0 ${isMine ? 'bg-blue-100 hover:bg-blue-200 text-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
-        title="Tải xuống"
+    <>
+      <div
+        className="flex items-center gap-3 px-3 py-2.5 min-w-[280px] max-w-[400px] cursor-pointer hover:bg-gray-50 rounded-lg transition-colors"
+        onClick={() => setShowPreview(true)}
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-        </svg>
-      </button>
-    </div>
+        {getFileIcon(fileName)}
+        <div className="flex-1 min-w-0">
+          <p className={`font-semibold text-[14px] truncate mb-0.5 ${isMine ? 'text-gray-900' : 'text-gray-900'}`}>{fileName}</p>
+          <div className={`text-[12px] ${isMine ? 'text-gray-500' : 'text-gray-500'}`}>
+            <span>{fileSize ? formatFileSize(fileSize) : 'Đang tải...'}</span>
+            <span className="mx-1">•</span>
+            <span className="text-blue-500">Nhấn để xem</span>
+          </div>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDownload();
+          }}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors shrink-0 ${isMine ? 'bg-blue-100 hover:bg-blue-200 text-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
+          title="Tải xuống"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+          </svg>
+        </button>
+      </div>
+
+      {/* File Preview Modal */}
+      {showPreview && (
+        <FilePreviewModal
+          fileName={fileName}
+          fileUrl={fileUrl}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
+    </>
   );
 };
 

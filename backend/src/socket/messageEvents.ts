@@ -460,7 +460,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
     senderID: string;
     senderInfo: {
       name: string;
-      avatar: string;
+      avatar: string | null;
     };
   }, callback?: (response: any) => void) => {
     try {
@@ -475,14 +475,28 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       // Lấy tin nhắn gốc (từ chat đơn hoặc group chat)
       let originalMsg: any;
       if (data.originalGroupID) {
-        // Import GroupMessage model
+        // Tin nhắn từ group chat
         const GroupMessage = (await import('../models/GroupMessage')).default;
         originalMsg = await GroupMessage.findOne({ 
           messageID: data.originalMessageID, 
           groupID: data.originalGroupID 
         });
+        console.log('🔍 Looking for message in GroupMessage:', { 
+          messageID: data.originalMessageID, 
+          groupID: data.originalGroupID,
+          found: !!originalMsg 
+        });
       } else {
-        originalMsg = await Message.findOne({ messageID: data.originalMessageID });
+        // Tin nhắn từ private chat
+        originalMsg = await Message.findOne({ 
+          messageID: data.originalMessageID,
+          ...(data.originalChatID && { chatID: data.originalChatID })
+        });
+        console.log('🔍 Looking for message in Message:', { 
+          messageID: data.originalMessageID, 
+          chatID: data.originalChatID,
+          found: !!originalMsg 
+        });
       }
 
       if (!originalMsg) {
@@ -514,6 +528,7 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
             chatID: originalMsg.chatID 
           });
         }
+        console.log(`📸 Found ${messagesToForward.length} images in group`);
       }
 
       // Lấy danh sách thành viên của chat đích
@@ -609,6 +624,8 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
   // ==================== 7.1 CHUYỂN TIẾP TIN NHẮN ĐẾN NHÓM (MỚI) ====================
   socket.on('forward_to_group', async (data: {
     originalMessageID: string;
+    originalChatID?: string;
+    originalGroupID?: string;
     targetGroupID: string;
     senderID: string;
     senderInfo: {
@@ -619,6 +636,8 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
     try {
       console.log('📨 Forward to group request received:', {
         originalMessageID: data.originalMessageID,
+        originalChatID: data.originalChatID,
+        originalGroupID: data.originalGroupID,
         targetGroupID: data.targetGroupID,
         senderID: data.senderID,
       });
@@ -630,12 +649,28 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       // Lấy tin nhắn gốc (có thể từ private chat hoặc group chat)
       let originalMsg: any;
       
-      // Try to find in GroupMessage first
-      originalMsg = await GroupMessage.findOne({ messageID: data.originalMessageID });
-      
-      // If not found, try Message model (private chat)
-      if (!originalMsg) {
-        originalMsg = await Message.findOne({ messageID: data.originalMessageID });
+      if (data.originalGroupID) {
+        // Tin nhắn từ group chat
+        originalMsg = await GroupMessage.findOne({ 
+          messageID: data.originalMessageID,
+          groupID: data.originalGroupID
+        });
+        console.log('🔍 Looking for message in GroupMessage:', { 
+          messageID: data.originalMessageID, 
+          groupID: data.originalGroupID,
+          found: !!originalMsg 
+        });
+      } else {
+        // Tin nhắn từ private chat
+        originalMsg = await Message.findOne({ 
+          messageID: data.originalMessageID,
+          ...(data.originalChatID && { chatID: data.originalChatID })
+        });
+        console.log('🔍 Looking for message in Message:', { 
+          messageID: data.originalMessageID, 
+          chatID: data.originalChatID,
+          found: !!originalMsg 
+        });
       }
 
       if (!originalMsg) {
@@ -659,7 +694,29 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
         return;
       }
 
-      const memberIDs = (await GroupMember.find({ groupID: data.targetGroupID })).map((m: any) => m.userID);
+      // Kiểm tra quyền gửi tin nhắn trong nhóm
+      const member = await GroupMember.findOne({
+        groupID: data.targetGroupID,
+        userID: data.senderID,
+        isActive: true,
+      });
+
+      if (!member) {
+        console.error('❌ User not a member of target group');
+        if (callback) callback({ success: false, error: 'You are not a member of this group' });
+        return;
+      }
+
+      // Kiểm tra quyền gửi tin nhắn
+      if (targetGroup.settings?.memberPermissions?.sendMessages === false) {
+        if (member.role !== 'owner' && member.role !== 'admin') {
+          console.error('❌ User does not have permission to send messages');
+          if (callback) callback({ success: false, error: 'You do not have permission to send messages' });
+          return;
+        }
+      }
+
+      const memberIDs = (await GroupMember.find({ groupID: data.targetGroupID, isActive: true })).map((m: any) => m.userID);
       console.log('👥 Target group members:', memberIDs);
 
       // ⭐ Xử lý image group nếu có
@@ -667,16 +724,26 @@ export const registerMessageEvents = (io: Server, socket: Socket) => {
       if (originalMsg.type === 'image' && originalMsg.groupId) {
         console.log('📸 Forwarding entire image group:', originalMsg.groupId);
         
-        // Try to find all messages in the group
-        const groupMessages = await GroupMessage.find({ groupId: originalMsg.groupId });
-        if (groupMessages.length > 0) {
-          messagesToForward = groupMessages;
+        if (data.originalGroupID) {
+          // Try to find all messages in the group from GroupMessage
+          const groupMessages = await GroupMessage.find({ 
+            groupId: originalMsg.groupId,
+            groupID: data.originalGroupID
+          });
+          if (groupMessages.length > 0) {
+            messagesToForward = groupMessages;
+          }
         } else {
-          const privateMessages = await Message.find({ groupId: originalMsg.groupId });
+          // Try to find all messages in the group from Message (private chat)
+          const privateMessages = await Message.find({ 
+            groupId: originalMsg.groupId,
+            chatID: originalMsg.chatID
+          });
           if (privateMessages.length > 0) {
             messagesToForward = privateMessages;
           }
         }
+        console.log(`📸 Found ${messagesToForward.length} images in group`);
       }
 
       const newGroupId = messagesToForward.length > 1 

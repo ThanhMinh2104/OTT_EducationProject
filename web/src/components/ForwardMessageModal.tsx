@@ -116,6 +116,7 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
     try {
       console.log('🔄 Forwarding message:', {
         originalMessageID: message.messageID,
+        sourceChatID: message.chatID,
         targetChatID: selectedChatID,
         senderID: user.userID,
       });
@@ -124,8 +125,9 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
       const targetChat = chats.find(c => c.chatID === selectedChatID);
       const isTargetGroup = targetChat?.type === 'group';
       
-      // Determine source chat type from message
-      const isSourceGroup = message.chatID.startsWith('grp_');
+      // Determine source chat type from message.chatID
+      // Group chat IDs start with 'grp_', private chat IDs start with 'chat_'
+      const isSourceGroup = message.chatID?.startsWith('grp_');
 
       console.log('📊 Forward info:', {
         isSourceGroup,
@@ -136,9 +138,11 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
 
       // Emit appropriate socket event based on target type
       if (isTargetGroup) {
-        // Forward to group
+        // Forward to group chat
         socket.emit('forward_to_group', {
           originalMessageID: message.messageID,
+          originalChatID: isSourceGroup ? undefined : message.chatID,
+          originalGroupID: isSourceGroup ? message.chatID : undefined,
           targetGroupID: selectedChatID,
           senderID: user.userID,
           senderInfo: {
@@ -150,6 +154,8 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
         // Forward to private chat
         socket.emit('forward_message', {
           originalMessageID: message.messageID,
+          originalChatID: isSourceGroup ? undefined : message.chatID,
+          originalGroupID: isSourceGroup ? message.chatID : undefined,
           targetChatID: selectedChatID,
           senderID: user.userID,
           senderInfo: {
