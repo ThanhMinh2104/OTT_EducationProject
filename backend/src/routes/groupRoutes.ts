@@ -856,17 +856,27 @@ router.post('/groups/:groupID/messages/:messageID/pin', authMiddleware, async (r
       return;
     }
 
-    await GroupMessage.findOneAndUpdate(
+    const updated = await GroupMessage.findOneAndUpdate(
       { messageID, groupID },
       {
         pinnedInfo: {
           pinnedBy: userID,
           pinnedAt: new Date(),
         },
-      }
+      },
+      { new: true }
     );
 
-    res.json({ message: 'Ghim tin nhắn thành công' });
+    const user = await Users.findOne({ userID });
+    const io = req.app.get('io');
+    if (io && updated) {
+      io.to(groupID).emit('ghim_group_notification', {
+        ...updated.toObject(),
+        senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null }
+      });
+    }
+
+    res.json({ message: 'Ghim tin nhắn thành công', messageData: updated });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi ghim tin nhắn', error: error.message });
   }
@@ -878,17 +888,22 @@ router.post('/groups/:groupID/messages/:messageID/unpin', authMiddleware, async 
     const { groupID, messageID } = req.params;
     const userID = req.userID;
 
-    // Kiểm tra quyền
     const member = await GroupMember.findOne({ groupID, userID });
     if (!member || !['owner', 'admin'].includes(member.role)) {
       res.status(403).json({ message: 'Bạn không có quyền bỏ ghim tin nhắn' });
       return;
     }
 
-    await GroupMessage.findOneAndUpdate(
+    const updated = await GroupMessage.findOneAndUpdate(
       { messageID, groupID },
-      { pinnedInfo: null }
+      { pinnedInfo: null },
+      { new: true }
     );
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('unghim_group_notification', { messageID });
+    }
 
     res.json({ message: 'Bỏ ghim tin nhắn thành công' });
   } catch (error: any) {
@@ -1683,6 +1698,20 @@ router.post('/groups/:groupID/polls', authMiddleware, async (req: AuthRequest, r
     // Tạo tin nhắn poll trong chat
     const creator = await Users.findOne({ userID });
     const messageID = `gmsg_${uuidv4()}`;
+    // Tạo tin nhắn thông báo "X đã tạo một bình chọn"
+    const createNotifID = `gmsg_${uuidv4()}`;
+    const pollNotif = new GroupMessage({
+      messageID: createNotifID,
+      groupID,
+      senderID: userID,
+      content: `POLL_NOTIF|CREATE|${pollID}|${poll.question}|${creator?.name || 'Người dùng'}`,
+      type: 'notification',
+      timestamp: new Date(),
+      media_url: [],
+      status: 'sent',
+    });
+    await pollNotif.save();
+
     const pollMessage = new GroupMessage({
       messageID,
       groupID,
@@ -1690,7 +1719,7 @@ router.post('/groups/:groupID/polls', authMiddleware, async (req: AuthRequest, r
       content: question.trim(),
       type: 'poll',
       pollID,
-      timestamp: new Date(),
+      timestamp: new Date(Date.now() + 1000), // Thêm 1s để hiện sau thông báo
       media_url: [],
       status: 'sent',
       pinnedInfo: shouldPin ? {
@@ -1699,6 +1728,19 @@ router.post('/groups/:groupID/polls', authMiddleware, async (req: AuthRequest, r
       } : undefined,
     });
     await pollMessage.save();
+
+    // Emit socket realtime cho tin nhắn mới
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('new_group_message', {
+        ...pollNotif.toObject(),
+        senderInfo: { name: creator?.name || 'Người dùng', avatar: creator?.anhDaiDien || null },
+      });
+      io.to(groupID).emit('new_group_message', {
+        ...pollMessage.toObject(),
+        senderInfo: { name: creator?.name || 'Người dùng', avatar: creator?.anhDaiDien || null },
+      });
+    }
 
     // Lấy thông tin poll đầy đủ để trả về
     const pollData = {
@@ -1710,13 +1752,13 @@ router.post('/groups/:groupID/polls', authMiddleware, async (req: AuthRequest, r
     };
 
     // Emit socket events
-    const io = req.app.get('io');
-    if (io) {
+    const io_emit = req.app.get('io');
+    if (io_emit) {
       // Thông báo poll mới
-      io.to(groupID).emit('poll_created', pollData);
+      io_emit.to(groupID).emit('poll_created', pollData);
 
       // [UPDATE] Gửi tin nhắn poll vào chat dưới dạng CARD (type: poll)
-      io.to(groupID).emit('new_group_message', {
+      io_emit.to(groupID).emit('new_group_message', {
         ...pollMessage.toObject(),
         senderInfo: {
           name: creator?.name || 'Người dùng',
@@ -1765,29 +1807,34 @@ router.get('/groups/:groupID/polls', authMiddleware, async (req: AuthRequest, re
 
     const polls = await Poll.find({ groupID, isActive: true }).sort({ createdAt: -1 });
 
-    // Enrich với creator info và xử lý ẩn danh
-    const enriched = await Promise.all(
-      polls.map(async (poll) => {
-        const creator = await Users.findOne({ userID: poll.creatorID });
-        const pollObj = poll.toObject();
-        
-        // Nếu ẩn danh, xóa thông tin voters khỏi options
-        if (poll.isAnonymous) {
-          pollObj.options = pollObj.options.map((opt: any) => ({
-            ...opt,
-            voters: opt.voters.map(() => 'hidden') // Chỉ giữ lại số lượng thông qua length, ẩn ID
-          }));
-        }
+    // Tối ưu: Lấy thông tin creator cho tất cả các poll trong 1 lần query
+    const creatorIDs = [...new Set(polls.map(p => p.creatorID))];
+    const creators = await Users.find({ userID: { $in: creatorIDs } });
+    const creatorMap = creators.reduce((acc: any, user: any) => {
+      acc[user.userID] = {
+        name: user.name || 'Người dùng',
+        avatar: user.anhDaiDien || null,
+      };
+      return acc;
+    }, {});
 
-        return {
-          ...pollObj,
-          creatorInfo: {
-            name: creator?.name || 'Người dùng',
-            avatar: creator?.anhDaiDien || null,
-          },
-        };
-      })
-    );
+    const enriched = polls.map((poll) => {
+      const pollObj = poll.toObject();
+      const creatorInfo = creatorMap[poll.creatorID] || { name: 'Người dùng', avatar: null };
+      
+      // Nếu ẩn danh, xóa thông tin voters khỏi options
+      if (poll.isAnonymous) {
+        pollObj.options = pollObj.options.map((opt: any) => ({
+          ...opt,
+          voters: opt.voters.map(() => 'hidden')
+        }));
+      }
+
+      return {
+        ...pollObj,
+        creatorInfo,
+      };
+    });
 
     res.json({ polls: enriched });
   } catch (error: any) {
@@ -1913,12 +1960,23 @@ router.post('/groups/:groupID/polls/:pollID/vote', authMiddleware, async (req: A
       // [NEW] Gửi thông báo hệ thống khi có người bình chọn (toggle)
       const user = await Users.findOne({ userID });
       const voteNotifID = `gmsg_${uuidv4()}`;
-      const actionText = alreadyVoted ? 'đã bỏ bình chọn' : 'đã tham gia bình chọn';
+      
+      let actionType = alreadyVoted ? 'LEAVE' : 'JOIN';
+      
+      // Kiểm tra nếu là đổi lựa chọn (đã vote ở option khác trước đó)
+      if (!alreadyVoted && !poll.isMultipleChoice) {
+        const otherVoted = poll.options.some((opt, idx) => idx !== optionIndex && opt.voters.includes(currentUserID));
+        if (otherVoted) {
+          actionType = 'CHANGE';
+        }
+      }
+
       const pollNotif = new GroupMessage({
         messageID: voteNotifID,
         groupID,
         senderID: userID,
-        content: `##POLL_VOTED##|${pollID}|${poll.question}|${user?.name || 'Ai đó'}|${actionText}`,
+        // Format: POLL_NOTIF|[actionType]|[pollID]|[pollQuestion]|[userName]
+        content: `POLL_NOTIF|${actionType}|${pollID}|${poll.question}|${user?.name || 'Người dùng'}`,
         type: 'notification',
         timestamp: new Date(),
         media_url: [],
@@ -2150,7 +2208,7 @@ router.post('/groups/:groupID/polls/:pollID/lock', authMiddleware, async (req: A
         messageID: lockNotifID,
         groupID,
         senderID: userID,
-        content: `##POLL_CLOSED##|${pollID}|${poll.question}|${user?.name || 'Ai đó'}`,
+        content: `POLL_NOTIF|LOCK|${pollID}|${poll.question}|${user?.name || 'Người dùng'}`,
         type: 'notification',
         timestamp: new Date(),
         media_url: [],
@@ -2196,7 +2254,7 @@ router.post('/groups/:groupID/polls/:pollID/share', authMiddleware, async (req: 
       messageID: shareNotifID,
       groupID,
       senderID: userID,
-      content: `${user?.name || 'Ai đó'} đã chia sẻ cuộc bình chọn:`,
+      content: `POLL_NOTIF|SHARE|${pollID}|${poll.question}|${user?.name || 'Người dùng'}`,
       type: 'notification',
       timestamp: new Date(),
       media_url: [],
@@ -2204,27 +2262,31 @@ router.post('/groups/:groupID/polls/:pollID/share', authMiddleware, async (req: 
     });
     await pollNotif.save();
 
-    // Tạo tin nhắn poll
-    const pollMessageID = `gmsg_${uuidv4()}`;
-    const pollMessage = new GroupMessage({
-      messageID: pollMessageID,
-      groupID,
-      senderID: userID,
-      content: poll.question, // PollMessage front-end thường dùng content làm header / fallback
-      type: 'poll',
-      pollID,
-      timestamp: new Date(Date.now() + 1000), // Thêm 1s để thứ tự hiện sau thông báo
-      media_url: [],
-      status: 'sent',
-    });
-    await pollMessage.save();
-
+    // Emit notification
     const io = req.app.get('io');
     if (io) {
       io.to(groupID).emit('new_group_message', {
         ...pollNotif.toObject(),
         senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
       });
+    }
+
+    // Tạo tin nhắn poll
+    const pollMessageID = `gmsg_${uuidv4()}`;
+    const pollMessage = new GroupMessage({
+      messageID: pollMessageID,
+      groupID,
+      senderID: userID,
+      content: poll.question,
+      type: 'poll',
+      pollID,
+      timestamp: new Date(Date.now() + 1000), // Thêm 1s để hiện sau thông báo
+      media_url: [],
+      status: 'sent',
+    });
+    await pollMessage.save();
+
+    if (io) {
       io.to(groupID).emit('new_group_message', {
         ...pollMessage.toObject(),
         senderInfo: { name: user?.name || 'Người dùng', avatar: user?.anhDaiDien || null },
@@ -2234,6 +2296,45 @@ router.post('/groups/:groupID/polls/:pollID/share', authMiddleware, async (req: 
     res.json({ message: 'Đã chia sẻ bình chọn' });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi chia sẻ bình chọn', error: error.message });
+  }
+});
+
+// Ghim / bỏ ghim bình chọn
+router.post('/groups/:groupID/polls/:pollID/toggle-pin', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID, pollID } = req.params;
+    const userID = req.userID;
+
+    const member = await GroupMember.findOne({ groupID, userID, isActive: true });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không phải thành viên của nhóm' });
+      return;
+    }
+
+    const poll = await Poll.findOne({ pollID, groupID });
+    if (!poll) {
+      res.status(404).json({ message: 'Bình chọn không tồn tại' });
+      return;
+    }
+
+    poll.isPinned = !poll.isPinned;
+    poll.pinnedAt = poll.isPinned ? new Date() : undefined;
+    await poll.save();
+
+    const creator = await Users.findOne({ userID: poll.creatorID });
+    const pollObj = {
+      ...poll.toObject(),
+      creatorInfo: { name: creator?.name || 'Người dùng', avatar: creator?.anhDaiDien || null },
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(groupID).emit('poll_updated', pollObj);
+    }
+
+    res.json({ message: poll.isPinned ? 'Đã ghim bình chọn' : 'Đã bỏ ghim bình chọn', poll: pollObj });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi ghim/bỏ ghim bình chọn', error: error.message });
   }
 });
 
@@ -2472,12 +2573,15 @@ router.get('/groups/:groupID/pinned-messages', authMiddleware, async (req: AuthR
       return;
     }
 
-    const pinnedMessages = await GroupMessage.find({
-      groupID,
-      'pinnedInfo.pinnedBy': { $exists: true, $ne: null },
-    }).sort({ 'pinnedInfo.pinnedAt': -1 });
+    const [pinnedMessages, pinnedPolls] = await Promise.all([
+      GroupMessage.find({
+        groupID,
+        'pinnedInfo.pinnedBy': { $exists: true, $ne: null },
+      }).sort({ 'pinnedInfo.pinnedAt': -1 }),
+      Poll.find({ groupID, isPinned: true }).sort({ pinnedAt: -1 })
+    ]);
 
-    const enriched = await Promise.all(
+    const enrichedMessages = await Promise.all(
       pinnedMessages.map(async (msg) => {
         const sender = await Users.findOne({ userID: msg.senderID });
         return {
@@ -2490,7 +2594,36 @@ router.get('/groups/:groupID/pinned-messages', authMiddleware, async (req: AuthR
       })
     );
 
-    res.json({ pinnedMessages: enriched });
+    const enrichedPolls = await Promise.all(
+      pinnedPolls.map(async (poll) => {
+        const creator = await Users.findOne({ userID: poll.creatorID });
+        return {
+          messageID: poll.pollID, // Dùng pollID làm messageID cho UI ghim
+          type: 'poll',
+          content: poll.question,
+          senderID: poll.creatorID,
+          pollID: poll.pollID,
+          timestamp: poll.pinnedAt || poll.createdAt,
+          pinnedInfo: {
+            pinnedAt: poll.pinnedAt,
+            pinnedBy: poll.creatorID,
+          },
+          senderInfo: {
+            name: creator?.name || poll.creatorID,
+            avatar: creator?.anhDaiDien,
+          },
+        };
+      })
+    );
+
+    // Kết hợp và sắp xếp theo thời gian ghim
+    const allPinned = [...enrichedMessages, ...enrichedPolls].sort((a, b) => {
+      const timeA = new Date(a.pinnedInfo?.pinnedAt || 0).getTime();
+      const timeB = new Date(b.pinnedInfo?.pinnedAt || 0).getTime();
+      return timeB - timeA;
+    });
+
+    res.json({ pinnedMessages: allPinned });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi lấy tin nhắn ghim', error: error.message });
   }

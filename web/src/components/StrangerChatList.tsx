@@ -53,6 +53,39 @@ const getLastMsgPreview = (chat: StrangerChat, userID: string): string => {
   if (!last) return 'Chưa có tin nhắn';
   const isMine = last.senderID === userID;
   const prefix = isMine ? 'Bạn: ' : '';
+  // Xử lý thông báo Bình chọn (Poll) - Chuyển ra ngoài switch để bắt được cả khi type là 'text'
+  if (last.content?.startsWith('##POLL_')) {
+    const parts = last.content.split('|');
+    const type = parts[0];
+    const question = parts[2];
+    const personName = parts[3];
+    const isMe = last.senderID === userID;
+    const displayName = isMe ? 'Bạn' : personName;
+    if (type === '##POLL_CREATED##') return `${displayName} đã tạo bình chọn: ${question}`;
+    if (type === '##POLL_VOTED##') return `${displayName} đã tham gia bình chọn: ${question}`;
+    if (type === '##POLL_CLOSED##') return `${displayName} đã khóa bình chọn: ${question}`;
+    if (type === '##POLL_DELETED##') return `Bình chọn đã bị xóa: ${question}`;
+    if (type === '##POLL_OPTION_ADDED##') {
+      const optionText = parts[4];
+      return `${displayName} đã thêm lựa chọn "${optionText}" vào bình chọn: ${question}`;
+    }
+  }
+  if (last.content?.startsWith('POLL_NOTIF|')) {
+    const parts = last.content.split('|');
+    const [_, action, pollID, pollName, userName] = parts;
+    const isMe = last.senderID === userID;
+    const displayName = isMe ? 'Bạn' : userName;
+
+    let actionText = 'đã tham gia bình chọn:';
+    if (action === 'CREATE') actionText = 'đã tạo bình chọn:';
+    if (action === 'LEAVE') actionText = 'đã bỏ bình chọn:';
+    if (action === 'CHANGE') actionText = 'đã đổi lựa chọn:';
+    if (action === 'LOCK') actionText = 'đã khóa bình chọn:';
+    if (action === 'SHARE') actionText = 'đã chia sẻ bình chọn:';
+
+    return `${displayName} ${actionText} ${pollName}`;
+  }
+
   switch (last.type) {
     case 'image':
       return prefix + '[Hình ảnh]';
@@ -71,22 +104,6 @@ const getLastMsgPreview = (chat: StrangerChat, userID: string): string => {
         const parts = last.content.split('|');
         const otherName = userID === parts[1] ? parts[4] : parts[3];
         return `Bạn và ${otherName} đã trở thành bạn bè`;
-      }
-      if (last.content?.startsWith('##POLL_')) {
-        const parts = last.content.split('|');
-        const type = parts[0];
-        const question = parts[2];
-        const personName = parts[3];
-        const isMe = last.senderID === userID;
-        const displayName = isMe ? 'Bạn' : personName;
-        if (type === '##POLL_CREATED##') return `${displayName} đã tạo bình chọn: ${question}`;
-        if (type === '##POLL_VOTED##') return `${displayName} đã tham gia bình chọn: ${question}`;
-        if (type === '##POLL_CLOSED##') return `${displayName} đã khóa bình chọn: ${question}`;
-        if (type === '##POLL_DELETED##') return `Bình chọn đã bị xóa: ${question}`;
-        if (type === '##POLL_OPTION_ADDED##') {
-          const optionText = parts[4];
-          return `${displayName} đã thêm lựa chọn "${optionText}" vào bình chọn: ${question}`;
-        }
       }
       return last.content || '';
     default:

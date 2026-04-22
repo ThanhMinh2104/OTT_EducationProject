@@ -1607,6 +1607,33 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         const otherName = user?.userID === senderID ? receiverName : senderName;
         return <span className="text-xs text-gray-500 italic">Bạn và {otherName} đã trở thành bạn bè</span>;
       }
+      if (msg.content?.startsWith('##POLL_')) {
+        const parts = msg.content.split('|');
+        const type = parts[0];
+        const question = parts[2];
+        const personName = parts[3];
+        const isMe = msg.senderID === user?.userID;
+        const displayName = isMe ? 'Bạn' : personName;
+        let actionText = 'đã tham gia bình chọn:';
+        if (type === '##POLL_CREATED##') actionText = 'đã tạo bình chọn:';
+        else if (type === '##POLL_CLOSED##') actionText = 'đã khóa bình chọn:';
+        return <span className="text-xs text-gray-500 italic">{displayName} {actionText} {question}</span>;
+      }
+      if (msg.content?.startsWith('POLL_NOTIF|')) {
+        const parts = msg.content.split('|');
+        const [_, action, pollID, pollName, userName] = parts;
+        const isMe = msg.senderID === user?.userID;
+        const displayName = isMe ? 'Bạn' : userName;
+
+        let actionText = 'đã tham gia bình chọn:';
+        if (action === 'CREATE') actionText = 'đã tạo bình chọn:';
+        if (action === 'LEAVE') actionText = 'đã bỏ bình chọn:';
+        if (action === 'CHANGE') actionText = 'đã đổi lựa chọn:';
+        if (action === 'LOCK') actionText = 'đã khóa bình chọn:';
+        if (action === 'SHARE') actionText = 'đã chia sẻ bình chọn:';
+
+        return <span className="text-xs text-gray-500 italic">{displayName} {actionText} {pollName}</span>;
+      }
       return <span className="text-xs text-gray-500 italic">{msg.content}</span>;
     }
     if (msg.type === 'call-missed') {
