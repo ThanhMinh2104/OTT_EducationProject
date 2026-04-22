@@ -22,7 +22,6 @@ import {
   FaPause,
   FaUserFriends,
   FaBan,
-  FaEllipsisV,
 } from 'react-icons/fa';
 import { BsPin, BsPinAngleFill } from 'react-icons/bs';
 import { EmojiClickData } from 'emoji-picker-react';
@@ -375,6 +374,11 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   >([]);
   const [showSearch, setShowSearch] = useState(false);
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
+  const [searchSenderFilter, setSearchSenderFilter] = useState('');
+  const [searchFromDate, setSearchFromDate] = useState('');
+  const [searchToDate, setSearchToDate] = useState('');
+  const [showSearchSenderDrop, setShowSearchSenderDrop] = useState(false);
+  const [showSearchDateDrop, setShowSearchDateDrop] = useState(false);
   const msgRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
@@ -1548,22 +1552,30 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       .toString()
       .padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const handleSearch = async () => {
-    if (!searchKeyword.trim() || !selectedChat) {
+  const handleSearch = async (overrides?: { sender?: string; from?: string; to?: string }) => {
+    const keyword = searchKeyword;
+    const sender = overrides?.sender ?? searchSenderFilter;
+    const from = overrides?.from ?? searchFromDate;
+    const to = overrides?.to ?? searchToDate;
+    if (!keyword.trim() && !sender && !from && !to) {
       setSearchResults([]);
       return;
     }
+    if (!selectedChat) return;
     try {
-      const res = await fetch(
-        `${API}/messages/search?chatID=${selectedChat.chatID}&keyword=${encodeURIComponent(searchKeyword.trim())}`,
-        { headers: authHeaders() }
-      );
+      const params = new URLSearchParams({ chatID: selectedChat.chatID });
+      if (keyword.trim()) params.set('keyword', keyword.trim());
+      if (sender) params.set('senderID', sender);
+      if (from) params.set('fromDate', from);
+      if (to) params.set('toDate', to);
+      const res = await fetch(`${API}/messages/search?${params}`, { headers: authHeaders() });
       const data = await res.json();
       const results: typeof searchResults = (data as Message[]).map((m) => ({
         type: 'message',
         content: m.content,
         timestamp: m.timestamp,
         messageID: m.messageID,
+        senderInfo: (m as any).senderInfo,
       }));
       setSearchResults(results);
     } catch {
@@ -3237,90 +3249,129 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
           {/* Search panel */}
           {showSearch && (
             <div
-              className="w-[280px] border-l border-gray-100 bg-white flex flex-col shrink-0"
+              className="w-[300px] border-l border-gray-100 bg-white flex flex-col shrink-0"
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Header */}
               <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
-                <h3 className="text-[14px] font-semibold text-gray-800 flex-1">
-                  Tìm kiếm tin nhắn
-                </h3>
+                <h3 className="text-[14px] font-semibold text-gray-800 flex-1">Tìm kiếm trong trò chuyện</h3>
                 <button
-                  onClick={() => {
-                    setShowSearch(false);
-                    setSearchResults([]);
-                    setSearchKeyword('');
-                  }}
+                  onClick={() => { setShowSearch(false); setSearchResults([]); setSearchKeyword(''); setSearchSenderFilter(''); setSearchFromDate(''); setSearchToDate(''); }}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <FaTimes />
                 </button>
               </div>
-              <div className="px-3 py-2 border-b border-gray-100">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                    placeholder="Nhập từ khóa..."
-                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0068ff] bg-gray-50 text-gray-800"
-                  />
-                  <button
-                    onClick={handleSearch}
-                    className="px-3 py-1.5 bg-[#0068ff] text-gray-900 rounded-lg text-sm hover:bg-[#0077c2] transition-colors"
-                  >
-                    Tìm
-                  </button>
-                </div>
+              {/* Search input */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <FaSearch className="text-gray-400 text-xs shrink-0" />
+                <input
+                  type="text"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  placeholder="Tìm kiếm..."
+                  autoFocus
+                  className="flex-1 bg-transparent text-sm outline-none text-gray-800 placeholder-gray-400"
+                />
+                {searchKeyword && (
+                  <button onClick={() => { setSearchKeyword(''); handleSearch({ sender: searchSenderFilter, from: searchFromDate, to: searchToDate }); }} className="text-gray-400 hover:text-gray-600 text-xs">Xóa</button>
+                )}
               </div>
+              {/* Filters */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 flex-wrap">
+                <span className="text-[11px] text-gray-500">Lọc theo:</span>
+                {/* Sender filter - chỉ hiện cho group */}
+                {selectedChat?.type === 'group' && (() => {
+                  const chatMembers = selectedChat?.members || [];
+                  return (
+                    <div className="relative">
+                      <button
+                        onClick={() => { setShowSearchSenderDrop(v => !v); setShowSearchDateDrop(false); }}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] transition-colors ${searchSenderFilter ? 'border-[#0068ff] bg-blue-50 text-[#0068ff]' : 'border-gray-200 text-gray-500 hover:border-[#0068ff]'}`}
+                      >
+                        <FaSearch className="text-[9px]" /> Người gửi ▾
+                      </button>
+                      {showSearchSenderDrop && (
+                        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 min-w-[160px] max-h-[200px] overflow-y-auto py-1">
+                          <div className="px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 text-gray-500" onClick={() => { setSearchSenderFilter(''); setShowSearchSenderDrop(false); handleSearch({ sender: '', from: searchFromDate, to: searchToDate }); }}>Tất cả</div>
+                          {chatMembers.map((m: any) => (
+                            <div key={m.userID} className={`px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 ${searchSenderFilter === m.userID ? 'text-[#0068ff] bg-blue-50' : 'text-gray-700'}`}
+                              onClick={() => { setSearchSenderFilter(m.userID); setShowSearchSenderDrop(false); handleSearch({ sender: m.userID, from: searchFromDate, to: searchToDate }); }}>
+                              {m.userID}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* Date filter */}
+                <div className="relative">
+                  <button
+                    onClick={() => { setShowSearchDateDrop(v => !v); setShowSearchSenderDrop(false); }}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] transition-colors ${(searchFromDate || searchToDate) ? 'border-[#0068ff] bg-blue-50 text-[#0068ff]' : 'border-gray-200 text-gray-500 hover:border-[#0068ff]'}`}
+                  >
+                    📅 Ngày gửi ▾
+                  </button>
+                  {showSearchDateDrop && (
+                    <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 p-3 min-w-[200px]">
+                      <div className="flex flex-col gap-2">
+                        <div>
+                          <label className="text-[10px] text-gray-500 block mb-1">Từ ngày</label>
+                          <input type="date" value={searchFromDate} onChange={e => { setSearchFromDate(e.target.value); handleSearch({ sender: searchSenderFilter, from: e.target.value, to: searchToDate }); }} className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-[#0068ff]" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 block mb-1">Đến ngày</label>
+                          <input type="date" value={searchToDate} onChange={e => { setSearchToDate(e.target.value); handleSearch({ sender: searchSenderFilter, from: searchFromDate, to: e.target.value }); }} className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-[#0068ff]" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {(searchSenderFilter || searchFromDate || searchToDate) && (
+                  <button onClick={() => { setSearchSenderFilter(''); setSearchFromDate(''); setSearchToDate(''); handleSearch({ sender: '', from: '', to: '' }); }} className="text-[10px] text-red-400 hover:text-red-600">Xóa lọc</button>
+                )}
+              </div>
+              {/* Results */}
               <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2">
                 {searchResults.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center mt-8">
-                    {searchKeyword ? 'Không tìm thấy kết quả' : 'Nhập từ khóa để tìm kiếm'}
+                    {(searchKeyword || searchSenderFilter || searchFromDate || searchToDate) ? 'Không tìm thấy kết quả' : 'Nhập từ khóa để tìm kiếm'}
                   </p>
                 ) : (
-                  searchResults.map((r, i) => (
-                    <div
-                      key={i}
-                      className={`p-2.5 rounded-xl text-sm cursor-pointer border transition-colors ${r.messageID ? 'bg-gray-50 border-gray-100 hover:bg-blue-50 hover:border-[#0068ff]/30' : 'bg-gray-50 border-transparent'}`}
-                      onClick={() => r.messageID && handleScrollToMessage(r.messageID)}
-                    >
-                      {r.type === 'message' && (
-                        <p className="text-gray-700 text-[13px] leading-snug line-clamp-2">
-                          {r.content
-                            ?.split(new RegExp(`(${searchKeyword})`, 'gi'))
-                            .map((part, j) =>
-                              part.toLowerCase() === searchKeyword.toLowerCase() ? (
-                                <mark
-                                  key={j}
-                                  className="bg-blue-200/50 text-gray-900 rounded px-0.5"
-                                >
-                                  {part}
-                                </mark>
-                              ) : (
-                                part
-                              )
-                            )}
-                        </p>
-                      )}
-                      {r.type === 'file' && (
-                        <a
-                          href={r.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-500 hover:underline"
-                        >
-                          {r.name}
-                        </a>
-                      )}
-                      <p className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-1">
-                        🕐 {new Date(r.timestamp).toLocaleString('vi-VN')}
-                        {r.messageID && (
-                          <span className="text-[#0068ff] ml-auto text-[10px]">Nhấn để xem</span>
-                        )}
-                      </p>
-                    </div>
-                  ))
+                  <>
+                    <p className="text-[11px] font-semibold text-gray-500 px-0.5">Tin nhắn</p>
+                    {searchResults.map((r, i) => (
+                      <div
+                        key={i}
+                        className={`flex gap-2.5 p-2.5 rounded-xl text-sm cursor-pointer border transition-colors ${r.messageID ? 'bg-gray-50 border-gray-100 hover:bg-blue-50 hover:border-[#0068ff]/30' : 'bg-gray-50 border-transparent'}`}
+                        onClick={() => r.messageID && handleScrollToMessage(r.messageID)}
+                      >
+                        {(r as any).senderInfo?.avatar
+                          ? <img src={(r as any).senderInfo.avatar} className="w-8 h-8 rounded-full object-cover shrink-0" alt="" />
+                          : <div className="w-8 h-8 rounded-full bg-[#0068ff] text-white flex items-center justify-center text-xs font-bold shrink-0">{(r as any).senderInfo?.name?.[0] || '?'}</div>
+                        }
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center mb-0.5">
+                            <span className="text-[12px] font-semibold text-gray-700">{(r as any).senderInfo?.name || ''}</span>
+                            <span className="text-[10px] text-gray-400">{new Date(r.timestamp).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</span>
+                          </div>
+                          {r.type === 'message' && (
+                            <p className="text-gray-600 text-[12px] leading-snug line-clamp-2">
+                              {r.content
+                                ?.split(new RegExp(`(${searchKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
+                                .map((part, j) =>
+                                  part.toLowerCase() === searchKeyword.toLowerCase() ? (
+                                    <mark key={j} className="bg-blue-200/60 text-blue-900 rounded px-0.5">{part}</mark>
+                                  ) : part
+                                )}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             </div>

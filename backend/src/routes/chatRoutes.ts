@@ -642,17 +642,28 @@ export default function chatRoutes(io: Server) {
   // Tìm kiếm tin nhắn
   router.get('/messages/search', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-      const { chatID, keyword } = req.query as { chatID: string; keyword: string };
+      const { chatID, keyword, senderID, fromDate, toDate } = req.query as Record<string, string>;
       const userID = req.userID!;
       if (!chatID || !keyword?.trim()) return res.json([]);
       const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
       if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
-      const msgs = await Message.find({
+      const query: any = {
         chatID,
         type: { $in: ['text', 'emoji'] },
         content: { $regex: keyword.trim(), $options: 'i' },
-        deletedFor: { $ne: userID } // ⭐ Filter deleted messages
-      }).sort({ timestamp: -1 }).limit(50).lean();
+        deletedFor: { $ne: userID }
+      };
+      if (senderID) query.senderID = senderID;
+      if (fromDate || toDate) {
+        query.timestamp = {};
+        if (fromDate) query.timestamp.$gte = new Date(fromDate);
+        if (toDate) {
+          const end = new Date(toDate);
+          end.setHours(23, 59, 59, 999);
+          query.timestamp.$lte = end;
+        }
+      }
+      const msgs = await Message.find(query).sort({ timestamp: -1 }).limit(50).lean();
       const senderIDs = [...new Set(msgs.map((m) => m.senderID))];
       const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
       const result = msgs.map((m) => {

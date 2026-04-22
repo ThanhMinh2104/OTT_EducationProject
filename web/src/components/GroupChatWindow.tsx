@@ -51,6 +51,7 @@ import UserProfileModal from './UserProfileModal';
 import PollMessage from './PollMessage';
 import { PinnedMessagesPanel } from './PinnedMessagesPanel';
 import GroupBoardModal from './GroupBoardModal';
+import { GroupSearchModal } from './GroupSearchModal';
 
 const API = 'http://localhost:5000/api';
 
@@ -422,6 +423,7 @@ export const GroupChatWindow = ({
   const [showBoard, setShowBoard] = useState(false);
   const [boardTab, setBoardTab] = useState<'all' | 'pinned' | 'notes' | 'polls'>('all');
   const [boardInitialPollId, setBoardInitialPollId] = useState<string | undefined>(undefined);
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
 
   // Lắng nghe sự kiện mở chi tiết bình chọn từ các component con (như PollMessage)
   useEffect(() => {
@@ -2183,10 +2185,10 @@ export const GroupChatWindow = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  toast('Tính năng tìm kiếm đang phát triển');
+                  setShowSearchPanel(v => !v);
                 }}
                 title="Tìm kiếm"
-                className="cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]"
+                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showSearchPanel ? 'bg-blue-50 text-[#0068ff]' : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
               >
                 <FaSearch />
               </button>
@@ -3508,6 +3510,20 @@ export const GroupChatWindow = ({
               })}
             </div>
           </div>
+        )}
+
+        {/* Search Panel — inline sidebar */}
+        {showSearchPanel && (
+          <GroupSearchModal
+            groupID={groupID}
+            members={members.map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar }))}
+            onClose={() => setShowSearchPanel(false)}
+            onScrollToMessage={(msgId) => {
+              setHighlightedMsgId(msgId);
+              msgRefsMap.current.get(msgId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              setTimeout(() => setHighlightedMsgId(null), 2500);
+            }}
+          />
         )}
       </div>
 

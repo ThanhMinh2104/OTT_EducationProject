@@ -961,7 +961,7 @@ router.get('/groups/:groupID/pinned-messages', authMiddleware, async (req: AuthR
 router.get('/groups/:groupID/search', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { groupID } = req.params;
-    const { q, type } = req.query;
+    const { q, type, senderID, fromDate, toDate } = req.query as Record<string, string>;
     const userID = req.userID;
 
     // Kiểm tra quyền
@@ -971,19 +971,41 @@ router.get('/groups/:groupID/search', authMiddleware, async (req: AuthRequest, r
       return;
     }
 
-    const query: any = { groupID, deletedFor: { $ne: userID } };
+    const query: any = { groupID, deletedFor: { $ne: userID }, type: { $in: ['text', 'emoji'] } };
 
-    if (q) {
-      query.content = { $regex: q, $options: 'i' };
+    if (q?.trim()) {
+      query.content = { $regex: q.trim(), $options: 'i' };
     }
 
     if (type) {
       query.type = type;
     }
 
-    const messages = await GroupMessage.find(query).sort({ timestamp: -1 }).limit(100);
+    if (senderID) {
+      query.senderID = senderID;
+    }
 
-    res.json(messages);
+    if (fromDate || toDate) {
+      query.timestamp = {};
+      if (fromDate) query.timestamp.$gte = new Date(fromDate);
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        query.timestamp.$lte = end;
+      }
+    }
+
+    const messages = await GroupMessage.find(query).sort({ timestamp: -1 }).limit(100).lean();
+
+    // Enrich với senderInfo
+    const senderIDs = [...new Set(messages.map((m) => m.senderID))];
+    const senders = await Users.find({ userID: { $in: senderIDs } }).lean();
+    const result = messages.map((m) => {
+      const s = senders.find((u) => u.userID === m.senderID);
+      return { ...m, senderInfo: s ? { name: s.name, avatar: s.anhDaiDien || null } : { name: m.senderID, avatar: null } };
+    });
+
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi tìm kiếm', error: error.message });
   }

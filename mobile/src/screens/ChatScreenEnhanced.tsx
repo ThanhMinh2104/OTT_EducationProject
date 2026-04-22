@@ -1,5 +1,65 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  Image,
+  TextInput,
+  Modal,
+  Alert,
+  ActivityIndicator,
+  Linking,
+  ScrollView,
+  Clipboard,
+  Platform,
+  InteractionManager,
+  RefreshControl,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { StackNavigationProp } from "@react-navigation/stack";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  AudioModule,
+  setAudioModeAsync,
+} from "expo-audio";
+import {
+  Ionicons,
+  MaterialCommunityIcons,
+  FontAwesome5,
+} from "@expo/vector-icons";
+import { RootStackParamList } from "../navigation/AppNavigator";
+import { API_URL } from "../utils/config";
+import socket from "../utils/socket";
+import StickerEmojiPicker from "../components/StickerEmojiPicker";
+import ImageGrid from "../components/ImageGrid"; // ⭐ Import ImageGrid
+import {
+  groupMessages,
+  isMessageGroup,
+  Message as MessageGroupingMessage,
+} from "../utils/messageGrouping"; // ⭐ Import grouping utilities
+import AudioPlayer from "../components/AudioPlayer";
+import CallScreen from "./CallScreen";
+import IncomingCallModal from "../components/IncomingCallModal";
+import GroupCallScreen from "./GroupCallScreen";
+import GroupIncomingCallModal from "../components/GroupIncomingCallModal";
+import { downloadAndOpenFile } from "../utils/fileDownload";
+import ImageViewer from "../components/ImageViewer";
+import VideoViewer from "../components/VideoViewer";
+import ChatInfoPanel from "../components/ChatInfoPanel";
+import MessageSearchPanel from "../components/MessageSearchPanel";
+import AddFriendModal from "../components/AddFriendModal";
+import OtherProfileModal, { OtherUser } from "../components/OtherProfileModal";
+import { Swipeable } from "react-native-gesture-handler";
+import { CreateGroupModal } from "../components/CreateGroupModal";
+import { EditGroupInfoModal } from "../components/EditGroupInfoModal";
+
+import { StackScreenProps } from "@react-navigation/stack";
   View, Text, TouchableOpacity, StyleSheet, FlatList, Image,
   TextInput, Modal, Alert, ActivityIndicator, Linking, ScrollView, Clipboard, Platform,
   InteractionManager, RefreshControl
@@ -211,6 +271,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   // Chat info panel state
   const [showChatInfo, setShowChatInfo] = useState(false);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
 
   // States cho Mention (@)
@@ -2311,14 +2373,30 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     // ⭐ Tìm index trong mảng grouped
     const index = groupedData.findIndex((item) => {
       if (isMessageGroup(item)) {
-        // Kiểm tra xem messageID có trong group không
-        return item.messages.some((msg: Message) => msg.messageID === messageID);
+        return item.messages.some(
+          (msg: Message) => msg.messageID === messageID,
+        );
       }
       return item.messageID === messageID;
     });
 
     if (index !== -1 && flatListRef.current) {
-      flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      try {
+        flatListRef.current.scrollToIndex({
+          index,
+          animated: true,
+          viewPosition: 0.5,
+        });
+      } catch {
+        // fallback nếu item chưa render
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        }, 300);
+      }
       setShowInfoPanel(false);
     }
   };
@@ -2774,7 +2852,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         onLongPress={() => handleLongPress(item)}
         delayLongPress={500}
         activeOpacity={1}
-        style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}
+        style={[
+          styles.messageRow,
+          isMine ? styles.messageRowMine : styles.messageRowOther,
+          highlightedMessageId === item.messageID && styles.messageHighlighted,
+        ]}
       >
         {/* Avatar bên trái cho tin nhắn người khác */}
         {!isMine && (
@@ -3219,8 +3301,29 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   // View chính của Chat Window
   return (
     <View style={styles.container}>
-      {/* ... (phần header cũ) ... */}
-      {/* Header */}
+      {/* Header hoặc Search Bar */}
+      {showMessageSearch ? (
+        <MessageSearchPanel
+          chatID={selectedChat.chatID}
+          chatType={selectedChat.type}
+          currentUserID={user?.userID}
+          currentUserName={user?.name}
+          currentUserAvatar={user?.anhDaiDien}
+          members={selectedChat.members.map(m => ({
+            userID: m.userID,
+            name: memberCache[m.userID]?.name || m.userID,
+            avatar: memberCache[m.userID]?.anhDaiDien,
+          }))}
+          onClose={() => setShowMessageSearch(false)}
+          onScrollToMessage={(messageID) => {
+            // Dùng scrollToMessage đã tính đúng index trong grouped data
+            scrollToMessage(messageID);
+            setHighlightedMessageId(messageID);
+            setTimeout(() => setHighlightedMessageId(null), 2500);
+          }}
+          topInset={insets.top}
+        />
+      ) : (
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity onPress={() => { setSelectedChat(null); onChatClose?.(); }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={26} color="#fff" />
@@ -3330,7 +3433,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             );
           })()}
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.headerIconBtn}
+          onPress={() => setShowMessageSearch(true)}
+        >
+          <Ionicons name="search-outline" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
+      )}
 
       {/* Stranger Banner — Chỉ hiện khi là người lạ/chờ */}
       {selectedChat && selectedChat.type === 'private' &&
@@ -3539,6 +3649,17 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           if (page === 1) {
             flatListRef.current?.scrollToEnd({ animated: false });
           }
+        }}
+        onScrollToIndexFailed={(info) => {
+          // Fallback: scroll tới offset ước tính rồi retry
+          const wait = new Promise(resolve => setTimeout(resolve, 300));
+          wait.then(() => {
+            flatListRef.current?.scrollToIndex({
+              index: info.index,
+              animated: true,
+              viewPosition: 0.5,
+            });
+          });
         }}
       />
 
@@ -4636,6 +4757,23 @@ const styles = StyleSheet.create({
 
   // Message row layout (Zalo style)
   messageRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    marginVertical: 2,
+    paddingHorizontal: 10,
+  },
+  messageRowMine: { justifyContent: "flex-end" },
+  messageRowOther: { justifyContent: "flex-start" },
+  messageHighlighted: {
+    backgroundColor: "rgba(0, 104, 255, 0.12)",
+    borderRadius: 12,
+  },
+  msgAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    marginRight: 6,
+    marginBottom: 2,
     flexDirection: 'row', alignItems: 'flex-end',
     marginVertical: 2, paddingHorizontal: 10,
   },
