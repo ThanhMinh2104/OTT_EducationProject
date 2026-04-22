@@ -16,63 +16,53 @@ import {
   Platform,
   InteractionManager,
   RefreshControl,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { StackNavigationProp } from "@react-navigation/stack";
-import * as ImagePicker from "expo-image-picker";
-import * as DocumentPicker from "expo-document-picker";
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StackNavigationProp, StackScreenProps } from '@react-navigation/stack';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   useAudioRecorder,
   RecordingPresets,
   AudioModule,
   setAudioModeAsync,
-} from "expo-audio";
+} from 'expo-audio';
 import {
   Ionicons,
   MaterialCommunityIcons,
   FontAwesome5,
-} from "@expo/vector-icons";
-import { RootStackParamList } from "../navigation/AppNavigator";
-import { API_URL } from "../utils/config";
-import socket from "../utils/socket";
-import StickerEmojiPicker from "../components/StickerEmojiPicker";
-import ImageGrid from "../components/ImageGrid"; // ⭐ Import ImageGrid
+} from '@expo/vector-icons';
+import { RootStackParamList } from '../navigation/AppNavigator';
+import { API_URL } from '../utils/config';
+import socket from '../utils/socket';
+import StickerEmojiPicker from '../components/StickerEmojiPicker';
+import ImageGrid from '../components/ImageGrid';
 import {
   groupMessages,
   isMessageGroup,
   Message as MessageGroupingMessage,
-} from "../utils/messageGrouping"; // ⭐ Import grouping utilities
-import AudioPlayer from "../components/AudioPlayer";
-import CallScreen from "./CallScreen";
-import IncomingCallModal from "../components/IncomingCallModal";
-import GroupCallScreen from "./GroupCallScreen";
-import GroupIncomingCallModal from "../components/GroupIncomingCallModal";
-import { downloadAndOpenFile } from "../utils/fileDownload";
-import ImageViewer from "../components/ImageViewer";
-import VideoViewer from "../components/VideoViewer";
-import ChatInfoPanel from "../components/ChatInfoPanel";
-import MessageSearchPanel from "../components/MessageSearchPanel";
-import AddFriendModal from "../components/AddFriendModal";
-import OtherProfileModal, { OtherUser } from "../components/OtherProfileModal";
-import { Swipeable } from "react-native-gesture-handler";
-import { CreateGroupModal } from "../components/CreateGroupModal";
-import { EditGroupInfoModal } from "../components/EditGroupInfoModal";
-
-import { StackScreenProps } from "@react-navigation/stack";
-  View, Text, TouchableOpacity, StyleSheet, FlatList, Image,
-  TextInput, Modal, Alert, ActivityIndicator, Linking, ScrollView, Clipboard, Platform,
-  InteractionManager, RefreshControl
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StackNavigationProp } from '@react-navigation/stack';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
-import { RootStackParamList } from '../navigation/AppNavigator';
-import { API_URL } from '../utils/config';
+} from '../utils/messageGrouping';
+import AudioPlayer from '../components/AudioPlayer';
+import CallScreen from './CallScreen';
+import IncomingCallModal from '../components/IncomingCallModal';
+import GroupCallScreen from './GroupCallScreen';
+import GroupIncomingCallModal from '../components/GroupIncomingCallModal';
+import { downloadAndOpenFile } from '../utils/fileDownload';
+import ImageViewer from '../components/ImageViewer';
+import VideoViewer from '../components/VideoViewer';
+import ChatInfoPanel from '../components/ChatInfoPanel';
+import MessageSearchPanel from '../components/MessageSearchPanel';
+import AddFriendModal from '../components/AddFriendModal';
+import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
+import FilePreviewModal from '../components/FilePreviewModal';
+import { Swipeable } from 'react-native-gesture-handler';
+import { CreateGroupModal } from '../components/CreateGroupModal';
+import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
+import MentionDropdown from '../components/MentionDropdown';
+import HighlightedTextInput from '../components/HighlightedTextInput';
+import PollBubble from '../components/PollBubble';
+import { GroupBoardModal } from '../components/GroupBoardModal';
 
 const GIPHY_API_KEY = 'iw8DsJkjCByct4EHovySloueKpn6ljwK';
 
@@ -92,31 +82,6 @@ const STICKER_DATA = [
 ];
 
 const BOT_SUGGESTIONS = ['Tóm tắt nhóm chat', 'Lên lịch họp', 'Dịch tin nhắn gần nhất', 'Tạo bình chọn'];
-import socket from '../utils/socket';
-import StickerEmojiPicker from '../components/StickerEmojiPicker';
-import ImageGrid from '../components/ImageGrid'; // ⭐ Import ImageGrid
-import { groupMessages, isMessageGroup, Message as MessageGroupingMessage } from '../utils/messageGrouping'; // ⭐ Import grouping utilities
-import AudioPlayer from '../components/AudioPlayer';
-import CallScreen from './CallScreen';
-import IncomingCallModal from '../components/IncomingCallModal';
-import GroupCallScreen from './GroupCallScreen';
-import GroupIncomingCallModal from '../components/GroupIncomingCallModal';
-import { downloadAndOpenFile } from '../utils/fileDownload';
-import ImageViewer from '../components/ImageViewer';
-import VideoViewer from '../components/VideoViewer';
-import ChatInfoPanel from '../components/ChatInfoPanel';
-import AddFriendModal from '../components/AddFriendModal';
-import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
-import FilePreviewModal from '../components/FilePreviewModal';
-import { Swipeable } from 'react-native-gesture-handler';
-import { CreateGroupModal } from '../components/CreateGroupModal';
-import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
-import MentionDropdown from '../components/MentionDropdown';
-import HighlightedTextInput from '../components/HighlightedTextInput';
-import PollBubble from '../components/PollBubble';
-import { GroupBoardModal } from '../components/GroupBoardModal';
-
-import { StackScreenProps } from '@react-navigation/stack';
 
 type Props = Partial<StackScreenProps<RootStackParamList, any>> & {
   onChatOpen?: () => void;
@@ -4774,12 +4739,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     marginRight: 6,
     marginBottom: 2,
-    flexDirection: 'row', alignItems: 'flex-end',
-    marginVertical: 2, paddingHorizontal: 10,
   },
-  messageRowMine: { justifyContent: 'flex-end' },
-  messageRowOther: { justifyContent: 'flex-start' },
-  msgAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 6, marginBottom: 2 },
   msgContent: { maxWidth: '72%' },
   msgContentMine: { alignItems: 'flex-end' },
   msgContentOther: { alignItems: 'flex-start' },
