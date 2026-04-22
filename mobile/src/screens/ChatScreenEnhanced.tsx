@@ -52,6 +52,7 @@ import { downloadAndOpenFile } from "../utils/fileDownload";
 import ImageViewer from "../components/ImageViewer";
 import VideoViewer from "../components/VideoViewer";
 import ChatInfoPanel from "../components/ChatInfoPanel";
+import MessageSearchPanel from "../components/MessageSearchPanel";
 import AddFriendModal from "../components/AddFriendModal";
 import OtherProfileModal, { OtherUser } from "../components/OtherProfileModal";
 import { Swipeable } from "react-native-gesture-handler";
@@ -191,6 +192,8 @@ const ChatScreenEnhanced = ({
 
   // Chat info panel state
   const [showChatInfo, setShowChatInfo] = useState(false);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
 
   // States cho Mention (@)
@@ -2280,7 +2283,6 @@ const ChatScreenEnhanced = ({
     // ⭐ Tìm index trong mảng grouped
     const index = groupedData.findIndex((item) => {
       if (isMessageGroup(item)) {
-        // Kiểm tra xem messageID có trong group không
         return item.messages.some(
           (msg: Message) => msg.messageID === messageID,
         );
@@ -2289,11 +2291,22 @@ const ChatScreenEnhanced = ({
     });
 
     if (index !== -1 && flatListRef.current) {
-      flatListRef.current.scrollToIndex({
-        index,
-        animated: true,
-        viewPosition: 0.5,
-      });
+      try {
+        flatListRef.current.scrollToIndex({
+          index,
+          animated: true,
+          viewPosition: 0.5,
+        });
+      } catch {
+        // fallback nếu item chưa render
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        }, 300);
+      }
       setShowInfoPanel(false);
     }
   };
@@ -2680,6 +2693,7 @@ const ChatScreenEnhanced = ({
         style={[
           styles.messageRow,
           isMine ? styles.messageRowMine : styles.messageRowOther,
+          highlightedMessageId === item.messageID && styles.messageHighlighted,
         ]}
       >
         {/* Avatar bên trái cho tin nhắn người khác */}
@@ -3190,8 +3204,29 @@ const ChatScreenEnhanced = ({
   // View chính của Chat Window
   return (
     <View style={styles.container}>
-      {/* ... (phần header cũ) ... */}
-      {/* Header */}
+      {/* Header hoặc Search Bar */}
+      {showMessageSearch ? (
+        <MessageSearchPanel
+          chatID={selectedChat.chatID}
+          chatType={selectedChat.type}
+          currentUserID={user?.userID}
+          currentUserName={user?.name}
+          currentUserAvatar={user?.anhDaiDien}
+          members={selectedChat.members.map(m => ({
+            userID: m.userID,
+            name: memberCache[m.userID]?.name || m.userID,
+            avatar: memberCache[m.userID]?.anhDaiDien,
+          }))}
+          onClose={() => setShowMessageSearch(false)}
+          onScrollToMessage={(messageID) => {
+            // Dùng scrollToMessage đã tính đúng index trong grouped data
+            scrollToMessage(messageID);
+            setHighlightedMessageId(messageID);
+            setTimeout(() => setHighlightedMessageId(null), 2500);
+          }}
+          topInset={insets.top}
+        />
+      ) : (
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity
           onPress={() => {
@@ -3306,7 +3341,14 @@ const ChatScreenEnhanced = ({
         >
           <Ionicons name="menu-outline" size={24} color="#fff" />
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.headerIconBtn}
+          onPress={() => setShowMessageSearch(true)}
+        >
+          <Ionicons name="search-outline" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
+      )}
 
       {/* Stranger Banner — Chỉ hiện khi là người lạ/chờ */}
       {selectedChat &&
@@ -3579,6 +3621,17 @@ const ChatScreenEnhanced = ({
           if (page === 1) {
             flatListRef.current?.scrollToEnd({ animated: false });
           }
+        }}
+        onScrollToIndexFailed={(info) => {
+          // Fallback: scroll tới offset ước tính rồi retry
+          const wait = new Promise(resolve => setTimeout(resolve, 300));
+          wait.then(() => {
+            flatListRef.current?.scrollToIndex({
+              index: info.index,
+              animated: true,
+              viewPosition: 0.5,
+            });
+          });
         }}
       />
 
@@ -4646,6 +4699,10 @@ const styles = StyleSheet.create({
   },
   messageRowMine: { justifyContent: "flex-end" },
   messageRowOther: { justifyContent: "flex-start" },
+  messageHighlighted: {
+    backgroundColor: "rgba(0, 104, 255, 0.12)",
+    borderRadius: 12,
+  },
   msgAvatar: {
     width: 30,
     height: 30,
