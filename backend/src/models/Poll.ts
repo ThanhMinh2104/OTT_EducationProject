@@ -18,6 +18,8 @@ export interface IPoll extends Document {
   isAnonymous: boolean; // Bình chọn ẩn danh
   createdAt: Date;
   isActive: boolean;
+  isPinned: boolean;
+  pinnedAt?: Date;
 }
 
 const PollSchema = new Schema<IPoll>(
@@ -40,6 +42,8 @@ const PollSchema = new Schema<IPoll>(
     isAnonymous: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
     isActive: { type: Boolean, default: true },
+    isPinned: { type: Boolean, default: false },
+    pinnedAt: { type: Date },
   },
   { versionKey: false }
 );
