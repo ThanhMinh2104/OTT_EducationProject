@@ -217,6 +217,9 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
   const canCreateNotes =
     isOwner || isAdmin || (groupInfo?.settings?.memberPermissions?.createNotes ?? true);
   
+  const canCreatePolls =
+    isOwner || isAdmin || (groupInfo?.settings?.memberPermissions?.createPolls ?? true);
+  
   // Log mỗi khi groupInfo thay đổi
   useEffect(() => {
     if (groupInfo) {
@@ -228,10 +231,12 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
         hasSettings: !!groupInfo.settings,
         hasMemberPermissions: !!groupInfo.settings?.memberPermissions,
         createNotesSetting: groupInfo.settings?.memberPermissions?.createNotes,
+        createPollsSetting: groupInfo.settings?.memberPermissions?.createPolls,
         canCreateNotes,
+        canCreatePolls,
       });
     }
-  }, [groupInfo, userID, currentMember, isOwner, isAdmin, canCreateNotes]);
+  }, [groupInfo, userID, currentMember, isOwner, isAdmin, canCreateNotes, canCreatePolls]);
 
   const groupAvatar =
     groupInfo?.avatar ||
@@ -697,6 +702,7 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
         groupID={groupID}
         userID={userID}
         canCreateNotes={canCreateNotes}
+        canCreatePolls={canCreatePolls}
       />
 
       {/* Transfer Ownership Modal */}

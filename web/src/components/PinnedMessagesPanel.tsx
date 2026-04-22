@@ -174,11 +174,34 @@ export const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
   // Get display info for latest item
   const getItemDisplayInfo = (item: PinnedItem) => {
     if (item.itemType === 'message') {
+      let content = item.content || (item.type === 'image' ? '[Hình ảnh]' : '[Tệp tin]');
+      
+      if (item.content?.startsWith('POLL_NOTIF|')) {
+        const parts = item.content.split('|');
+        const [_, action, pollID, pollName, userName] = parts;
+        let actionText = 'đã tham gia bình chọn:';
+        if (action === 'CREATE') actionText = 'đã tạo bình chọn:';
+        if (action === 'LEAVE') actionText = 'đã bỏ bình chọn:';
+        if (action === 'CHANGE') actionText = 'đã đổi lựa chọn:';
+        if (action === 'LOCK') actionText = 'đã khóa bình chọn:';
+        if (action === 'SHARE') actionText = 'đã chia sẻ bình chọn:';
+        content = `${actionText} ${pollName}`;
+      } else if (item.content?.startsWith('##POLL_')) {
+        const parts = item.content.split('|');
+        const type = parts[0];
+        const question = parts[2];
+        if (type === '##POLL_CREATED##') content = `đã tạo bình chọn: ${question}`;
+        else if (type === '##POLL_VOTED##') content = `đã tham gia bình chọn: ${question}`;
+        else if (type === '##POLL_CLOSED##') content = `đã khóa bình chọn: ${question}`;
+        else if (type === '##POLL_DELETED##') content = `bình chọn đã bị xóa: ${question}`;
+        else if (type === '##POLL_OPTION_ADDED##') content = `đã thêm lựa chọn vào bình chọn: ${question}`;
+      }
+
       return {
         type: 'Tin nhắn',
         icon: '💬',
         name: item.senderInfo?.name || 'Người dùng',
-        content: item.content || (item.type === 'image' ? '[Hình ảnh]' : '[Tệp tin]')
+        content: content
       };
     } else {
       return {

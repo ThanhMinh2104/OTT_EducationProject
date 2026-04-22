@@ -4,6 +4,7 @@ import axiosInstance from '../utils/axios';
 import socket from '../utils/socket';
 import toast from 'react-hot-toast';
 import './GroupBoardModal-animations.css';
+import PollVotersModal from './PollVotersModal';
 
 interface Message {
   messageID: string;
@@ -60,6 +61,12 @@ interface Poll {
   };
 }
 
+interface GroupMember {
+  userID: string;
+  name: string;
+  avatar?: string;
+}
+
 interface GroupBoardModalProps {
   show: boolean;
   onClose: () => void;
@@ -71,6 +78,7 @@ interface GroupBoardModalProps {
   canCreatePolls?: boolean;
   initialTab?: TabType;
   initialPollId?: string;
+  members?: GroupMember[];
 }
 
 type TabType = 'all' | 'pinned' | 'notes' | 'polls';
@@ -86,7 +94,8 @@ const GroupBoardModal = ({
   canCreateNotes = true,
   canCreatePolls = true,
   initialTab,
-  initialPollId
+  initialPollId,
+  members = []
 }: GroupBoardModalProps) => {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -116,6 +125,7 @@ const GroupBoardModal = ({
   const [duplicateIndices, setDuplicateIndices] = useState<number[]>([]);
   const [tempSelectedOptions, setTempSelectedOptions] = useState<number[]>([]);
   const [tempNewOptionsInView, setTempNewOptionsInView] = useState<Array<{ text: string, isChecked: boolean }>>([]);
+  const [showVotersModal, setShowVotersModal] = useState(false);
 
   // Confirm Modal state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -213,6 +223,11 @@ const GroupBoardModal = ({
       axiosInstance.get(`/groups/${groupID}/polls/${initialPollId}`).then(res => {
         if (res.data) {
           setSelectedPoll(res.data);
+          const currentVotes = res.data.options.reduce((acc: number[], opt: { voters: string[] }, idx: number) => {
+            if (opt.voters?.includes(userID)) acc.push(idx);
+            return acc;
+          }, []);
+          setTempSelectedOptions(currentVotes);
           setViewMode('view-poll');
         }
       });
@@ -563,6 +578,12 @@ const GroupBoardModal = ({
 
   const handleViewPoll = async (poll: Poll) => {
     setSelectedPoll(poll);
+    // Init tempSelectedOptions từ votes hiện tại của user
+    const currentVotes = poll.options.reduce((acc: number[], opt, idx) => {
+      if (opt.voters?.includes(userID)) acc.push(idx);
+      return acc;
+    }, []);
+    setTempSelectedOptions(currentVotes);
     setViewMode('view-poll');
 
     // Fetch fresh poll data to get voters info if needed
@@ -570,6 +591,12 @@ const GroupBoardModal = ({
       const response = await axiosInstance.get(`/groups/${groupID}/polls/${poll.pollID}`);
       if (response.data) {
         setSelectedPoll(response.data);
+        // Re-init với data mới nhất
+        const freshVotes = response.data.options.reduce((acc: number[], opt: { voters: string[] }, idx: number) => {
+          if (opt.voters?.includes(userID)) acc.push(idx);
+          return acc;
+        }, []);
+        setTempSelectedOptions(freshVotes);
       }
     } catch (error) {
       console.error('Error fetching poll details:', error);
@@ -720,6 +747,20 @@ const GroupBoardModal = ({
     if (msg.type === 'video') return '[Video]';
     if (msg.type === 'file') return `[File] ${msg.content}`;
     if (msg.type === 'audio') return '[Tin nhắn thoại]';
+    if (msg.type === 'notification') {
+      if (msg.content?.startsWith('POLL_NOTIF|')) {
+        const parts = msg.content.split('|');
+        const [_, action, pollID, pollName, userName] = parts;
+        let actionText = 'đã tham gia bình chọn:';
+        if (action === 'CREATE') actionText = 'đã tạo bình chọn:';
+        if (action === 'LEAVE') actionText = 'đã bỏ bình chọn:';
+        if (action === 'CHANGE') actionText = 'đã đổi lựa chọn:';
+        if (action === 'LOCK') actionText = 'đã khóa bình chọn:';
+        if (action === 'SHARE') actionText = 'đã chia sẻ bình chọn:';
+        return `${actionText} ${pollName}`;
+      }
+      return msg.content;
+    }
     return '[Media]';
   };
 
@@ -1451,100 +1492,145 @@ const GroupBoardModal = ({
             </div>
           )}
           {/* VIEW POLL VIEW */}
-          {viewMode === 'view-poll' && selectedPoll && (
+          {viewMode === 'view-poll' && selectedPoll && (() => {
+            const totalVotes = selectedPoll.options.reduce((sum, opt) => sum + (opt.voters?.length || 0), 0);
+            const totalVoters = new Set(selectedPoll.options.flatMap(opt => opt.voters || [])).size;
+            const isExpired = selectedPoll.endTime ? new Date() > new Date(selectedPoll.endTime) : false;
+            const hasChanges = (
+              JSON.stringify([...tempSelectedOptions].sort()) !== JSON.stringify(
+                selectedPoll.options.reduce((acc: number[], opt, idx) => {
+                  if (opt.voters.includes(userID)) acc.push(idx);
+                  return acc;
+                }, []).sort()
+              )
+            ) || tempNewOptionsInView.some(opt => opt.text.trim().length > 0);
+            return (
             <div className="flex flex-col h-full bg-white rounded-xl overflow-hidden shadow-sm animate-fade-in border border-[#e4e6eb]">
-              {/* Header Info */}
-              <div className="px-6 pt-6 pb-6 border-b border-[#f0f2f5]">
-                <div className="flex items-start justify-between gap-4 mb-1">
-                  <h3 className="text-[22px] font-bold text-[#050505] leading-tight flex-1">{selectedPoll.question}</h3>
-                </div>
-                <p className="text-[14px] text-[#65676b]">
-                  Tạo bởi {selectedPoll.creatorInfo?.name || 'Người dùng'} - {formatDateTime(selectedPoll.createdAt)}
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-[#f0f2f5] flex items-center justify-between">
+                <h3 className="text-[17px] font-bold text-[#050505]">Bình chọn</h3>
+                <button
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors border-none bg-transparent cursor-pointer text-gray-500 text-xl"
+                  onClick={(e) => { e.stopPropagation(); handleBackToList(); }}
+                >✕</button>
+              </div>
+              {/* Poll info */}
+              <div className="px-5 pt-4 pb-3 border-b border-[#f0f2f5]">
+                <h4 className="text-[18px] font-bold text-[#050505] mb-1">{selectedPoll.question}</h4>
+                <p className="text-[13px] text-gray-500 mb-3">
+                  Tạo bởi {selectedPoll.creatorInfo?.name || 'Người dùng'} · {formatDateTime(selectedPoll.createdAt)}
+                  {isExpired && <span className="text-red-500 ml-1">· Đã kết thúc</span>}
                 </p>
-
-                <div className="flex items-center gap-2 text-[14px] text-[#0084ff] font-bold mt-6 bg-blue-50 py-2 px-3 rounded-lg w-fit">
-                   <span className="text-lg">📋</span>
-                  {selectedPoll.isMultipleChoice ? 'Chọn nhiều phương án' : 'Chọn một phương án'}
+                <div className="flex items-center gap-1.5 text-[13px] text-gray-600">
+                  <span>☰</span>
+                  <span>{selectedPoll.isMultipleChoice ? 'Chọn nhiều phương án' : 'Chọn một phương án'}</span>
                 </div>
+              </div>
+              {/* Tổng số người + lượt */}
+              <div className="px-5 py-2.5 border-b border-[#f0f2f5]">
+                <button
+                  className="flex items-center gap-1 text-[13px] text-[#0068ff] font-semibold bg-transparent border-none cursor-pointer p-0 hover:underline"
+                  onClick={(e) => { e.stopPropagation(); setShowVotersModal(true); }}
+                >
+                  {totalVoters} người bình chọn, {totalVotes} lượt bình chọn
+                  <span className="text-[10px] ml-0.5">▶</span>
+                </button>
               </div>
 
               {/* Poll Options List */}
-              <div className="flex-1 px-6 py-4 overflow-y-auto custom-scrollbar bg-[#f9fafb]">
-                <div className="flex flex-col gap-3">
+              <div className="flex-1 px-5 py-3 overflow-y-auto custom-scrollbar">
+                <div className="flex flex-col gap-2">
                   {selectedPoll.options.map((option, index) => {
                     const isSelectedTemp = tempSelectedOptions.includes(index);
-                    const voteCount = option.voters.length || 0;
-
+                    const voteCount = option.voters?.length || 0;
+                    const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+                    const voterAvatars = option.voters?.slice(0, 3).map(vid => members.find(m => m.userID === vid));
                     return (
-                      <div 
-                        key={index} 
-                        className="flex items-center gap-3 animate-fade-in group"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (tempSelectedOptions.includes(index)) {
-                            setTempSelectedOptions(tempSelectedOptions.filter(i => i !== index));
-                          } else {
-                            if (selectedPoll.isMultipleChoice) {
-                              setTempSelectedOptions([...tempSelectedOptions, index]);
-                            } else {
-                              setTempSelectedOptions([index]);
+                      <div key={index} className="flex items-center gap-3">
+                        {/* Radio circle */}
+                        <div
+                          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 cursor-pointer transition-all ${
+                            isSelectedTemp ? 'border-[#0068ff] bg-white' : 'border-gray-400'
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isExpired) {
+                              if (isSelectedTemp) {
+                                setTempSelectedOptions(tempSelectedOptions.filter(i => i !== index));
+                              } else {
+                                if (selectedPoll.isMultipleChoice) {
+                                  setTempSelectedOptions([...tempSelectedOptions, index]);
+                                } else {
+                                  setTempSelectedOptions([index]);
+                                }
+                              }
                             }
-                          }
-                        }}
-                      >
-                        {/* Checkbox bên ngoài (Đồng bộ) */}
-                        <div className={`w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center shrink-0 transition-all cursor-pointer ${
-                          isSelectedTemp ? 'bg-[#0068ff] border-[#0068ff]' : 'border-gray-300'
-                        }`}>
-                          {isSelectedTemp && (
-                            <span className="text-[14px] text-white font-bold">✓</span>
-                          )}
+                          }}
+                        >
+                          {isSelectedTemp && <div className="w-2.5 h-2.5 rounded-full bg-[#0068ff]" />}
                         </div>
-
-                        {/* Khối nội dung phương án có sẵn */}
-                        <div className={`flex-1 flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all cursor-pointer ${
-                          isSelectedTemp ? 'border-[#0068ff] bg-blue-50/20' : 'border-transparent bg-[#f0f2f5] hover:bg-[#e4e6eb]'
-                        }`}>
-                          <span className={`text-[15px] font-semibold truncate ${isSelectedTemp ? 'text-[#0068ff]' : 'text-[#050505]'}`}>
-                            {option.text}
-                          </span>
-                          <span className="text-[13px] font-bold text-[#65676b] ml-2">
-                            {voteCount}
-                          </span>
+                        {/* Option bar */}
+                        <div
+                          className="flex-1 relative rounded-lg overflow-hidden cursor-pointer"
+                          style={{ minHeight: 44 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isExpired) {
+                              if (isSelectedTemp) {
+                                setTempSelectedOptions(tempSelectedOptions.filter(i => i !== index));
+                              } else {
+                                if (selectedPoll.isMultipleChoice) {
+                                  setTempSelectedOptions([...tempSelectedOptions, index]);
+                                } else {
+                                  setTempSelectedOptions([index]);
+                                }
+                              }
+                            }
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-[#f0f2f5] rounded-lg" />
+                          {voteCount > 0 && (
+                            <div
+                              className="absolute left-0 top-0 bottom-0 bg-[#c8deff] rounded-lg transition-[width] duration-500"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          )}
+                          <div className="relative flex items-center justify-between px-3 h-[44px]">
+                            <span className={`text-[14px] font-medium ${isSelectedTemp ? 'text-[#0068ff]' : 'text-[#050505]'}`}>
+                              {option.text}
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              {!selectedPoll.isAnonymous && voteCount > 0 && (
+                                <div className="flex -space-x-2">
+                                  {voterAvatars?.map((m, i) => (
+                                    m?.avatar ? (
+                                      <img key={i} src={m.avatar} alt={m.name} className="w-6 h-6 rounded-full border-2 border-white object-cover" />
+                                    ) : (
+                                      <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-gray-400 flex items-center justify-center text-[10px] text-white font-bold">
+                                        {(m?.name || '?').charAt(0).toUpperCase()}
+                                      </div>
+                                    )
+                                  ))}
+                                </div>
+                              )}
+                              <span className="text-[13px] text-gray-600 font-medium w-4 text-right">{voteCount}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
                   })}
-
-                  {/* Danh sách các phương án mới đang soạn thảo - Chỉ hiện nếu cho phép */}
+                  {/* Thêm lựa chọn mới */}
                   {selectedPoll.canAddOptions && (
                     <>
                       {tempNewOptionsInView.map((newOpt, idx) => {
-                        // Logic kiểm tra trùng lặp
                         const isDuplicateWithOld = selectedPoll.options.some(opt => opt.text.trim().toLowerCase() === newOpt.text.trim().toLowerCase());
                         const isDuplicateWithOtherNew = tempNewOptionsInView.some((other, i) => i !== idx && other.text.trim() && other.text.trim().toLowerCase() === newOpt.text.trim().toLowerCase());
                         const isDuplicate = newOpt.text.trim() && (isDuplicateWithOld || isDuplicateWithOtherNew);
-
                         return (
-                          <div key={idx} className="flex flex-col gap-1 animate-fade-in">
+                          <div key={idx} className="flex flex-col gap-1">
                             <div className="flex items-center gap-3">
-                              {/* Checkbox cho phương án mới */}
-                              <div 
-                                className={`w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center shrink-0 transition-all cursor-pointer ${
-                                  newOpt.isChecked ? 'bg-[#0068ff] border-[#0068ff]' : 'border-gray-300'
-                                }`}
-                                onClick={() => {
-                                  const updated = [...tempNewOptionsInView];
-                                  updated[idx].isChecked = !updated[idx].isChecked;
-                                  setTempNewOptionsInView(updated);
-                                }}
-                              >
-                                {newOpt.isChecked && (
-                                  <span className="text-[14px] text-white font-bold">✓</span>
-                                )}
-                              </div>
-
-                              {/* Ô nhập liệu phương án mới */}
+                              <div className="w-5 h-5 rounded-full border-2 border-gray-300 shrink-0" />
                               <div className="relative flex-1">
                                 <input
                                   type="text"
@@ -1555,134 +1641,100 @@ const GroupBoardModal = ({
                                     updated[idx].text = e.target.value;
                                     setTempNewOptionsInView(updated);
                                   }}
-                                  className={`w-full px-4 py-3 pr-10 text-[15px] border-2 rounded-xl outline-none transition-all font-medium bg-white shadow-sm ${
-                                    isDuplicate ? 'border-red-500 text-red-500' : 'border-[#0068ff]'
+                                  className={`w-full px-3 py-2.5 pr-9 text-[14px] border rounded-lg outline-none transition-all bg-white ${
+                                    isDuplicate ? 'border-red-400 text-red-500' : 'border-[#0068ff]'
                                   }`}
                                   autoFocus={idx === tempNewOptionsInView.length - 1}
                                 />
-                                <button 
-                                  className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all cursor-pointer border-none bg-transparent"
+                                <button
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 bg-transparent border-none cursor-pointer p-0"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const updated = tempNewOptionsInView.filter((_, i) => i !== idx);
-                                    setTempNewOptionsInView(updated);
+                                    setTempNewOptionsInView(tempNewOptionsInView.filter((_, i) => i !== idx));
                                   }}
                                 >
-                                  <FaTimes size={14} />
+                                  <FaTimes size={13} />
                                 </button>
                               </div>
                             </div>
                             {isDuplicate && (
-                              <div className="ml-9 text-[12px] text-red-500 font-medium">
-                                Phương án được thêm đã tồn tại
-                              </div>
+                              <div className="ml-8 text-[12px] text-red-500">Phương án đã tồn tại</div>
                             )}
                           </div>
                         );
                       })}
-                      
                       <button
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          handleAddOptionInView();
-                        }}
-                        className="flex items-center gap-2 text-[#0068ff] bg-transparent border-none font-bold text-[15px] cursor-pointer hover:bg-blue-50/50 px-4 py-2 rounded-lg transition-all w-fit ml-9 mb-2"
+                        onClick={(e) => { e.stopPropagation(); handleAddOptionInView(); }}
+                        className="flex items-center gap-1.5 text-[#0068ff] bg-transparent border-none font-semibold text-[14px] cursor-pointer hover:underline px-0 py-1 ml-8 mt-1"
                       >
-                        <span className="text-xl font-normal">+</span> Thêm lựa chọn
+                        <span className="text-lg font-normal">+</span> Thêm lựa chọn
                       </button>
                     </>
                   )}
                 </div>
               </div>
-
               {/* Footer Actions */}
-              <div className="px-6 py-5 border-t border-[#f0f2f5] flex items-center justify-between bg-white">
+              <div className="px-5 py-4 border-t border-[#f0f2f5] flex items-center justify-between bg-white">
                 <div className="relative">
                   <button
-                    className={`w-11 h-11 rounded-xl flex items-center justify-center text-[#65676b] bg-[#f0f2f5] hover:bg-[#e4e6eb] transition-all ${showPollMenu ? 'bg-blue-50 text-[#0068ff]' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowPollMenu(!showPollMenu);
-                    }}
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-[#65676b] bg-[#f0f2f5] hover:bg-[#e4e6eb] transition-all ${showPollMenu ? 'bg-blue-50 text-[#0068ff]' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); setShowPollMenu(!showPollMenu); }}
                   >
-                    <FaCog size={22} />
+                    <FaCog size={20} />
                   </button>
-
-                  {/* Dropdown Menu */}
                   {showPollMenu && (
-                    <div 
-                      className="absolute bottom-full left-0 mb-3 w-[220px] bg-white rounded-xl shadow-2xl border border-[#e4e6eb] py-2 z-50 animate-zoom-in"
+                    <div
+                      className="absolute bottom-full left-0 mb-2 w-[210px] bg-white rounded-xl shadow-2xl border border-[#e4e6eb] py-1 z-50"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button
-                        className="w-full px-4 py-3 text-left text-[14px] text-[#050505] hover:bg-[#f0f2f5] flex items-center gap-3 transition-colors border-none bg-transparent cursor-pointer font-medium"
+                        className="w-full px-4 py-3 text-left text-[14px] text-[#050505] hover:bg-[#f0f2f5] border-none bg-transparent cursor-pointer"
+                        onClick={() => handleSendPollToChat(selectedPoll)}
+                      >Gửi vào nhóm</button>
+                      <button
+                        className="w-full px-4 py-3 text-left text-[14px] text-[#050505] hover:bg-[#f0f2f5] border-none bg-transparent cursor-pointer"
                         onClick={() => handleLockPoll(selectedPoll.pollID)}
-                      >
-                        <span className="text-lg">🔒</span> Khóa bình chọn
-                      </button>
+                      >Khóa bình chọn</button>
                       {selectedPoll.creatorID === userID && (
                         <button
-                          className="w-full px-4 py-3 text-left text-[14px] text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors border-none bg-transparent cursor-pointer font-medium"
+                          className="w-full px-4 py-3 text-left text-[14px] text-red-500 hover:bg-red-50 border-none bg-transparent cursor-pointer"
                           onClick={() => handleDeletePoll(selectedPoll.pollID)}
-                        >
-                          <span className="text-lg">🗑️</span> Xóa bình chọn
-                        </button>
+                        >Xóa bình chọn</button>
                       )}
-                      <button
-                        className="w-full px-4 py-3 text-left text-[14px] text-[#050505] hover:bg-[#f0f2f5] flex items-center gap-3 transition-colors border-none bg-transparent cursor-pointer font-medium"
-                        onClick={() => handleSendPollToChat(selectedPoll)}
-                      >
-                        <span className="text-lg">🔄</span> Gửi vào nhóm
-                      </button>
                     </div>
                   )}
                 </div>
-                
                 <div className="flex gap-3">
                   <button
-                    className="py-3 px-8 rounded-xl text-[15px] font-bold bg-[#f0f2f5] text-[#050505] hover:bg-[#e4e6eb] transition-all min-w-[100px]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleBackToList();
-                    }}
-                  >
-                    Hủy
-                  </button>
+                    className="py-2.5 px-7 rounded-xl text-[14px] font-semibold bg-[#f0f2f5] text-[#050505] hover:bg-[#e4e6eb] transition-all"
+                    onClick={(e) => { e.stopPropagation(); handleBackToList(); }}
+                  >Hủy</button>
                   <button
-                    className={`py-3 px-10 rounded-xl text-[15px] font-bold text-white transition-all min-w-[140px] shadow-lg ${
-                      (tempSelectedOptions.length > 0 && JSON.stringify([...tempSelectedOptions].sort()) !== JSON.stringify(selectedPoll.options.reduce((acc: number[], opt, idx) => {
-                        if (opt.voters.includes(userID)) acc.push(idx);
-                        return acc;
-                      }, []).sort())) || (tempNewOptionsInView.some(opt => opt.text.trim().length > 0))
-                        ? 'bg-[#0068ff] hover:bg-[#0056d6] cursor-pointer shadow-blue-100 font-bold' 
-                        : 'bg-[#bed9ff] cursor-not-allowed'
+                    className={`py-2.5 px-7 rounded-xl text-[14px] font-semibold text-white transition-all ${
+                      hasChanges && !isSaving ? 'bg-[#0068ff] hover:bg-[#0056d6] cursor-pointer' : 'bg-[#bed9ff] cursor-not-allowed'
                     }`}
-                    disabled={isSaving || (
-                      // Không có thay đổi tick cũ VÀ không có nội dung mới nào có chữ
-                      (JSON.stringify([...tempSelectedOptions].sort()) === JSON.stringify(selectedPoll.options.reduce((acc: number[], opt, idx) => {
-                        if (opt.voters.includes(userID)) acc.push(idx);
-                        return acc;
-                      }, []).sort())) && 
-                      (!tempNewOptionsInView.some(opt => opt.text.trim().length > 0))
-                    ) ||
-                      // HOẶC có bất kỳ ô mới nào bị trùng lặp
-                      tempNewOptionsInView.some((newOpt, idx) => {
-                        const isDuplicateWithOld = selectedPoll.options.some(opt => opt.text.trim().toLowerCase() === newOpt.text.trim().toLowerCase());
-                        const isDuplicateWithOtherNew = tempNewOptionsInView.some((other, i) => i !== idx && other.text.trim() && other.text.trim().toLowerCase() === newOpt.text.trim().toLowerCase());
-                        return newOpt.text.trim() && (isDuplicateWithOld || isDuplicateWithOtherNew);
-                      })
-                    }
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (isSaving) return;
-                      await handleSubmitVotes();
-                    }}
-                  >
-                    {isSaving ? 'Đang gửi...' : 'Xác nhận'}
-                  </button>
+                    disabled={isSaving || !hasChanges || tempNewOptionsInView.some((newOpt, idx) => {
+                      const isDupOld = selectedPoll.options.some(opt => opt.text.trim().toLowerCase() === newOpt.text.trim().toLowerCase());
+                      const isDupNew = tempNewOptionsInView.some((other, i) => i !== idx && other.text.trim() && other.text.trim().toLowerCase() === newOpt.text.trim().toLowerCase());
+                      return newOpt.text.trim() && (isDupOld || isDupNew);
+                    })}
+                    onClick={async (e) => { e.stopPropagation(); if (!isSaving) await handleSubmitVotes(); }}
+                  >{isSaving ? 'Đang gửi...' : 'Xác nhận'}</button>
                 </div>
               </div>
             </div>
+            );
+          })()}
+
+          {/* Poll Voters Modal */}
+          {showVotersModal && selectedPoll && (
+            <PollVotersModal
+              poll={selectedPoll}
+              members={members}
+              userID={userID}
+              groupID={groupID}
+              onClose={() => setShowVotersModal(false)}
+            />
           )}
         </div>
       </div>

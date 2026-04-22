@@ -460,19 +460,19 @@ export const GroupChatWindow = ({
       return;
     }
     try {
-      await axiosInstance.post('/contacts/send-friend-request', { 
+      await axiosInstance.post('/contacts/send-friend-request', {
         recipientPhone: selectedUserForProfile.sdt,
         message: 'Mình kết bạn nhé!'
       });
       toast.success(`Đã gửi lời mời kết bạn tới ${selectedUserForProfile.name}`);
-      
+
       // Update local state for friendStatus
       setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'pending_sent' } : prev);
-      
+
       // Emit socket để thông báo bên kia
-      socket.emit('friend_request_sent', { 
-        from: userID, 
-        to: selectedUserForProfile.userID 
+      socket.emit('friend_request_sent', {
+        from: userID,
+        to: selectedUserForProfile.userID
       });
     } catch {
       toast.error('Lỗi khi gửi lời mời kết bạn');
@@ -800,10 +800,10 @@ export const GroupChatWindow = ({
 
     // Nếu đang mở group này, đánh dấu đã đọc tin nhắn mới ngay lập tức
     if (message.senderID !== userID) {
-      socket.emit('mark_as_read', { 
-        messageID: message.messageID, 
-        userID, 
-        groupID 
+      socket.emit('mark_as_read', {
+        messageID: message.messageID,
+        userID,
+        groupID
       });
     }
   }, [groupID, userID]);
@@ -946,9 +946,9 @@ export const GroupChatWindow = ({
       setGroupInfo((prev) =>
         prev
           ? {
-              ...prev,
-              settings: data.settings,
-            }
+            ...prev,
+            settings: data.settings,
+          }
           : prev
       );
       toast.success('Cài đặt nhóm đã được cập nhật');
@@ -962,10 +962,10 @@ export const GroupChatWindow = ({
     setGroupInfo((prev) =>
       prev
         ? {
-            ...prev,
-            name: data.name ?? prev.name,
-            avatar: data.avatar ?? prev.avatar,
-          }
+          ...prev,
+          name: data.name ?? prev.name,
+          avatar: data.avatar ?? prev.avatar,
+        }
         : prev
     );
   }, [groupID]);
@@ -1204,12 +1204,12 @@ export const GroupChatWindow = ({
       groupId: msgData.groupId,
       replyTo: currentReplyTo
         ? {
-            messageID: currentReplyTo.messageID,
-            senderID: currentReplyTo.senderID,
-            senderName: currentReplyTo.senderInfo?.name || members.find(m => m.userID === currentReplyTo.senderID)?.name,
-            content: currentReplyTo.content,
-            type: currentReplyTo.type,
-          }
+          messageID: currentReplyTo.messageID,
+          senderID: currentReplyTo.senderID,
+          senderName: currentReplyTo.senderInfo?.name || members.find(m => m.userID === currentReplyTo.senderID)?.name,
+          content: currentReplyTo.content,
+          type: currentReplyTo.type,
+        }
         : undefined,
       mentions: mentions, // Gửi danh sách ID được tag
     };
@@ -1421,7 +1421,7 @@ export const GroupChatWindow = ({
     if (msg.pinnedInfo) {
       // Unpin message - Optimistic update
       console.log('📌 Unpinning message:', msg.messageID);
-      
+
       // Update UI immediately
       setMessages((prev) =>
         prev.map((m) =>
@@ -1429,7 +1429,7 @@ export const GroupChatWindow = ({
         )
       );
       setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
-      
+
       // Send to server
       socket.emit('unghim_group_message', {
         messageID: msg.messageID,
@@ -1449,23 +1449,23 @@ export const GroupChatWindow = ({
 
       // Pin message - Optimistic update
       console.log('📌 Pinning message:', msg.messageID);
-      
+
       const pinnedInfo = {
         pinnedBy: userID,
         pinnedAt: new Date().toISOString()
       };
-      
+
       // Update UI immediately
       setMessages((prev) =>
         prev.map((m) =>
           m.messageID === msg.messageID ? { ...m, pinnedInfo } : m
         )
       );
-      
+
       // Add to pinned messages list
       const updatedMsg = { ...msg, pinnedInfo };
       setPinnedMessages((prev) => [updatedMsg, ...prev]);
-      
+
       // Send to server
       socket.emit('ghim_group_message', {
         messageID: msg.messageID,
@@ -1506,7 +1506,7 @@ export const GroupChatWindow = ({
 
   const handleUnpinFromMenu = (msg: Message) => {
     if (!msg.messageID) return;
-    
+
     // Optimistic update
     setMessages((prev) =>
       prev.map((m) =>
@@ -1514,7 +1514,7 @@ export const GroupChatWindow = ({
       )
     );
     setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
-    
+
     // Send to server
     socket.emit('unghim_group_message', {
       messageID: msg.messageID,
@@ -2037,7 +2037,7 @@ export const GroupChatWindow = ({
             // Tìm thành viên trong danh sách có tên khớp HOẶC userID khớp
             const mentionMember = members.find(m =>
               m.name.toLowerCase().trim() === candidate ||
-              m.userID === candidate || 
+              m.userID === candidate ||
               (messageMentions && messageMentions.includes(m.userID) && m.name.toLowerCase().trim().includes(candidate))
             );
 
@@ -2079,7 +2079,7 @@ export const GroupChatWindow = ({
       // Không mở hồ sơ cho AI Bot theo yêu cầu người dùng
       return;
     }
-    
+
     try {
       // 1. Lấy thông tin cơ bản từ danh sách members hiện có
       const memberInfo = members.find(m => m.userID === targetUserID);
@@ -2241,7 +2241,7 @@ export const GroupChatWindow = ({
           {/* Pinned Messages & Notes Bar - New Implementation */}
           <PinnedMessagesPanel
             groupID={groupID}
-            onClose={() => {}}
+            onClose={() => { }}
             onViewBoard={(tab) => {
               setBoardTab(tab as any || 'all');
               setShowBoard(true);
@@ -2460,28 +2460,52 @@ export const GroupChatWindow = ({
                               }
 
                               // [NEW] Xử lý thông báo Bình chọn (Poll Notification)
-                              if (msg.content?.startsWith('##POLL_')) {
-                                const parts = msg.content.split('|');
-                                const type = parts[0]; // ##POLL_CREATED##, ##POLL_VOTED##, ##POLL_CLOSED##
-                                const pollID = parts[1];
-                                const question = parts[2];
-                                const personName = parts[3];
-                                const voterAction = parts[4] || ''; // Dùng cho VOTED: 'đã tham gia bình chọn'
+                              if (msg.content?.startsWith('##POLL_') || msg.content?.startsWith('POLL_NOTIF|')) {
+                                let type = '', pollID = '', question = '', personName = '';
+
+                                if (msg.content.startsWith('POLL_NOTIF|')) {
+                                  // Format: POLL_NOTIF|ACTION|pollID|question|userName
+                                  const parts = msg.content.split('|');
+                                  const action = parts[1]; // CREATE, VOTE, LOCK, SHARE
+                                  pollID = parts[2];
+                                  question = parts[3];
+                                  personName = parts[4] || '';
+                                  if (action === 'CREATE') type = '##POLL_CREATED##';
+                                  else if (action === 'VOTE' || action === 'JOIN') type = '##POLL_VOTED##';
+                                  else if (action === 'LOCK') type = '##POLL_CLOSED##';
+                                  else if (action === 'SHARE') type = '##POLL_SHARED##';
+                                  else if (action === 'LEAVE') type = '##POLL_LEFT##';
+                                  else if (action === 'CHANGE') type = '##POLL_CHANGED##';
+                                  else type = '##POLL_CREATED##';
+                                } else {
+                                  // Format cũ: ##POLL_TYPE##|pollID|question|personName|voterAction
+                                  const parts = msg.content.split('|');
+                                  type = parts[0];
+                                  pollID = parts[1];
+                                  question = parts[2];
+                                  personName = parts[3];
+                                }
 
                                 let text = '';
                                 const isMe = msg.senderID === userID;
                                 const displayName = isMe ? 'Bạn' : personName;
 
                                 if (type === '##POLL_CREATED##') {
-                                  text = `${displayName} đã tạo cuộc bình chọn mới: ${question}`;
+                                  text = `${displayName} đã tạo bình chọn: ${question}`;
                                 } else if (type === '##POLL_VOTED##') {
-                                  text = `${displayName} ${voterAction}: ${question}`;
+                                  text = `${displayName} đã tham gia bình chọn: ${question}`;
                                 } else if (type === '##POLL_CLOSED##') {
                                   text = `${displayName} đã khóa bình chọn: ${question}`;
+                                } else if (type === '##POLL_SHARED##') {
+                                  text = `${displayName} đã chia sẻ bình chọn: ${question}`;
+                                } else if (type === '##POLL_LEFT##') {
+                                  text = `${displayName} đã bỏ bình chọn: ${question}`;
+                                } else if (type === '##POLL_CHANGED##') {
+                                  text = `${displayName} đã đổi lựa chọn: ${question}`;
                                 }
 
                                 return (
-                                  <div className="flex items-center gap-2 bg-[#f0f9f3] text-[#2e7d32] rounded-full px-4 py-1.5 shadow-sm border border-[#c8e6c9] max-w-full">
+                                  <div className="flex items-center gap-2 text-gray-500 italic bg-gray-50 rounded-full px-4 py-1.5 shadow-sm border border-[#c8e6c9] max-w-full">
                                     {/* Icon 3 cột sóng xanh lá giống ảnh */}
                                     <div className="flex items-end gap-[2px] h-3 mb-[1px] shrink-0">
                                       <div className="w-[3px] h-[6px] bg-[#2e7d32] rounded-t-sm"></div>
@@ -2491,7 +2515,7 @@ export const GroupChatWindow = ({
                                     <span className="text-xs font-medium truncate shrink-1">
                                       {text}
                                     </span>
-                                    <button 
+                                    <button
                                       className="text-blue-600 hover:text-blue-700 font-bold text-xs shrink-0 ml-1"
                                       onClick={() => {
                                         // Tìm tin nhắn chứa pollID này để cuộn tới
@@ -2603,7 +2627,7 @@ export const GroupChatWindow = ({
 
                           <div className="relative group">
                             <div
-                                className={`${msg.type === 'notification'
+                              className={`${msg.type === 'notification'
                                 ? 'bg-transparent'
                                 : msg.type === 'poll'
                                   ? '' // [UPDATE] Thẻ Poll tự lo phần UI/Background
@@ -3302,10 +3326,10 @@ export const GroupChatWindow = ({
               setGroupInfo((prev) =>
                 prev
                   ? {
-                      ...prev,
-                      name: data.name ?? prev.name,
-                      avatar: data.avatar ?? prev.avatar,
-                    }
+                    ...prev,
+                    name: data.name ?? prev.name,
+                    avatar: data.avatar ?? prev.avatar,
+                  }
                   : prev
               );
             }}
@@ -3691,6 +3715,7 @@ export const GroupChatWindow = ({
           initialPollId={boardInitialPollId}
           canCreateNotes={canCreateNotes}
           canCreatePolls={canCreatePolls}
+          members={groupInfo?.members?.map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar })) || []}
         />
       )}
     </div>
