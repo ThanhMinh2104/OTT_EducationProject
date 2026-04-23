@@ -608,17 +608,19 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       socket.emit('getChat', me.userID);
     });
 
-    // Lắng nghe member_kicked ở global level để reload chat list
+    // Lắng nghe member_kicked ở global level để cập nhật chat list
     socket.on('member_kicked', async (data: { groupID: string; kickedUserID: string; kickedBy: string; kickerName: string; kickedName: string }) => {
-      console.log('📥 [MOBILE] Global member_kicked event received:', data);
-
       const stored = await AsyncStorage.getItem('user');
       if (!stored) return;
       const me = JSON.parse(stored);
-
-      console.log('🔄 [MOBILE] Reloading chat list after member_kicked...');
-      // Reload chat list để cập nhật members
-      socket.emit('getChat', me.userID);
+      // Chỉ cập nhật chat list, không emit getChat để tránh reset selectedChat
+      setChats((prev: any[]) =>
+        prev.map((c: any) =>
+          c.chatID === data.groupID
+            ? { ...c, members: (c.members || []).filter((m: any) => m.userID !== data.kickedUserID) }
+            : c
+        )
+      );
     });
 
     // Lắng nghe group_dissolved ở global level để reload chat list và xóa nhóm
@@ -1317,14 +1319,21 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             {
               text: 'OK',
               onPress: () => {
-                // Đóng chat window
                 setSelectedChat(null);
-                // Xóa nhóm khỏi danh sách
                 setChats(prev => prev.filter(c => c.chatID !== data.groupID));
               }
             }
           ]
         );
+      } else {
+        // Người khác bị kick → update members real-time, không reload
+        setSelectedChat((prev: any) => {
+          if (!prev || prev.chatID !== data.groupID) return prev;
+          return {
+            ...prev,
+            members: (prev.members || []).filter((m: any) => m.userID !== data.kickedUserID),
+          };
+        });
       }
     };
 

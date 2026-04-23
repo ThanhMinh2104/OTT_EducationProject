@@ -88,38 +88,45 @@ const GroupMembersModal = ({ visible, members, memberCount, groupID, currentUser
     console.log('🔌 [GroupMembersModal] Setting up socket listeners for group:', groupID);
 
     const handleMemberRoleChanged = (data: { groupID: string; userID: string; newRole: string }) => {
-      console.log('📥 [GroupMembersModal] member_role_changed event received:', data);
       if (data.groupID === groupID) {
-        console.log('🔄 [GroupMembersModal] Refreshing members after role change');
-        refetchMembers();
+        // Cập nhật real-time, không cần fetch lại
+        setLocalMembers(prev => prev.map(m =>
+          m.userID === data.userID ? { ...m, role: data.newRole as 'owner' | 'admin' | 'member' } : m
+        ));
         onRefresh?.();
       }
     };
 
     const handleMemberKicked = (data: { groupID: string; kickedUserID: string }) => {
-      console.log('📥 [GroupMembersModal] member_kicked event received:', data);
       if (data.groupID === groupID) {
-        console.log('🔄 [GroupMembersModal] Refreshing members after member kicked');
-        refetchMembers();
+        // Cập nhật real-time, không cần fetch lại
+        setLocalMembers(prev => prev.filter(m => m.userID !== data.kickedUserID));
         onRefresh?.();
       }
     };
 
     const handleMemberLeft = (data: { groupID: string; userID: string }) => {
-      console.log('📥 [GroupMembersModal] member_left event received:', data);
       if (data.groupID === groupID) {
-        console.log('🔄 [GroupMembersModal] Refreshing members after member left');
-        refetchMembers();
+        // Cập nhật real-time, không cần fetch lại
+        setLocalMembers(prev => prev.filter(m => m.userID !== data.userID));
         onRefresh?.();
       }
     };
 
-    const handleMemberAdded = (data: { groupID: string; userID: string }) => {
-      console.log('📥 [GroupMembersModal] member_added event received:', data);
+    const handleMemberAdded = (data: { groupID: string; userID: string; userInfo?: { name: string; avatar?: string } }) => {
       if (data.groupID === groupID) {
-        console.log('🔄 [GroupMembersModal] Refreshing members after member added');
-        refetchMembers();
-        onRefresh?.();
+        if (data.userInfo) {
+          // Nếu socket gửi kèm userInfo thì update trực tiếp
+          setLocalMembers(prev => {
+            if (prev.find(m => m.userID === data.userID)) return prev;
+            return [...prev, { userID: data.userID, name: data.userInfo!.name, avatar: data.userInfo!.avatar, role: 'member' }];
+          });
+          onRefresh?.();
+        } else {
+          // Fallback: fetch lại nếu không có userInfo
+          refetchMembers();
+          onRefresh?.();
+        }
       }
     };
 
@@ -378,9 +385,7 @@ const GroupMembersModal = ({ visible, members, memberCount, groupID, currentUser
                 const error = await response.json();
                 throw new Error(error.message || 'Failed to kick member');
               }
-
-              Alert.alert('Thành công', 'Đã xóa thành viên khỏi nhóm');
-              if (onRefresh) onRefresh();
+              // Không gọi onRefresh — socket member_kicked sẽ tự update localMembers real-time
             } catch (error: any) {
               console.error('❌ Error kicking member:', error);
               Alert.alert('Lỗi', error.message || 'Không thể xóa thành viên');

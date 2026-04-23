@@ -2352,7 +2352,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                       className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${
                         // ⭐ Highlight nếu bất kỳ message nào trong group được highlight
                         (group.messages as Message[]).some((msg) => msg.messageID === highlightedMsgId)
-                          ? 'bg-blue-200/50 rounded-xl px-1 -mx-1'
+                          ? 'bg-yellow-200/70 rounded-xl px-1 -mx-1'
                           : ''
                         }`}
                     >
@@ -2606,7 +2606,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                     ref={(el) => {
                       if (el && msg.messageID) msgRefsMap.current.set(msg.messageID, el);
                     }}
-                    className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-blue-200/50 rounded-xl px-1 -mx-1' : ''}`}
+                    className={`flex items-end gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-yellow-200/50 rounded-xl px-1 -mx-1' : ''}`}
                   >
                     {/* Avatar */}
                     {!isMine && (
@@ -3468,7 +3468,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 setSelectedUserForProfile({ ...selectedUserForProfile, friendStatus: 'pending_sent' });
                 socket.emit('friend_request_sent', { from: user?.userID, to: selectedUserForProfile.userID });
               }
-            } catch (err: any) {
+            } catch (err: unknown) {
               toast.error(err.response?.data?.message || 'Lỗi khi gửi lời mời');
             } finally {
               setIsSendingFriendRequest(false);

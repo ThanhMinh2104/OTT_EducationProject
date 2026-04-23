@@ -43,7 +43,6 @@ import EditGroupInfoModal from './EditGroupInfoModal';
 import PinLimitModal from './PinLimitModal';
 import { groupMessages, isMessageGroup, MessageGroup } from '../utils/messageGrouping';
 import GroupCallModal from './GroupCallModal';
-import GroupIncomingCallModal from './GroupIncomingCallModal';
 import MentionDropdown, { MentionDropdownHandle } from './MentionDropdown';
 import { getCaretCoordinates } from '../utils/caretPosition';
 import OtherProfileModal from './OtherProfileModal';
@@ -2438,7 +2437,8 @@ export const GroupChatWindow = ({
                         msgRefsMap.current.set(msg.messageID, el);
                       }
                     }}
-                    className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1' : ''
+                    // highlight search group
+                    className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-yellow-200/70 rounded-xl px-2 py-1 -mx-2 -my-1' : ''
                       }`}
                   >
                     {/* Notification — căn giữa, không có avatar/bubble */}

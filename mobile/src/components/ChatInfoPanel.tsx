@@ -199,19 +199,17 @@ const ChatInfoPanel = ({
       }
     };
     
-    // Listen for member left event to reload members list
-    const handleMemberLeft = (data: { groupID: string; userID: string; userName: string }) => {
+    // Listen for member kicked event - update real-time, không reload
+    const handleMemberKicked = (data: { groupID: string; kickedUserID: string; kickedBy: string; kickerName: string; kickedName: string }) => {
       if (data.groupID === chat.chatID) {
-        console.log('🔄 ChatInfoPanel - Member left, triggering refresh...');
-        onHistoryDeleted(); // Trigger parent to reload chat data
+        setActiveGroupMembers(prev => prev.filter(m => m.userID !== data.kickedUserID));
       }
     };
 
-    // Listen for member kicked event to reload members list
-    const handleMemberKicked = (data: { groupID: string; kickedUserID: string; kickedBy: string; kickerName: string; kickedName: string }) => {
+    // Listen for member left event - update real-time, không reload
+    const handleMemberLeft = (data: { groupID: string; userID: string; userName: string }) => {
       if (data.groupID === chat.chatID) {
-        console.log('🔄 ChatInfoPanel - Member kicked, triggering refresh...');
-        onHistoryDeleted(); // Trigger parent to reload chat data
+        setActiveGroupMembers(prev => prev.filter(m => m.userID !== data.userID));
       }
     };
 

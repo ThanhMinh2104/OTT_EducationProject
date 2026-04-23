@@ -15,10 +15,24 @@ interface Props {
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.stunprotocol.org:3478' },
   {
-    urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443'],
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    urls: [
+      'turn:relay1.expressturn.com:3478',
+    ],
+    username: 'efIBOAXCPMSHHBZYNX',
+    credential: 'RFSMFGxNFMFGxNFM',
+  },
+  {
+    urls: [
+      'turn:turn.anyfirewall.com:443?transport=tcp',
+    ],
+    username: 'webrtc',
+    credential: 'webrtc',
   },
 ];
 
@@ -114,11 +128,11 @@ const VideoCallModal = ({ user, memberInfo, incomingOffer, remoteUserID, chatID,
       if (pc.connectionState === 'connected') {
         // Đảm bảo stream được gắn sau khi kết nối ổn định
         const receivers = pc.getReceivers();
-        const videoReceiver = receivers.find(r => r.track?.kind === 'video');
-        if (videoReceiver?.track) {
-          const streams = pc.getRemoteStreams?.() ?? [];
-          if (streams[0] && remoteVideoRef.current) {
-            attachRemoteStream(streams[0]);
+        const tracks = receivers.map(r => r.track).filter(Boolean) as MediaStreamTrack[];
+        if (tracks.length > 0) {
+          const remoteStream = new MediaStream(tracks);
+          if (remoteVideoRef.current) {
+            attachRemoteStream(remoteStream);
           }
         }
       }

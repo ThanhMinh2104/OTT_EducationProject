@@ -45,14 +45,20 @@ interface Props {
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.stunprotocol.org:3478' },
   {
-    urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:443',
-      'turns:openrelay.metered.ca:443',
-    ],
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    urls: ['turn:relay1.expressturn.com:3478'],
+    username: 'efIBOAXCPMSHHBZYNX',
+    credential: 'RFSMFGxNFMFGxNFM',
+  },
+  {
+    urls: ['turn:turn.anyfirewall.com:443?transport=tcp'],
+    username: 'webrtc',
+    credential: 'webrtc',
   },
 ];
 
@@ -71,18 +77,19 @@ const ParticipantTile = ({
     if (!videoRef.current) return;
     if (participant.stream) {
       videoRef.current.srcObject = participant.stream;
-      // Kiểm tra video tracks
       const checkVideo = () => {
         const tracks = participant.stream!.getVideoTracks();
         setHasVideo(tracks.length > 0 && tracks.some((t) => t.enabled && t.readyState !== 'ended'));
       };
       checkVideo();
-      // Lắng nghe khi track thay đổi
       participant.stream.getVideoTracks().forEach((t) => {
         t.onended = checkVideo;
         t.onmute = checkVideo;
         t.onunmute = checkVideo;
       });
+      // Re-check khi có track mới được thêm vào stream
+      participant.stream.onaddtrack = checkVideo;
+      participant.stream.onremovetrack = checkVideo;
     } else {
       videoRef.current.srcObject = null;
       setHasVideo(false);
@@ -231,10 +238,16 @@ const GroupCallModal = ({
       }
     };
 
+    // Track → stream map để gom tracks vào đúng stream
+    const remoteStream = new MediaStream();
+
     pc.ontrack = (e) => {
       if (!isActiveRef.current) return;
-      const stream = e.streams[0];
-      if (!stream) return;
+      // Ưu tiên dùng e.streams[0] nếu có, fallback tự build stream
+      const stream = e.streams[0] ?? remoteStream;
+      if (!remoteStream.getTracks().find(t => t.id === e.track.id)) {
+        remoteStream.addTrack(e.track);
+      }
       // Luôn update stream, kể cả khi đã có (để refresh video)
       setParticipants((prev) => {
         const exists = prev.find((p) => p.userID === remoteID);
@@ -296,7 +309,7 @@ const GroupCallModal = ({
       timerRef.current = window.setInterval(() => setCallDuration((p) => p + 1), 1000);
     };
 
-    // Người accept → caller tạo offer đến họ
+    // Người accept → cập nhật UI, KHÔNG tạo offer (callee sẽ tự tạo offer qua session-info)
     socket.on(
       'group-call-user-joined',
       async (data: {
@@ -324,18 +337,8 @@ const GroupCallModal = ({
             },
           ];
         });
-
-        // Caller luôn tạo offer đến người mới join (caller là người khởi tạo)
-        const pc = createPC(data.userID);
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit('group-call-offer', {
-          groupID,
-          to: data.userID,
-          from: user.userID,
-          offer,
-          userInfo: { name: user.name, avatar: user.anhDaiDien },
-        });
+        // Callee sẽ tạo offer đến tất cả qua group-call-session-info
+        // Không tạo offer ở đây để tránh glare
       }
     );
 
@@ -480,24 +483,23 @@ const GroupCallModal = ({
           return [...updated, ...newPs];
         });
 
-        // Chỉ tạo offer đến người có userID < userID của mình (tránh glare)
-        // Người có userID > sẽ nhận offer từ ta và trả answer
+        // Callee mới join → tạo offer đến TẤT CẢ participants đang trong call
+        // Caller sẽ nhận offer này và trả answer (không dùng group-call-user-joined nữa)
         for (const p of data.participants) {
           if (p.userID === user.userID) continue;
-          // Nếu userID của ta nhỏ hơn → ta là impolite peer → tạo offer
-          if (user.userID < p.userID) {
-            const pc = createPC(p.userID);
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit('group-call-offer', {
-              groupID,
-              to: p.userID,
-              from: user.userID,
-              offer,
-              userInfo: { name: user.name, avatar: user.anhDaiDien },
-            });
-          }
-          // Nếu userID của ta lớn hơn → đợi offer từ họ (họ sẽ tạo offer đến ta)
+          // Tránh tạo PC trùng nếu đã có và đang stable
+          const existingPc = pcsRef.current.get(p.userID);
+          if (existingPc && existingPc.signalingState === 'stable' && existingPc.connectionState === 'connected') continue;
+          const pc = createPC(p.userID);
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('group-call-offer', {
+            groupID,
+            to: p.userID,
+            from: user.userID,
+            offer,
+            userInfo: { name: user.name, avatar: user.anhDaiDien },
+          });
         }
       }
     );
