@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import axiosInstance from '../utils/axios';
 import socket from '../utils/socket';
@@ -376,6 +376,32 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
   );
 };
 
+// ==================== Hàm chuẩn hóa URL hình ảnh ====================
+// Loại bỏ giao thức, host, query parameters và decode các ký tự đặc biệt để so sánh URL chính xác hơn
+const cleanUrl = (u: string): string => {
+  if (!u) return '';
+  try {
+    let decoded = decodeURIComponent(u).trim();
+    decoded = decoded.split('?')[0]; // Bỏ query parameters
+    decoded = decoded.replace(/^(https?:)?\/\/[^\/]+/, ''); // Bỏ protocol và host (ví dụ: http://localhost:5000)
+    return decoded;
+  } catch (e) {
+    return u.trim();
+  }
+};
+
+// Fix Cloudinary URL để browser hiển thị được mọi format ảnh
+const fixImageUrl = (url: string): string => {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  let fixed = url.includes('/raw/upload/')
+    ? url.replace('/raw/upload/', '/image/upload/')
+    : url;
+  if (!fixed.includes('/f_auto')) {
+    fixed = fixed.replace('/upload/', '/upload/f_auto,q_auto,w_1200,c_limit/');
+  }
+  return fixed;
+};
+
 export const GroupChatWindow = ({
   groupID,
   userID,
@@ -404,7 +430,39 @@ export const GroupChatWindow = ({
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
-  const [chatImages, setChatImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
+  const [viewerImages, setViewerImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
+
+  // Lấy danh sách ảnh từ danh sách tin nhắn hiện tại để truyền vào bộ xem ảnh
+  const chatImages = useMemo(() => {
+    return messages
+      .filter((m) => m.type === 'image' && m.media_url?.length)
+      .flatMap((m) =>
+        (m.media_url || []).map((url) => ({
+          url: fixImageUrl(typeof url === 'string' ? url : ''),
+          timestamp: m.timestamp.toString(),
+          messageID: m.messageID,
+        }))
+      );
+  }, [messages]);
+
+  // Helper: mở image viewer - tìm trong chatImages trước, fallback sang set ảnh tùy ý
+  const openImageViewer = (url: string, fallbackUrls?: string[], fallbackTimestamp?: string) => {
+    const targetUrl = cleanUrl(url);
+    const idx = chatImages.findIndex((img) => cleanUrl(img.url) === targetUrl);
+    if (idx !== -1) {
+      setViewerImages(chatImages);
+      setImageViewerIndex(idx);
+      setShowImageViewer(true);
+    } else if (fallbackUrls && fallbackUrls.length > 0) {
+      const ts = fallbackTimestamp || new Date().toISOString();
+      const imgs = fallbackUrls.map((u) => ({ url: u, timestamp: ts }));
+      const fallbackIdx = fallbackUrls.indexOf(url);
+      setViewerImages(imgs);
+      setImageViewerIndex(fallbackIdx !== -1 ? fallbackIdx : 0);
+      setShowImageViewer(true);
+    }
+  };
+
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const msgRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const [memberMenuId, setMemberMenuId] = useState<string | null>(null);
@@ -647,15 +705,6 @@ export const GroupChatWindow = ({
         (messagesRes.data.messages || []).filter((m: Message) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
       );
 
-      // Load all images from chat
-      const images = (messagesRes.data.messages || [])
-        .filter((m: Message) => m.type === 'image' && m.media_url?.length)
-        .map((m: Message) => ({
-          url: m.media_url[0],
-          timestamp: m.timestamp.toString(),
-          messageID: m.messageID,
-        }));
-      setChatImages(images);
     } catch (error) {
       console.error('Error fetching group data:', error);
     } finally {
@@ -785,17 +834,14 @@ export const GroupChatWindow = ({
     if (message.groupID !== groupID) return;
 
     setMessages((prev) => {
-      // KIỂM TRA TRÙNG LẶP: Nếu messageID đã tồn tại thì không thêm nữa
-      const exists = prev.some((m) => m.messageID === message.messageID);
+      // KIỂM TRA TRÙNG LẶP: Nếu messageID hoặc tempID đã tồn tại thì không thêm nữa
+      const exists = prev.some((m) => 
+        (message.messageID && m.messageID === message.messageID) ||
+        (message.tempID && m.tempID === message.tempID)
+      );
       if (exists) return prev;
 
-      // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn (Trừ Poll và Notification hệ thống)
-      // Tin nhắn văn bản đã được thêm và xác nhận qua callback socket.emit('send_group_message')
-      if (message.senderID === userID && message.type !== 'poll' && message.type !== 'notification') {
-        return prev;
-      }
-
-      // Tin nhắn người khác → thêm bình thường
+      // Không lọc bỏ tin nhắn của chính mình nữa để đồng bộ tin nhắn gửi từ Mobile
       return [...prev, message];
     });
 
@@ -2329,11 +2375,8 @@ export const GroupChatWindow = ({
                           <ImageGrid
                             messages={group.messages as any}
                             onImageClick={(url, allUrls) => {
-                              const imageIndex = chatImages.findIndex((img) => img.url === url);
-                              if (imageIndex !== -1) {
-                                setImageViewerIndex(imageIndex);
-                                setShowImageViewer(true);
-                              }
+                              const ts = group.messages[0]?.timestamp?.toString() || new Date().toISOString();
+                              openImageViewer(url, allUrls, ts);
                             }}
                           />
 
@@ -2703,16 +2746,15 @@ export const GroupChatWindow = ({
 
                               {msg.type === 'image' && msg.media_url?.length ? (
                                 <img
-                                  src={msg.media_url[0]}
+                                  src={fixImageUrl(msg.media_url[0])}
                                   alt="img"
                                   className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg hover:opacity-90 transition-opacity"
-                                  onClick={() => {
-                                    const imageIndex = chatImages.findIndex((img) => img.url === msg.media_url[0]);
-                                    if (imageIndex !== -1) {
-                                      setImageViewerIndex(imageIndex);
-                                      setShowImageViewer(true);
-                                    }
-                                  }}
+                                  onClick={() => openImageViewer(
+                                    fixImageUrl(msg.media_url[0]),
+                                    (msg.media_url as string[]).map(fixImageUrl),
+                                    msg.timestamp?.toString()
+                                  )}
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                 />
                               ) : msg.type === 'sticker' && msg.media_url?.length ? (
                                 <div className="p-0">
@@ -3536,9 +3578,9 @@ export const GroupChatWindow = ({
         />
       )}
 
-      {showImageViewer && (
+      {showImageViewer && viewerImages.length > 0 && (
         <ImageViewerModal
-          images={chatImages}
+          images={viewerImages}
           initialIndex={imageViewerIndex}
           onClose={() => setShowImageViewer(false)}
         />

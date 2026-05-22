@@ -66,6 +66,19 @@ import { GroupBoardModal } from '../components/GroupBoardModal';
 
 const GIPHY_API_KEY = 'iw8DsJkjCByct4EHovySloueKpn6ljwK';
 
+// Fix Cloudinary URL để React Native hiển thị được mọi format ảnh
+// HEIC/HEIF (iPhone), AVIF (Android 12+), raw upload → JPEG/WebP qua f_auto
+const fixImageUrl = (url: string): string => {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  let fixed = url.includes('/raw/upload/')
+    ? url.replace('/raw/upload/', '/image/upload/')
+    : url;
+  if (!fixed.includes('/f_auto')) {
+    fixed = fixed.replace('/upload/', '/upload/f_auto,q_auto,w_1200,c_limit/');
+  }
+  return fixed;
+};
+
 const STICKER_DATA = [
   { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002734/android/sticker.png', name: 'cute dog', tags: ['cho', 'dog', 'hi', 'hello'] },
   { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002735/android/sticker.png', name: 'happy cat', tags: ['meo', 'cat', 'vui', 'cuoi', 'haha'] },
@@ -308,6 +321,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track messageIDs đã xử lý để tránh duplicate khi onNewMessage gọi nhiều lần
+  const processedMsgIDsRef = useRef<Set<string>>(new Set());
 
   // Pagination States
   const [page, setPage] = useState(1);
@@ -987,6 +1002,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     const chatID = selectedChat.chatID;
     const isGroup = selectedChat.type === 'group';
 
+    // Reset processed IDs khi đổi chat
+    processedMsgIDsRef.current.clear();
+
     if (isGroup) {
       // Group chat: join_group
       socket.emit('join_group', { groupID: chatID, userID: user.userID });
@@ -1069,23 +1087,26 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         return;
       }
 
-      // Cập nhật messages trong chat window
+      // Cập nhật messages trong chat window - dùng ref để tránh duplicate
+      if (msg.messageID && processedMsgIDsRef.current.has(msg.messageID)) {
+        return; // Đã xử lý rồi, bỏ qua
+      }
+      if (msg.messageID) {
+        processedMsgIDsRef.current.add(msg.messageID);
+      }
+
       setMessages(prev => {
-        // Kiểm tra xem tin nhắn đã tồn tại chưa (theo messageID hoặc tempID)
-        const existingIndex = prev.findIndex(m =>
-          m.messageID === msg.messageID ||
-          (msg.tempID && m.tempID === msg.tempID) ||
-          (m.tempID && m.tempID === msg.tempID)
-        );
+        const byTempID = msg.tempID ? prev.findIndex(m => m.tempID === msg.tempID) : -1;
+        const byMsgID = msg.messageID ? prev.findIndex(m => m.messageID === msg.messageID) : -1;
 
-        if (existingIndex !== -1) {
-          // Tin nhắn đã tồn tại → update thay vì thêm mới
-          return prev.map((m, idx) =>
-            idx === existingIndex ? { ...m, ...msg, tempID: undefined } : m
-          );
+        if (byMsgID !== -1) {
+          return prev.map((m, idx) => idx === byMsgID ? { ...m, ...msg } : m);
         }
-
-        // Tin nhắn mới → thêm vào cuối
+        if (byTempID !== -1) {
+          const updated = [...prev];
+          updated[byTempID] = { ...prev[byTempID], ...msg, tempID: undefined };
+          return updated;
+        }
         return [...prev, msg];
       });
 
@@ -1758,7 +1779,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     } else {
       const msg = buildMsg({ ...msgData, replyTo: currentReplyTo ? currentReplyTo : null });
       socket.emit('send_message', msg);
-      setMessages(prev => [...prev, msg]);
+      // Với text/sticker/gif: optimistic update ngay
+      // Với ảnh: để onNewMessage xử lý tránh duplicate khi gửi nhiều ảnh cùng lúc
+      if (msgData.type !== 'image' && msgData.type !== 'video') {
+        setMessages(prev => [...prev, msg]);
+      }
     }
   };
 
@@ -2640,20 +2665,28 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                 <TouchableOpacity
                   key={idx}
                   onPress={() => {
-                    setSelectedImages(item.media_url || []);
+                    setSelectedImages(item.media_url?.map(fixImageUrl) || []);
                     setSelectedImageIndex(idx);
                     setImageViewerVisible(true);
                   }}
                   onLongPress={() => handleLongPress(item)}
                   delayLongPress={500}
                 >
-                  <Image source={{ uri: url }} style={styles.messageImage} />
+                  <Image source={{ uri: fixImageUrl(url) }} style={styles.messageImage} />
                 </TouchableOpacity>
               ))}
             </View>
             <Text style={[styles.messageTime, isMine ? styles.timeOnMedia : styles.timeOnMediaOther]}>
               {timeStr}
             </Text>
+          </View>
+        );
+      }
+      // Ảnh đang upload (optimistic, chưa có URL)
+      if (item.type === 'image' && (!item.media_url || item.media_url.length === 0)) {
+        return (
+          <View style={[styles.messageImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#e5e7eb' }]}>
+            <Text style={{ color: '#9ca3af', fontSize: 12 }}>Đang tải...</Text>
           </View>
         );
       }
@@ -2914,8 +2947,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               <ImageGrid
                 messages={group.messages as any}
                 onImageClick={(url, allUrls) => {
-                  setSelectedImages(allUrls);
-                  setSelectedImageIndex(allUrls.indexOf(url));
+                  const fixedUrls = allUrls.map(fixImageUrl);
+                  const idx = fixedUrls.indexOf(url);
+                  setSelectedImages(fixedUrls);
+                  setSelectedImageIndex(idx !== -1 ? idx : 0);
                   setImageViewerVisible(true);
                 }}
               />
@@ -3581,14 +3616,32 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       <FlatList
         ref={flatListRef}
         data={(() => {
-          // ⭐ Group messages trước khi render
-          const uniqueMessages = messages.filter((msg, idx, arr) =>
-            arr.findIndex(m =>
-              (m.messageID && m.messageID === msg.messageID) ||
-              (m.tempID && m.tempID === msg.tempID && !msg.messageID)
-            ) === idx
-          );
-          return groupMessages(uniqueMessages);
+          // Dedup: loại bỏ duplicate messages
+          // - Nếu có 2 messages cùng messageID → giữ 1
+          // - Nếu có optimistic (chỉ tempID) và message thật (có messageID, cùng tempID) → giữ message thật
+          const seenMsgIDs = new Set<string>();
+          const tempIDsWithRealMsg = new Set<string>(); // tempIDs đã có message thật thay thế
+
+          // Pass 1: tìm tất cả tempID đã được replace bởi message thật
+          for (const msg of messages) {
+            if (msg.messageID && msg.tempID) {
+              tempIDsWithRealMsg.add(msg.tempID);
+            }
+          }
+
+          const result: Message[] = [];
+          for (const msg of messages) {
+            if (msg.messageID) {
+              if (seenMsgIDs.has(msg.messageID)) continue;
+              seenMsgIDs.add(msg.messageID);
+              result.push(msg);
+            } else if (msg.tempID) {
+              // Bỏ qua optimistic nếu đã có message thật cùng tempID
+              if (tempIDsWithRealMsg.has(msg.tempID)) continue;
+              result.push(msg);
+            }
+          }
+          return groupMessages(result);
         })()}
         keyExtractor={(item, index) => {
           if (isMessageGroup(item)) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import axiosInstance from '../utils/axios';
 import {
@@ -339,6 +339,36 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
     </div>
   );
 };
+// ==================== Hàm chuẩn hóa URL hình ảnh ====================
+// Loại bỏ giao thức, host, query parameters và decode các ký tự đặc biệt để so sánh URL chính xác hơn
+const cleanUrl = (u: string): string => {
+  if (!u) return '';
+  try {
+    let decoded = decodeURIComponent(u).trim();
+    decoded = decoded.split('?')[0]; // Bỏ query parameters
+    decoded = decoded.replace(/^(https?:)?\/\/[^\/]+/, ''); // Bỏ protocol và host (ví dụ: http://localhost:5000)
+    return decoded;
+  } catch (e) {
+    return u.trim();
+  }
+};
+
+// Fix Cloudinary URL để browser/React Native hiển thị được:
+// - /raw/upload/ → /image/upload/ (ảnh bị upload sai resource_type)
+// - f_auto: convert HEIC/HEIF/AVIF → JPEG/WebP tùy client
+// - q_auto: tối ưu chất lượng tự động
+// - w_1200,c_limit: giới hạn width 1200px để giảm file size, tăng tốc load
+const fixImageUrl = (url: string): string => {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  let fixed = url.includes('/raw/upload/')
+    ? url.replace('/raw/upload/', '/image/upload/')
+    : url;
+  if (!fixed.includes('/f_auto')) {
+    fixed = fixed.replace('/upload/', '/upload/f_auto,q_auto,w_1200,c_limit/');
+  }
+  return fixed;
+};
+
 const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -387,7 +417,43 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
   const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const [isBlockingOrUnblocking, setIsBlockingOrUnblocking] = useState(false);
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
-  const [chatImages, setChatImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
+  const [viewerImages, setViewerImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
+
+  // Lấy danh sách ảnh từ danh sách tin nhắn hiện tại để truyền vào bộ xem ảnh
+  const chatImages = useMemo(() => {
+    return messages
+      .filter((m) => m.type === 'image' && m.media_url?.length)
+      .flatMap((m) =>
+        (m.media_url || []).map((url) => ({
+          url: fixImageUrl(typeof url === 'string' ? url : ''),
+          timestamp: m.timestamp.toString(),
+          messageID: m.messageID,
+        }))
+      );
+  }, [messages]);
+
+  // Helper: mở image viewer - tìm trong chatImages trước, fallback sang set ảnh tùy ý
+  const openImageViewer = (
+    url: string,
+    fallbackUrls?: string[],
+    fallbackTimestamp?: string
+  ) => {
+    const targetUrl = cleanUrl(url);
+    const idx = chatImages.findIndex((img) => cleanUrl(img.url) === targetUrl);
+    if (idx !== -1) {
+      setViewerImages(chatImages);
+      setImageViewerIndex(idx);
+      setShowImageViewer(true);
+    } else if (fallbackUrls && fallbackUrls.length > 0) {
+      // Fallback: dùng set ảnh được truyền vào
+      const ts = fallbackTimestamp || new Date().toISOString();
+      const imgs = fallbackUrls.map((u) => ({ url: u, timestamp: ts }));
+      const fallbackIdx = fallbackUrls.indexOf(url);
+      setViewerImages(imgs);
+      setImageViewerIndex(fallbackIdx !== -1 ? fallbackIdx : 0);
+      setShowImageViewer(true);
+    }
+  };
 
   const [reminderEvents, setReminderEvents] = useState<ReminderEvent[]>([]);
 
@@ -521,16 +587,6 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
     msgRefsMap.current.clear();
     setHighlightedMsgId(null);
-
-    // Load all images from chat
-    const images = (selectedChat.lastMessage || [])
-      .filter((m) => m.type === 'image' && m.media_url?.length)
-      .map((m) => ({
-        url: typeof m.media_url![0] === 'string' ? m.media_url![0] : '',
-        timestamp: m.timestamp,
-        messageID: m.messageID,
-      }));
-    setChatImages(images);
 
     console.log('📤 Emitting join events:', { userID, chatID });
     socket.emit('join_user', userID);
@@ -1147,9 +1203,16 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
         const data = await res.json();
 
         if (type === 'image' || type === 'video') {
-          const msg = buildMsg({ content: '', type, media_url: data.urls });
-          socket.emit('send_message', msg);
-          setMessages((prev) => [...prev, msg]);
+          // Tạo groupId cho batch ảnh (2+ ảnh)
+          const groupId = type === 'image' && data.urls.length > 1
+            ? `group_${Date.now()}_${user!.userID}`
+            : undefined;
+          // Gửi từng ảnh/video riêng biệt
+          for (let i = 0; i < data.urls.length; i++) {
+            const msg = buildMsg({ content: '', type, media_url: [data.urls[i]], groupId });
+            socket.emit('send_message', msg);
+            setMessages((prev) => [...prev, msg]);
+          }
         } else {
           fileList.forEach((f, i) => {
             const msg = buildMsg({ content: f.name, type: 'file', media_url: [data.urls[i]] });
@@ -1729,19 +1792,18 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       );
     }
     if (msg.type === 'image' && msg.media_url?.length) {
-      const url = typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '';
-      const imageIndex = chatImages.findIndex((img) => img.url === url);
+      const url = fixImageUrl(typeof msg.media_url[0] === 'string' ? msg.media_url[0] : '');
+      if (!url) return null;
+      const fixedUrls = (msg.media_url as string[]).map(fixImageUrl);
 
       return (
         <img
           src={url}
           alt="img"
           className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg hover:opacity-90 transition-opacity"
-          onClick={() => {
-            if (imageIndex !== -1) {
-              setImageViewerIndex(imageIndex);
-              setShowImageViewer(true);
-            }
+          onClick={() => openImageViewer(url, fixedUrls, msg.timestamp)}
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = 'none';
           }}
         />
       );
@@ -2405,11 +2467,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           <ImageGrid
                             messages={group.messages as any}
                             onImageClick={(url, allUrls) => {
-                              const imageIndex = chatImages.findIndex((img) => img.url === url);
-                              if (imageIndex !== -1) {
-                                setImageViewerIndex(imageIndex);
-                                setShowImageViewer(true);
-                              }
+                              const ts = group.messages[0]?.timestamp?.toString() || new Date().toISOString();
+                              openImageViewer(url, allUrls, ts);
                             }}
                           />
 
@@ -3430,9 +3489,9 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       )}
 
       {/* Image Viewer Modal */}
-      {showImageViewer && chatImages.length > 0 && (
+      {showImageViewer && viewerImages.length > 0 && (
         <ImageViewerModal
-          images={chatImages}
+          images={viewerImages}
           initialIndex={imageViewerIndex}
           onClose={() => setShowImageViewer(false)}
         />
