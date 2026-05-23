@@ -153,18 +153,66 @@ const GIPHY_API_KEY = 'iw8DsJkjCByct4EHovySloueKpn6ljwK';
 
 // Dữ liệu Sticker mẫu để tìm kiếm
 const STICKER_DATA = [
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002734/android/sticker.png', name: 'cute dog', tags: ['cho', 'dog', 'hi', 'hello'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002735/android/sticker.png', name: 'happy cat', tags: ['meo', 'cat', 'vui', 'cuoi', 'haha'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002736/android/sticker.png', name: 'sad bear', tags: ['gau', 'bear', 'buon', 'khoc', 'hic'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002737/android/sticker.png', name: 'angry duck', tags: ['vit', 'duck', 'gian', 'cau', 'thoi'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002738/android/sticker.png', name: 'cool monkey', tags: ['khi', 'monkey', 'ngau', 'kinh', 'chat'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002739/android/sticker.png', name: 'shy bunny', tags: ['tho', 'bunny', 'ngai', 'xau ho', 'ahihi'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002740/android/sticker.png', name: 'surprised fox', tags: ['cao', 'fox', 'bat ngo', 'soc', 'ha'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002741/android/sticker.png', name: 'sleeping owl', tags: ['cu', 'owl', 'ngu', 'met', 'ngáp'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869384/android/sticker.png', name: 'love heart', tags: ['yeu', 'love', 'tim', 'heart'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869385/android/sticker.png', name: 'cheer up', tags: ['co len', 'cheer', 'fighting'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869386/android/sticker.png', name: 'thank you', tags: ['cam on', 'thanks', 'cảm ơn'] },
-  { url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869387/android/sticker.png', name: 'good luck', tags: ['may man', 'lucky', 'chuc mung'] },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002734/android/sticker.png',
+    name: 'cute dog',
+    tags: ['cho', 'dog', 'hi', 'hello'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002735/android/sticker.png',
+    name: 'happy cat',
+    tags: ['meo', 'cat', 'vui', 'cuoi', 'haha'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002736/android/sticker.png',
+    name: 'sad bear',
+    tags: ['gau', 'bear', 'buon', 'khoc', 'hic'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002737/android/sticker.png',
+    name: 'angry duck',
+    tags: ['vit', 'duck', 'gian', 'cau', 'thoi'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002738/android/sticker.png',
+    name: 'cool monkey',
+    tags: ['khi', 'monkey', 'ngau', 'kinh', 'chat'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002739/android/sticker.png',
+    name: 'shy bunny',
+    tags: ['tho', 'bunny', 'ngai', 'xau ho', 'ahihi'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002740/android/sticker.png',
+    name: 'surprised fox',
+    tags: ['cao', 'fox', 'bat ngo', 'soc', 'ha'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/52002741/android/sticker.png',
+    name: 'sleeping owl',
+    tags: ['cu', 'owl', 'ngu', 'met', 'ngáp'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869384/android/sticker.png',
+    name: 'love heart',
+    tags: ['yeu', 'love', 'tim', 'heart'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869385/android/sticker.png',
+    name: 'cheer up',
+    tags: ['co len', 'cheer', 'fighting'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869386/android/sticker.png',
+    name: 'thank you',
+    tags: ['cam on', 'thanks', 'cảm ơn'],
+  },
+  {
+    url: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/51869387/android/sticker.png',
+    name: 'good luck',
+    tags: ['may man', 'lucky', 'chuc mung'],
+  },
 ];
 
 // ==================== Role Badge Component ====================
@@ -203,7 +251,15 @@ const getFileIcon = (fileName: string) => {
     <svg width="44" height="52" viewBox="0 0 44 52" fill="none">
       <path d="M4 0h26l10 10v38a4 4 0 01-4 4H4a4 4 0 01-4-4V4a4 4 0 014-4z" fill={config.bg} />
       <path d="M30 0l10 10H34a4 4 0 01-4-4V0z" fill="rgba(0,0,0,0.2)" />
-      <text x="22" y="34" textAnchor="middle" fill="white" fontSize={config.label.length > 2 ? "11" : "16"} fontWeight="bold" fontFamily="Arial, sans-serif">
+      <text
+        x="22"
+        y="34"
+        textAnchor="middle"
+        fill="white"
+        fontSize={config.label.length > 2 ? '11' : '16'}
+        fontWeight="bold"
+        fontFamily="Arial, sans-serif"
+      >
         {config.label}
       </text>
     </svg>
@@ -229,7 +285,7 @@ const FileDisplay = ({
         const size = res.headers.get('content-length');
         if (size) setFileSize(parseInt(size));
       })
-      .catch(() => { });
+      .catch(() => {});
   }, [fileUrl]);
 
   const handleDownload = async () => {
@@ -258,7 +314,11 @@ const FileDisplay = ({
       >
         {getFileIcon(fileName)}
         <div className="flex-1 min-w-0">
-          <p className={`font-semibold text-[14px] truncate mb-0.5 ${isMine ? 'text-gray-900' : 'text-gray-900'}`}>{fileName}</p>
+          <p
+            className={`font-semibold text-[14px] truncate mb-0.5 ${isMine ? 'text-gray-900' : 'text-gray-900'}`}
+          >
+            {fileName}
+          </p>
           <div className={`text-[12px] ${isMine ? 'text-gray-500' : 'text-gray-500'}`}>
             <span>{fileSize ? formatFileSize(fileSize) : 'Đang tải...'}</span>
             <span className="mx-1">•</span>
@@ -273,8 +333,18 @@ const FileDisplay = ({
           className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors shrink-0 ${isMine ? 'bg-blue-100 hover:bg-blue-200 text-gray-600' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
           title="Tải xuống"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
+            />
           </svg>
         </button>
       </div>
@@ -310,7 +380,11 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
   };
 
   const fmt = (s: number) =>
-    `${Math.floor(s / 60).toString().padStart(2, '0')}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+    `${Math.floor(s / 60)
+      .toString()
+      .padStart(2, '0')}:${Math.floor(s % 60)
+      .toString()
+      .padStart(2, '0')}`;
 
   return (
     <div
@@ -357,7 +431,9 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
         ))}
       </div>
 
-      <span className={`text-xs font-medium shrink-0 ${isMine ? 'text-gray-600' : 'text-gray-700'}`}>
+      <span
+        className={`text-xs font-medium shrink-0 ${isMine ? 'text-gray-600' : 'text-gray-700'}`}
+      >
         {fmt(duration)}
       </span>
 
@@ -408,7 +484,7 @@ export const GroupChatWindow = ({
   userID,
   onShowGroupInfo,
   onSelectChat,
-  onGroupDissolved
+  onGroupDissolved,
 }: GroupChatWindowProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [groupInfo, setGroupInfo] = useState<GroupInfo | null>(null);
@@ -431,6 +507,9 @@ export const GroupChatWindow = ({
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
+  const [chatImages, setChatImages] = useState<
+    { url: string; timestamp: string; messageID?: string }[]
+  >([]);
   const [viewerImages, setViewerImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
 
   // Lấy danh sách ảnh từ danh sách tin nhắn hiện tại để truyền vào bộ xem ảnh
@@ -475,7 +554,9 @@ export const GroupChatWindow = ({
   const [joinExistingCall, setJoinExistingCall] = useState(false);
   const [groupCallIsCallee, setGroupCallIsCallee] = useState(false);
   const [groupCallWithVideo, setGroupCallWithVideo] = useState(true);
-  const [groupCallInitialParticipants, setGroupCallInitialParticipants] = useState<{ userID: string; name: string; avatar?: string }[]>([]);
+  const [groupCallInitialParticipants, setGroupCallInitialParticipants] = useState<
+    { userID: string; name: string; avatar?: string }[]
+  >([]);
 
   // Board Modal States
   const [showBoard, setShowBoard] = useState(false);
@@ -502,8 +583,11 @@ export const GroupChatWindow = ({
 
   const getMyInfo = () => ({
     userID,
-    name: members.find(m => m.userID === userID)?.name || groupInfo?.members.find(m => m.userID === userID)?.name || userID,
-    anhDaiDien: groupInfo?.members.find(m => m.userID === userID)?.avatar,
+    name:
+      members.find((m) => m.userID === userID)?.name ||
+      groupInfo?.members.find((m) => m.userID === userID)?.name ||
+      userID,
+    anhDaiDien: groupInfo?.members.find((m) => m.userID === userID)?.avatar,
   });
 
   // Chuyển sang chat 1-1 từ profile (khi nhấn "Nhắn tin")
@@ -524,17 +608,19 @@ export const GroupChatWindow = ({
     try {
       await axiosInstance.post('/contacts/send-friend-request', {
         recipientPhone: selectedUserForProfile.sdt,
-        message: 'Mình kết bạn nhé!'
+        message: 'Mình kết bạn nhé!',
       });
       toast.success(`Đã gửi lời mời kết bạn tới ${selectedUserForProfile.name}`);
 
       // Update local state for friendStatus
-      setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'pending_sent' } : prev);
+      setSelectedUserForProfile((prev: any) =>
+        prev ? { ...prev, friendStatus: 'pending_sent' } : prev
+      );
 
       // Emit socket để thông báo bên kia
       socket.emit('friend_request_sent', {
         from: userID,
-        to: selectedUserForProfile.userID
+        to: selectedUserForProfile.userID,
       });
     } catch {
       toast.error('Lỗi khi gửi lời mời kết bạn');
@@ -544,29 +630,43 @@ export const GroupChatWindow = ({
   const handleAcceptFriendFromProfile = async () => {
     if (!selectedUserForProfile) return;
     try {
-      await axiosInstance.post('/contacts/accept-friend-request', { senderID: selectedUserForProfile.userID });
+      await axiosInstance.post('/contacts/accept-friend-request', {
+        senderID: selectedUserForProfile.userID,
+      });
       toast.success(`Đã trở thành bạn với ${selectedUserForProfile.name}`);
-      setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'accepted' } : prev);
+      setSelectedUserForProfile((prev: any) =>
+        prev ? { ...prev, friendStatus: 'accepted' } : prev
+      );
       socket.emit('friend_request_accepted', { from: userID, to: selectedUserForProfile.userID });
-    } catch { toast.error('Lỗi khi chấp nhận kết bạn'); }
+    } catch {
+      toast.error('Lỗi khi chấp nhận kết bạn');
+    }
   };
 
   const handleRejectFriendFromProfile = async () => {
     if (!selectedUserForProfile) return;
     try {
-      await axiosInstance.post('/contacts/reject-friend-request', { senderID: selectedUserForProfile.userID });
+      await axiosInstance.post('/contacts/reject-friend-request', {
+        senderID: selectedUserForProfile.userID,
+      });
       toast.success(`Đã từ chối lời mời từ ${selectedUserForProfile.name}`);
-      setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'none' } : prev);
-    } catch { toast.error('Lỗi khi từ chối kết bạn'); }
+      setSelectedUserForProfile((prev: any) => (prev ? { ...prev, friendStatus: 'none' } : prev));
+    } catch {
+      toast.error('Lỗi khi từ chối kết bạn');
+    }
   };
 
   const handleRecallFriendFromProfile = async () => {
     if (!selectedUserForProfile) return;
     try {
-      await axiosInstance.post('/contacts/cancel-friend-request', { recipientID: selectedUserForProfile.userID });
+      await axiosInstance.post('/contacts/cancel-friend-request', {
+        recipientID: selectedUserForProfile.userID,
+      });
       toast.success(`Đã thu hồi lời mời tới ${selectedUserForProfile.name}`);
-      setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: 'none' } : prev);
-    } catch { toast.error('Lỗi khi thu hồi lời mời'); }
+      setSelectedUserForProfile((prev: any) => (prev ? { ...prev, friendStatus: 'none' } : prev));
+    } catch {
+      toast.error('Lỗi khi thu hồi lời mời');
+    }
   };
 
   const openNewCall = () => setShowGroupCall(true);
@@ -585,14 +685,28 @@ export const GroupChatWindow = ({
   } | null>(null);
   const [groupCallAccepted, setGroupCallAccepted] = useState<{ withVideo: boolean } | null>(null);
   const [showPinLimitModal, setShowPinLimitModal] = useState(false);
-  const [pendingPinItem, setPendingPinItem] = useState<{ type: 'message' | 'note'; id: string; data: any } | null>(null);
+  const [pendingPinItem, setPendingPinItem] = useState<{
+    type: 'message' | 'note';
+    id: string;
+    data: any;
+  } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  interface JoinRequest { requestID: string; userID: string; name: string; avatar?: string; requestedByName: string; }
+  interface JoinRequest {
+    requestID: string;
+    userID: string;
+    name: string;
+    avatar?: string;
+    requestedByName: string;
+  }
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
-  const [pendingApprovalModal, setPendingApprovalModal] = useState<{ requestID: string; inviteeName: string; inviterName: string } | null>(null);
+  const [pendingApprovalModal, setPendingApprovalModal] = useState<{
+    requestID: string;
+    inviteeName: string;
+    inviterName: string;
+  } | null>(null);
   const [socketConnected, setSocketConnected] = useState(socket.connected);
   const [pinnedMenuId, setPinnedMenuId] = useState<string | null>(null);
 
@@ -621,14 +735,15 @@ export const GroupChatWindow = ({
 
   // Helper: lấy role của sender từ members list
   const getSenderRole = (senderID: string): 'owner' | 'admin' | 'member' => {
-    return members.find(m => m.userID === senderID)?.role || 'member';
+    return members.find((m) => m.userID === senderID)?.role || 'member';
   };
 
   // Helper cho việc trả lời tin nhắn: Tự động @tên người khác
   const handleReply = (msg: Message) => {
     setReplyTo(msg);
     if (msg.senderID !== userID) {
-      const senderName = msg.senderInfo?.name || members.find(m => m.userID === msg.senderID)?.name;
+      const senderName =
+        msg.senderInfo?.name || members.find((m) => m.userID === msg.senderID)?.name;
       if (senderName) {
         handleInputChange(`@${senderName} `);
         // Tự động focus vào ô nhập
@@ -652,7 +767,7 @@ export const GroupChatWindow = ({
       console.log('📥 Fetched group data:', {
         groupID: groupData.groupID,
         hasSettings: !!groupData.settings,
-        settings: groupData.settings
+        settings: groupData.settings,
       });
 
       setGroupInfo({
@@ -698,14 +813,14 @@ export const GroupChatWindow = ({
       setMembers(membersWithInfo);
 
       // Cập nhật groupInfo.members với tên/avatar thật
-      setGroupInfo((prev) =>
-        prev ? { ...prev, members: membersWithInfo } : prev
-      );
+      setGroupInfo((prev) => (prev ? { ...prev, members: membersWithInfo } : prev));
       setMessages(messagesRes.data.messages || []);
 
       // Load pinned messages
       setPinnedMessages(
-        (messagesRes.data.messages || []).filter((m: Message) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
+        (messagesRes.data.messages || []).filter(
+          (m: Message) => m.pinnedInfo && m.pinnedInfo.pinnedBy
+        )
       );
 
     } catch (error) {
@@ -743,7 +858,9 @@ export const GroupChatWindow = ({
     try {
       setIsLoadingMore(true);
       const nextPage = currentPage + 1;
-      const response = await axiosInstance.get(`/groups/${groupID}/messages?page=${nextPage}&limit=50`);
+      const response = await axiosInstance.get(
+        `/groups/${groupID}/messages?page=${nextPage}&limit=50`
+      );
       const olderMessages = response.data.messages || [];
 
       if (olderMessages.length > 0) {
@@ -772,13 +889,16 @@ export const GroupChatWindow = ({
     }
   }, [groupID, currentPage, isLoadingMore, hasMoreMessages]);
 
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const container = e.currentTarget;
-    // Load more when scrolled to top (within 100px)
-    if (container.scrollTop < 100 && !isLoadingMore && hasMoreMessages) {
-      loadMoreMessages();
-    }
-  }, [isLoadingMore, hasMoreMessages, loadMoreMessages]);
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const container = e.currentTarget;
+      // Load more when scrolled to top (within 100px)
+      if (container.scrollTop < 100 && !isLoadingMore && hasMoreMessages) {
+        loadMoreMessages();
+      }
+    },
+    [isLoadingMore, hasMoreMessages, loadMoreMessages]
+  );
 
   const fetchJoinRequests = useCallback(async () => {
     try {
@@ -809,30 +929,64 @@ export const GroupChatWindow = ({
               isActive: member.isActive,
             };
           } catch {
-            return { _id: member._id, userID: member.userID, name: member.userID, avatar: undefined, role: member.role, joinedAt: member.joinedAt, isActive: member.isActive };
+            return {
+              _id: member._id,
+              userID: member.userID,
+              name: member.userID,
+              avatar: undefined,
+              role: member.role,
+              joinedAt: member.joinedAt,
+              isActive: member.isActive,
+            };
           }
         })
       );
 
       setMembers(membersWithInfo);
       setGroupInfo((prev) =>
-        prev ? {
-          ...prev,
-          name: groupData.name,
-          avatar: groupData.avatar,
-          description: groupData.description,
-          ownerID: groupData.ownerID,
-          members: membersWithInfo,
-          memberCount: membersWithInfo.length,
-          settings: groupData.settings,
-          blockedMembers: groupData.blockedMembers || [],
-        } : prev
+        prev
+          ? {
+              ...prev,
+              name: groupData.name,
+              avatar: groupData.avatar,
+              description: groupData.description,
+              ownerID: groupData.ownerID,
+              members: membersWithInfo,
+              memberCount: membersWithInfo.length,
+              settings: groupData.settings,
+              blockedMembers: groupData.blockedMembers || [],
+            }
+          : prev
       );
     } catch (error) {
       console.error('Error refreshing group info:', error);
     }
   }, [groupID]);
 
+  const handleNewMessage = useCallback(
+    (message: Message) => {
+      console.log('📨 handleNewMessage called:', {
+        messageID: message.messageID,
+        groupID: message.groupID,
+        currentGroupID: groupID,
+        senderID: message.senderID,
+        currentUserID: userID,
+        forwardedFrom: message.forwardedFrom,
+        type: message.type,
+      });
+
+      if (message.groupID !== groupID) {
+        console.log('⏭️ Skipping: different groupID');
+        return;
+      }
+
+      setMessages((prev) => {
+        // KIỂM TRA TRÙNG LẶP: Nếu messageID đã tồn tại thì không thêm nữa
+        const exists = prev.some((m) => m.messageID === message.messageID);
+        if (exists) {
+          console.log('⚠️ Duplicate message detected, skipping:', message.messageID);
+          return prev;
+        }
   const handleNewMessage = useCallback((message: Message) => {
     if (message.groupID !== groupID) return;
 
@@ -848,31 +1002,56 @@ export const GroupChatWindow = ({
       return [...prev, message];
     });
 
-    // Nếu đang mở group này, đánh dấu đã đọc tin nhắn mới ngay lập tức
-    if (message.senderID !== userID) {
-      socket.emit('mark_as_read', {
-        messageID: message.messageID,
-        userID,
-        groupID
-      });
-    }
-  }, [groupID, userID]);
+        // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn
+        // NGOẠI TRỪ: Poll, Notification, và Forwarded message (cần hiển thị ngay)
+        if (
+          message.senderID === userID &&
+          message.type !== 'poll' &&
+          message.type !== 'notification' &&
+          !message.forwardedFrom
+        ) {
+          console.log('⏭️ Skipping: own message (not poll/notification/forwarded)');
+          return prev;
+        }
 
-  const handleTypingStart = useCallback((data: { groupID: string; userID: string; userName: string }) => {
-    if (data.groupID === groupID && data.userID !== userID) {
-      setTypingUsers((prev) => new Map(prev).set(data.userID, data.userName));
-    }
-  }, [groupID, userID]);
-
-  const handleTypingStop = useCallback((data: { groupID: string; userID: string }) => {
-    if (data.groupID === groupID) {
-      setTypingUsers((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(data.userID);
-        return newMap;
+        // Tin nhắn người khác hoặc forwarded message → thêm bình thường
+        console.log('✅ Adding message to state:', message.messageID);
+        return [...prev, message];
       });
-    }
-  }, [groupID]);
+
+      // Nếu đang mở group này, đánh dấu đã đọc tin nhắn mới ngay lập tức
+      if (message.senderID !== userID) {
+        socket.emit('mark_as_read', {
+          messageID: message.messageID,
+          userID,
+          groupID,
+        });
+      }
+    },
+    [groupID, userID]
+  );
+
+  const handleTypingStart = useCallback(
+    (data: { groupID: string; userID: string; userName: string }) => {
+      if (data.groupID === groupID && data.userID !== userID) {
+        setTypingUsers((prev) => new Map(prev).set(data.userID, data.userName));
+      }
+    },
+    [groupID, userID]
+  );
+
+  const handleTypingStop = useCallback(
+    (data: { groupID: string; userID: string }) => {
+      if (data.groupID === groupID) {
+        setTypingUsers((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(data.userID);
+          return newMap;
+        });
+      }
+    },
+    [groupID]
+  );
 
   // Fetch GIF gợi ý khi người dùng gõ @GIF
   useEffect(() => {
@@ -929,153 +1108,195 @@ export const GroupChatWindow = ({
     setPinnedMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
   }, []);
 
-  const handleMessageDeletedLocal = useCallback((data: { messageID: string; userID: string }) => {
-    // Chỉ xóa message khỏi UI của user hiện tại
-    if (data.userID === userID) {
-      setMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
-      setPinnedMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
-    }
-  }, [userID]);
+  const handleMessageDeletedLocal = useCallback(
+    (data: { messageID: string; userID: string }) => {
+      // Chỉ xóa message khỏi UI của user hiện tại
+      if (data.userID === userID) {
+        setMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
+        setPinnedMessages((prev) => prev.filter((m) => m.messageID !== data.messageID));
+      }
+    },
+    [userID]
+  );
 
-  const handleReactionUpdated = useCallback((data: { messageID: string; reactions: Array<{ userID: string; emoji: string }> }) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.messageID === data.messageID ? { ...msg, reactions: data.reactions } : msg
-      )
-    );
-  }, []);
+  const handleReactionUpdated = useCallback(
+    (data: { messageID: string; reactions: Array<{ userID: string; emoji: string }> }) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.messageID === data.messageID ? { ...msg, reactions: data.reactions } : msg
+        )
+      );
+    },
+    []
+  );
 
-  const handlePinNotification = useCallback((data: any) => {
-    console.log('📌 Pin notification received:', data);
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.messageID === data.messageID ? { ...msg, pinnedInfo: data.pinnedInfo } : msg
-      )
-    );
-    // Refresh pinned messages list from API
-    fetchPinnedMessages();
-  }, [fetchPinnedMessages]);
+  const handlePinNotification = useCallback(
+    (data: any) => {
+      console.log('📌 Pin notification received:', data);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.messageID === data.messageID ? { ...msg, pinnedInfo: data.pinnedInfo } : msg
+        )
+      );
+      // Refresh pinned messages list from API
+      fetchPinnedMessages();
+    },
+    [fetchPinnedMessages]
+  );
 
-  const handleUnpinNotification = useCallback((data: any) => {
-    console.log('📌 Unpin notification received:', data);
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.messageID === data.messageID ? { ...msg, pinnedInfo: null } : msg
-      )
-    );
-    // Refresh pinned messages list from API
-    fetchPinnedMessages();
-  }, [fetchPinnedMessages]);
+  const handleUnpinNotification = useCallback(
+    (data: any) => {
+      console.log('📌 Unpin notification received:', data);
+      setMessages((prev) =>
+        prev.map((msg) => (msg.messageID === data.messageID ? { ...msg, pinnedInfo: null } : msg))
+      );
+      // Refresh pinned messages list from API
+      fetchPinnedMessages();
+    },
+    [fetchPinnedMessages]
+  );
 
   // Note event handlers
-  const handleNoteCreated = useCallback((note: any) => {
-    console.log('📝 Note created:', note);
-    fetchPinnedNotes();
-  }, [fetchPinnedNotes]);
+  const handleNoteCreated = useCallback(
+    (note: any) => {
+      console.log('📝 Note created:', note);
+      fetchPinnedNotes();
+    },
+    [fetchPinnedNotes]
+  );
 
-  const handleNoteUpdated = useCallback((note: any) => {
-    console.log('📝 Note updated:', note);
-    fetchPinnedNotes();
-  }, [fetchPinnedNotes]);
+  const handleNoteUpdated = useCallback(
+    (note: any) => {
+      console.log('📝 Note updated:', note);
+      fetchPinnedNotes();
+    },
+    [fetchPinnedNotes]
+  );
 
-  const handleNoteDeleted = useCallback((data: { noteID: string }) => {
-    console.log('📝 Note deleted:', data);
-    fetchPinnedNotes();
-  }, [fetchPinnedNotes]);
+  const handleNoteDeleted = useCallback(
+    (data: { noteID: string }) => {
+      console.log('📝 Note deleted:', data);
+      fetchPinnedNotes();
+    },
+    [fetchPinnedNotes]
+  );
 
-  const handleNotePinToggled = useCallback((note: any) => {
-    console.log('📝 Note pin toggled:', note);
-    fetchPinnedNotes();
-  }, [fetchPinnedNotes]);
+  const handleNotePinToggled = useCallback(
+    (note: any) => {
+      console.log('📝 Note pin toggled:', note);
+      fetchPinnedNotes();
+    },
+    [fetchPinnedNotes]
+  );
 
   // Group settings updated handler
-  const handleGroupSettingsUpdated = useCallback((data: { groupID: string; settings: any }) => {
-    console.log('⚙️ Group settings updated:', data);
-    if (data.groupID === groupID) {
-      // Update groupInfo.settings real-time instead of full reload
+  const handleGroupSettingsUpdated = useCallback(
+    (data: { groupID: string; settings: any }) => {
+      console.log('⚙️ Group settings updated:', data);
+      if (data.groupID === groupID) {
+        // Update groupInfo.settings real-time instead of full reload
+        setGroupInfo((prev) =>
+          prev
+            ? {
+                ...prev,
+                settings: data.settings,
+              }
+            : prev
+        );
+        toast.success('Cài đặt nhóm đã được cập nhật');
+      }
+    },
+    [groupID]
+  );
+
+  // Group info updated handler (real-time name/avatar change)
+  const handleGroupInfoUpdated = useCallback(
+    (data: { groupID: string; name?: string; avatar?: string }) => {
+      console.log('🖼️ Group info updated:', data);
+      if (data.groupID !== groupID) return;
       setGroupInfo((prev) =>
         prev
           ? {
-            ...prev,
-            settings: data.settings,
-          }
+              ...prev,
+              name: data.name ?? prev.name,
+              avatar: data.avatar ?? prev.avatar,
+            }
           : prev
       );
-      toast.success('Cài đặt nhóm đã được cập nhật');
-    }
-  }, [groupID]);
-
-  // Group info updated handler (real-time name/avatar change)
-  const handleGroupInfoUpdated = useCallback((data: { groupID: string; name?: string; avatar?: string }) => {
-    console.log('🖼️ Group info updated:', data);
-    if (data.groupID !== groupID) return;
-    setGroupInfo((prev) =>
-      prev
-        ? {
-          ...prev,
-          name: data.name ?? prev.name,
-          avatar: data.avatar ?? prev.avatar,
-        }
-        : prev
-    );
-  }, [groupID]);
+    },
+    [groupID]
+  );
 
   // Group dissolved handler
-  const handleGroupDissolved = useCallback((data: { groupID: string; message: string }) => {
-    console.log('💥 Group dissolved:', data);
-    if (data.groupID === groupID) {
-      toast.error(data.message);
-      // Use callback to navigate without hard reload
-      setTimeout(() => {
-        if (onGroupDissolved) {
-          onGroupDissolved();
-        } else if (onSelectChat) {
-          // Fallback: clear selected chat if used in HomePage
-          onSelectChat(null);
-        } else {
-          // Last resort: navigate to home (but this shouldn't happen)
-          window.location.href = '/home';
-        }
-      }, 2000);
-    }
-  }, [groupID, onGroupDissolved, onSelectChat]);
+  const handleGroupDissolved = useCallback(
+    (data: { groupID: string; message: string }) => {
+      console.log('💥 Group dissolved:', data);
+      if (data.groupID === groupID) {
+        toast.error(data.message);
+        // Use callback to navigate without hard reload
+        setTimeout(() => {
+          if (onGroupDissolved) {
+            onGroupDissolved();
+          } else if (onSelectChat) {
+            // Fallback: clear selected chat if used in HomePage
+            onSelectChat(null);
+          } else {
+            // Last resort: navigate to home (but this shouldn't happen)
+            window.location.href = '/home';
+          }
+        }, 2000);
+      }
+    },
+    [groupID, onGroupDissolved, onSelectChat]
+  );
 
   // Member role changed handler
-  const handleMemberRoleChanged = useCallback((data: { groupID: string; userID: string; newRole: string }) => {
-    console.log('👤 Member role changed:', data);
-    if (data.groupID === groupID) {
-      // Refresh group data to get latest member roles
-      fetchGroupData();
-      if (data.userID === userID) {
-        toast.success(`Vai trò của bạn đã được thay đổi thành ${data.newRole === 'admin' ? 'Phó nhóm' : 'Thành viên'}`);
+  const handleMemberRoleChanged = useCallback(
+    (data: { groupID: string; userID: string; newRole: string }) => {
+      console.log('👤 Member role changed:', data);
+      if (data.groupID === groupID) {
+        // Refresh group data to get latest member roles
+        fetchGroupData();
+        if (data.userID === userID) {
+          toast.success(
+            `Vai trò của bạn đã được thay đổi thành ${data.newRole === 'admin' ? 'Phó nhóm' : 'Thành viên'}`
+          );
+        }
       }
-    }
-  }, [groupID, userID, fetchGroupData]);
+    },
+    [groupID, userID, fetchGroupData]
+  );
 
   // Member kicked handler
-  const handleMemberKicked = useCallback((data: { groupID: string; kickedUserID: string; kickedName: string }) => {
-    console.log('👢 Member kicked:', data);
-    if (data.groupID === groupID) {
-      if (data.kickedUserID === userID) {
-        toast.error('Bạn đã bị xóa khỏi nhóm');
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 2000);
-      } else {
+  const handleMemberKicked = useCallback(
+    (data: { groupID: string; kickedUserID: string; kickedName: string }) => {
+      console.log('👢 Member kicked:', data);
+      if (data.groupID === groupID) {
+        if (data.kickedUserID === userID) {
+          toast.error('Bạn đã bị xóa khỏi nhóm');
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 2000);
+        } else {
+          // Refresh group data to update member list
+          fetchGroupData();
+        }
+      }
+    },
+    [groupID, userID, fetchGroupData]
+  );
+
+  // Member left handler
+  const handleMemberLeft = useCallback(
+    (data: { groupID: string; userID: string; userName: string }) => {
+      console.log('🚪 Member left:', data);
+      if (data.groupID === groupID) {
         // Refresh group data to update member list
         fetchGroupData();
       }
-    }
-  }, [groupID, userID, fetchGroupData]);
-
-  // Member left handler
-  const handleMemberLeft = useCallback((data: { groupID: string; userID: string; userName: string }) => {
-    console.log('🚪 Member left:', data);
-    if (data.groupID === groupID) {
-      // Refresh group data to update member list
-      fetchGroupData();
-    }
-  }, [groupID, fetchGroupData]);
+    },
+    [groupID, fetchGroupData]
+  );
 
   useEffect(() => {
     fetchGroupData();
@@ -1131,7 +1352,7 @@ export const GroupChatWindow = ({
     });
     socket.on('new_join_request_notification', (data: { groupID: string; message: Message }) => {
       if (data.groupID !== groupID) return;
-      const currentRole = groupInfo?.members?.find(m => m.userID === userID)?.role;
+      const currentRole = groupInfo?.members?.find((m) => m.userID === userID)?.role;
       if (currentRole === 'owner' || currentRole === 'admin') {
         setMessages((prev) => [...prev, data.message]);
       }
@@ -1188,7 +1409,31 @@ export const GroupChatWindow = ({
       socket.off('new_join_request_notification');
       socket.emit('leave_group', { groupID, userID });
     };
-  }, [groupID, userID, fetchGroupData, fetchJoinRequests, handleNewMessage, handleTypingStart, handleTypingStop, handleMessageDeleted, handleUnsendNotification, handleMessageDeletedLocal, handleReactionUpdated, handlePinNotification, handleUnpinNotification, handleNoteCreated, handleNoteUpdated, handleNoteDeleted, handleNotePinToggled, handleGroupSettingsUpdated, handleGroupInfoUpdated, handleGroupDissolved, handleMemberRoleChanged, handleMemberKicked, handleMemberLeft]);
+  }, [
+    groupID,
+    userID,
+    fetchGroupData,
+    fetchJoinRequests,
+    handleNewMessage,
+    handleTypingStart,
+    handleTypingStop,
+    handleMessageDeleted,
+    handleUnsendNotification,
+    handleMessageDeletedLocal,
+    handleReactionUpdated,
+    handlePinNotification,
+    handleUnpinNotification,
+    handleNoteCreated,
+    handleNoteUpdated,
+    handleNoteDeleted,
+    handleNotePinToggled,
+    handleGroupSettingsUpdated,
+    handleGroupInfoUpdated,
+    handleGroupDissolved,
+    handleMemberRoleChanged,
+    handleMemberKicked,
+    handleMemberLeft,
+  ]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1206,7 +1451,7 @@ export const GroupChatWindow = ({
   }, [pinnedMenuId]);
 
   const dispatchGroupMessageContent = (
-    msgData: { content: string, type: Message['type'], media_url: string[], groupId?: string },
+    msgData: { content: string; type: Message['type']; media_url: string[]; groupId?: string },
     currentReplyTo?: typeof replyTo
   ) => {
     if (!socketConnected) {
@@ -1215,7 +1460,7 @@ export const GroupChatWindow = ({
     }
 
     const tempMessageID = `temp_${Date.now()}_${Math.random()}`;
-    const currentUserInfo = members.find(m => m.userID === userID);
+    const currentUserInfo = members.find((m) => m.userID === userID);
     const optimisticMessage: Message = {
       messageID: tempMessageID,
       groupID,
@@ -1228,12 +1473,14 @@ export const GroupChatWindow = ({
       status: 'sent',
       replyTo: currentReplyTo
         ? {
-          messageID: currentReplyTo.messageID,
-          senderID: currentReplyTo.senderID,
-          senderName: currentReplyTo.senderInfo?.name || members.find(m => m.userID === currentReplyTo.senderID)?.name,
-          content: currentReplyTo.content,
-          type: currentReplyTo.type,
-        }
+            messageID: currentReplyTo.messageID,
+            senderID: currentReplyTo.senderID,
+            senderName:
+              currentReplyTo.senderInfo?.name ||
+              members.find((m) => m.userID === currentReplyTo.senderID)?.name,
+            content: currentReplyTo.content,
+            type: currentReplyTo.type,
+          }
         : undefined,
       mentions: [...mentions], // QUAN TRỌNG: Include mentions để render tag ngay lập tức cho người gửi
       senderInfo: {
@@ -1241,7 +1488,6 @@ export const GroupChatWindow = ({
         avatar: currentUserInfo?.avatar,
       },
     };
-
 
     setMessages((prev) => [...prev, optimisticMessage]);
 
@@ -1254,12 +1500,14 @@ export const GroupChatWindow = ({
       groupId: msgData.groupId,
       replyTo: currentReplyTo
         ? {
-          messageID: currentReplyTo.messageID,
-          senderID: currentReplyTo.senderID,
-          senderName: currentReplyTo.senderInfo?.name || members.find(m => m.userID === currentReplyTo.senderID)?.name,
-          content: currentReplyTo.content,
-          type: currentReplyTo.type,
-        }
+            messageID: currentReplyTo.messageID,
+            senderID: currentReplyTo.senderID,
+            senderName:
+              currentReplyTo.senderInfo?.name ||
+              members.find((m) => m.userID === currentReplyTo.senderID)?.name,
+            content: currentReplyTo.content,
+            type: currentReplyTo.type,
+          }
         : undefined,
       mentions: mentions, // Gửi danh sách ID được tag
     };
@@ -1270,8 +1518,8 @@ export const GroupChatWindow = ({
       } else if (response?.success && response?.message) {
         const realMessage: Message = response.message;
         setMessages((prev) => {
-          const withoutTemp = prev.filter(msg => msg.messageID !== tempMessageID);
-          const alreadyExists = withoutTemp.some(msg => msg.messageID === realMessage.messageID);
+          const withoutTemp = prev.filter((msg) => msg.messageID !== tempMessageID);
+          const alreadyExists = withoutTemp.some((msg) => msg.messageID === realMessage.messageID);
           return alreadyExists ? withoutTemp : [...withoutTemp, realMessage];
         });
       }
@@ -1282,7 +1530,6 @@ export const GroupChatWindow = ({
     setInputText('');
     setReplyTo(null);
     setMentions([]); // QUAN TRỌNG: Clear danh sách tag sau khi gửi
-
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -1299,7 +1546,10 @@ export const GroupChatWindow = ({
     setInputText('');
     setReplyTo(null);
 
-    dispatchGroupMessageContent({ content: messageContent, type: 'text', media_url: [] }, currentReplyTo);
+    dispatchGroupMessageContent(
+      { content: messageContent, type: 'text', media_url: [] },
+      currentReplyTo
+    );
   };
 
   const sendEmoji = (emojiData: EmojiClickData) => {
@@ -1309,13 +1559,19 @@ export const GroupChatWindow = ({
   };
 
   const sendSticker = async (stickerUrl: string) => {
-    dispatchGroupMessageContent({ content: '', type: 'sticker', media_url: [stickerUrl] }, replyTo || undefined);
+    dispatchGroupMessageContent(
+      { content: '', type: 'sticker', media_url: [stickerUrl] },
+      replyTo || undefined
+    );
     setShowEmoji(false);
     setReplyTo(null);
   };
 
   const sendGif = async (gifUrl: string) => {
-    dispatchGroupMessageContent({ content: '', type: 'gif', media_url: [gifUrl] }, replyTo || undefined);
+    dispatchGroupMessageContent(
+      { content: '', type: 'gif', media_url: [gifUrl] },
+      replyTo || undefined
+    );
     setShowEmoji(false);
     setReplyTo(null);
   };
@@ -1351,30 +1607,37 @@ export const GroupChatWindow = ({
         const data = await res.json();
 
         // Tạo groupId cho các ảnh được gửi cùng lúc
-        const groupId = type === 'image' && data.urls.length > 1
-          ? `img_group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-          : undefined;
+        const groupId =
+          type === 'image' && data.urls.length > 1
+            ? `img_group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+            : undefined;
         if (type === 'image' || type === 'video') {
           for (let i = 0; i < data.urls.length; i++) {
-            dispatchGroupMessageContent({
-              content: '',
-              type: type as any,
-              media_url: [data.urls[i]],
-              groupId, // Thêm groupId để gom nhóm ảnh
-            }, replyTo || undefined);
+            dispatchGroupMessageContent(
+              {
+                content: '',
+                type: type as any,
+                media_url: [data.urls[i]],
+                groupId, // Thêm groupId để gom nhóm ảnh
+              },
+              replyTo || undefined
+            );
             if (i < data.urls.length - 1) {
-              await new Promise(resolve => setTimeout(resolve, 100));
+              await new Promise((resolve) => setTimeout(resolve, 100));
             }
           }
         } else {
           for (let i = 0; i < files.length; i++) {
-            dispatchGroupMessageContent({
-              content: files[i].name,
-              type: 'file',
-              media_url: [data.urls[i]],
-            }, replyTo || undefined);
+            dispatchGroupMessageContent(
+              {
+                content: files[i].name,
+                type: 'file',
+                media_url: [data.urls[i]],
+              },
+              replyTo || undefined
+            );
             if (i < files.length - 1) {
-              await new Promise(resolve => setTimeout(resolve, 100));
+              await new Promise((resolve) => setTimeout(resolve, 100));
             }
           }
         }
@@ -1446,11 +1709,14 @@ export const GroupChatWindow = ({
         throw new Error(data.error || 'Upload failed');
       }
 
-      dispatchGroupMessageContent({
-        content: '',
-        type: 'audio',
-        media_url: [data.url],
-      }, replyTo || undefined);
+      dispatchGroupMessageContent(
+        {
+          content: '',
+          type: 'audio',
+          media_url: [data.url],
+        },
+        replyTo || undefined
+      );
       setAudioBlob(null);
       setRecordingTime(0);
       setReplyTo(null);
@@ -1463,7 +1729,9 @@ export const GroupChatWindow = ({
   };
 
   const formatRecordTime = (s: number) =>
-    `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+    `${Math.floor(s / 60)
+      .toString()
+      .padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
   const handlePin = (msg: Message) => {
     if (!msg.messageID) return;
@@ -1474,9 +1742,7 @@ export const GroupChatWindow = ({
 
       // Update UI immediately
       setMessages((prev) =>
-        prev.map((m) =>
-          m.messageID === msg.messageID ? { ...m, pinnedInfo: null } : m
-        )
+        prev.map((m) => (m.messageID === msg.messageID ? { ...m, pinnedInfo: null } : m))
       );
       setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
 
@@ -1484,7 +1750,7 @@ export const GroupChatWindow = ({
       socket.emit('unghim_group_message', {
         messageID: msg.messageID,
         groupID,
-        senderID: userID
+        senderID: userID,
       });
     } else {
       // Check if already have 3 pinned items (messages + notes)
@@ -1502,14 +1768,12 @@ export const GroupChatWindow = ({
 
       const pinnedInfo = {
         pinnedBy: userID,
-        pinnedAt: new Date().toISOString()
+        pinnedAt: new Date().toISOString(),
       };
 
       // Update UI immediately
       setMessages((prev) =>
-        prev.map((m) =>
-          m.messageID === msg.messageID ? { ...m, pinnedInfo } : m
-        )
+        prev.map((m) => (m.messageID === msg.messageID ? { ...m, pinnedInfo } : m))
       );
 
       // Add to pinned messages list
@@ -1520,7 +1784,7 @@ export const GroupChatWindow = ({
       socket.emit('ghim_group_message', {
         messageID: msg.messageID,
         groupID,
-        senderID: userID
+        senderID: userID,
       });
     }
 
@@ -1533,13 +1797,13 @@ export const GroupChatWindow = ({
     socket.emit('unghim_group_message', {
       messageID: msg.messageID,
       groupID,
-      senderID: userID
+      senderID: userID,
     });
     setTimeout(() => {
       socket.emit('ghim_group_message', {
         messageID: msg.messageID,
         groupID,
-        senderID: userID
+        senderID: userID,
       });
     }, 100);
     setPinnedMenuId(null);
@@ -1559,9 +1823,7 @@ export const GroupChatWindow = ({
 
     // Optimistic update
     setMessages((prev) =>
-      prev.map((m) =>
-        m.messageID === msg.messageID ? { ...m, pinnedInfo: null } : m
-      )
+      prev.map((m) => (m.messageID === msg.messageID ? { ...m, pinnedInfo: null } : m))
     );
     setPinnedMessages((prev) => prev.filter((m) => m.messageID !== msg.messageID));
 
@@ -1569,7 +1831,7 @@ export const GroupChatWindow = ({
     socket.emit('unghim_group_message', {
       messageID: msg.messageID,
       groupID,
-      senderID: userID
+      senderID: userID,
     });
     setPinnedMenuId(null);
   };
@@ -1578,14 +1840,14 @@ export const GroupChatWindow = ({
     if (!pendingPinItem) return;
 
     // Step 1: Unpin the selected item
-    const messageToUnpin = pinnedMessages.find(m => m.messageID === itemIdToReplace);
-    const noteToUnpin = pinnedNotes.find(n => n.noteID === itemIdToReplace);
+    const messageToUnpin = pinnedMessages.find((m) => m.messageID === itemIdToReplace);
+    const noteToUnpin = pinnedNotes.find((n) => n.noteID === itemIdToReplace);
 
     if (messageToUnpin) {
       socket.emit('unghim_group_message', {
         messageID: itemIdToReplace,
         groupID,
-        senderID: userID
+        senderID: userID,
       });
     } else if (noteToUnpin) {
       try {
@@ -1601,7 +1863,7 @@ export const GroupChatWindow = ({
         socket.emit('ghim_group_message', {
           messageID: pendingPinItem.id,
           groupID,
-          senderID: userID
+          senderID: userID,
         });
       } else if (pendingPinItem.type === 'note') {
         try {
@@ -1623,7 +1885,7 @@ export const GroupChatWindow = ({
       messageID: msg.messageID,
       senderID: msg.senderID,
       userID: userID,
-      match: msg.senderID === userID
+      match: msg.senderID === userID,
     });
 
     if (!msg.messageID || msg.senderID !== userID) {
@@ -1635,16 +1897,19 @@ export const GroupChatWindow = ({
     // Tìm tất cả messages trong cùng group (nếu có)
     let messagesToUnsend: Message[] = [msg];
     if (msg.type === 'image' && msg.groupId) {
-      messagesToUnsend = messages.filter(m => m.groupId === msg.groupId && m.senderID === userID);
+      messagesToUnsend = messages.filter((m) => m.groupId === msg.groupId && m.senderID === userID);
       console.log(`📸 Unsending ${messagesToUnsend.length} images from group ${msg.groupId}`);
     }
 
-    console.log('🔄 Unsending message(s):', messagesToUnsend.map(m => m.messageID));
+    console.log(
+      '🔄 Unsending message(s):',
+      messagesToUnsend.map((m) => m.messageID)
+    );
 
     // Cập nhật UI ngay lập tức (optimistic update)
     setMessages((prev) =>
       prev.map((m) =>
-        messagesToUnsend.some(unsend => unsend.messageID === m.messageID)
+        messagesToUnsend.some((unsend) => unsend.messageID === m.messageID)
           ? { ...m, type: 'notification', content: 'Tin nhắn đã bị thu hồi', media_url: [] }
           : m
       )
@@ -1667,13 +1932,17 @@ export const GroupChatWindow = ({
     // Tìm tất cả messages trong cùng group (nếu có)
     let messagesToDelete: Message[] = [msg];
     if (msg.type === 'image' && msg.groupId) {
-      messagesToDelete = messages.filter(m => m.groupId === msg.groupId);
+      messagesToDelete = messages.filter((m) => m.groupId === msg.groupId);
       console.log(`📸 Deleting ${messagesToDelete.length} images from group ${msg.groupId}`);
     }
 
     // Xóa tin nhắn khỏi UI ngay lập tức (optimistic update)
-    setMessages((prev) => prev.filter((m) => !messagesToDelete.some(del => del.messageID === m.messageID)));
-    setPinnedMessages((prev) => prev.filter((m) => !messagesToDelete.some(del => del.messageID === m.messageID)));
+    setMessages((prev) =>
+      prev.filter((m) => !messagesToDelete.some((del) => del.messageID === m.messageID))
+    );
+    setPinnedMessages((prev) =>
+      prev.filter((m) => !messagesToDelete.some((del) => del.messageID === m.messageID))
+    );
 
     // Gửi socket event để lưu vào database cho từng message
     messagesToDelete.forEach((message) => {
@@ -1798,7 +2067,7 @@ export const GroupChatWindow = ({
     if (!text) {
       return (
         <span className="text-gray-400 opacity-70">
-          Nhập @, tin nhắn tới {groupInfo?.name || "nhóm"}
+          Nhập @, tin nhắn tới {groupInfo?.name || 'nhóm'}
         </span>
       );
     }
@@ -1808,7 +2077,7 @@ export const GroupChatWindow = ({
 
     // Sắp xếp tên theo độ dài giảm dần để ưu tiên khớp tên dài nhất trước (tránh lỗi khi tên là tập con của nhau)
     const sortedMemberNames = [...members]
-      .map(m => m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .map((m) => m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
       .sort((a, b) => b.length - a.length);
 
     const allPatterns = [...specialTags, ...sortedMemberNames].join('|');
@@ -1825,8 +2094,9 @@ export const GroupChatWindow = ({
       // Kiểm tra xem phần này có phải là một tag hợp lệ không
       if (part.startsWith('@')) {
         const candidate = part.substring(1).toLowerCase();
-        const isValid = specialTags.some(t => t.toLowerCase() === candidate) ||
-          members.some(m => m.name.toLowerCase() === candidate);
+        const isValid =
+          specialTags.some((t) => t.toLowerCase() === candidate) ||
+          members.some((m) => m.name.toLowerCase() === candidate);
 
         if (isValid) {
           return (
@@ -1849,7 +2119,10 @@ export const GroupChatWindow = ({
       );
     } else if (lowerText === '@sticker') {
       elements.push(
-        <span key="ghost-sticker" className="text-gray-400 opacity-60 italic ml-1 pointer-events-none">
+        <span
+          key="ghost-sticker"
+          className="text-gray-400 opacity-60 italic ml-1 pointer-events-none"
+        >
           Gõ từ khóa để tìm kiếm Sticker
         </span>
       );
@@ -1885,7 +2158,7 @@ export const GroupChatWindow = ({
       // Trường hợp chọn một thành viên cụ thể
       const member = item as GroupMember;
       mentionText = `@${member.name} `;
-      setMentions(prev => {
+      setMentions((prev) => {
         if (!prev.includes(member.userID)) {
           return [...prev, member.userID];
         }
@@ -1941,7 +2214,9 @@ export const GroupChatWindow = ({
 
   const handleDemoteFromAdmin = async (targetUserID: string) => {
     try {
-      await axiosInstance.put(`/groups/${groupID}/members/${targetUserID}/role`, { role: 'member' });
+      await axiosInstance.put(`/groups/${groupID}/members/${targetUserID}/role`, {
+        role: 'member',
+      });
       toast.success('Đã gỡ quyền phó nhóm');
       setMemberMenuId(null);
       fetchGroupData();
@@ -1991,11 +2266,14 @@ export const GroupChatWindow = ({
         });
 
         // Sử dụng dispatchGroupMessageContent để đảm bảo tin nhắn được xử lý đúng
-        dispatchGroupMessageContent({
-          content: messageType === 'file' ? file.name : '',
-          type: messageType,
-          media_url: [response.data.url || response.data.urls?.[0]],
-        }, replyTo || undefined);
+        dispatchGroupMessageContent(
+          {
+            content: messageType === 'file' ? file.name : '',
+            type: messageType,
+            media_url: [response.data.url || response.data.urls?.[0]],
+          },
+          replyTo || undefined
+        );
 
         // Clear reply sau khi gửi
         if (i === files.length - 1) {
@@ -2025,26 +2303,27 @@ export const GroupChatWindow = ({
     );
   }
 
-  const groupAvatar = groupInfo?.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${groupID}`;
+  const groupAvatar =
+    groupInfo?.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${groupID}`;
   const typingUsersList = Array.from(typingUsers.values());
 
   // Kiểm tra quyền chỉnh sửa thông tin nhóm
-  const currentMember = members.find(m => m.userID === userID);
+  const currentMember = members.find((m) => m.userID === userID);
   const isOwner = currentMember?.role === 'owner';
   const isAdmin = currentMember?.role === 'admin';
-  const canEditGroupInfo = isOwner || isAdmin ||
-    (groupInfo?.settings?.memberPermissions?.changeNameAvatar ?? true);
+  const canEditGroupInfo =
+    isOwner || isAdmin || (groupInfo?.settings?.memberPermissions?.changeNameAvatar ?? true);
 
   // Kiểm tra quyền gửi tin nhắn
-  const canSendMessages = isOwner || isAdmin ||
-    (groupInfo?.settings?.memberPermissions?.sendMessages ?? true);
+  const canSendMessages =
+    isOwner || isAdmin || (groupInfo?.settings?.memberPermissions?.sendMessages ?? true);
 
   // Kiểm tra quyền tạo ghi chú và bình chọn
-  const canCreateNotes = isOwner || isAdmin ||
-    (groupInfo?.settings?.memberPermissions?.createNotes ?? true);
+  const canCreateNotes =
+    isOwner || isAdmin || (groupInfo?.settings?.memberPermissions?.createNotes ?? true);
 
-  const canCreatePolls = isOwner || isAdmin ||
-    (groupInfo?.settings?.memberPermissions?.createPolls ?? true);
+  const canCreatePolls =
+    isOwner || isAdmin || (groupInfo?.settings?.memberPermissions?.createPolls ?? true);
 
   console.log('🔐 Send message permission check:', {
     userID,
@@ -2052,7 +2331,7 @@ export const GroupChatWindow = ({
     isOwner,
     isAdmin,
     sendMessagesPermission: groupInfo?.settings?.memberPermissions?.sendMessages,
-    canSendMessages
+    canSendMessages,
   });
 
   const renderMessageContent = (content: string, messageMentions?: string[]) => {
@@ -2060,7 +2339,9 @@ export const GroupChatWindow = ({
 
     // Kiểm tra xem tin nhắn có các hình thức tag/lệnh đặc biệt không
     const lowerContent = content.toLowerCase();
-    const hasSpecialCommands = ['@all', '@bot', '@gif', '@sticker'].some(cmd => lowerContent.includes(cmd));
+    const hasSpecialCommands = ['@all', '@bot', '@gif', '@sticker'].some((cmd) =>
+      lowerContent.includes(cmd)
+    );
     const hasMentions = (messageMentions && messageMentions.length > 0) || hasSpecialCommands;
 
     if (!hasMentions) {
@@ -2070,7 +2351,7 @@ export const GroupChatWindow = ({
     // Sử dụng cùng logic Regex như ô nhập liệu để đảm bảo thống nhất
     const specialTags = ['All', 'GIF', 'STICKER', 'Bot'];
     const sortedMemberNames = [...members]
-      .map(m => m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .map((m) => m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
       .sort((a, b) => b.length - a.length);
     const allPatterns = [...specialTags, ...sortedMemberNames].join('|');
     const regex = new RegExp(`(@(?:${allPatterns}))`, 'gi');
@@ -2085,16 +2366,19 @@ export const GroupChatWindow = ({
             const isMentionAll = candidate === 'all';
 
             // Tìm thành viên trong danh sách có tên khớp HOẶC userID khớp
-            const mentionMember = members.find(m =>
-              m.name.toLowerCase().trim() === candidate ||
-              m.userID === candidate ||
-              (messageMentions && messageMentions.includes(m.userID) && m.name.toLowerCase().trim().includes(candidate))
+            const mentionMember = members.find(
+              (m) =>
+                m.name.toLowerCase().trim() === candidate ||
+                m.userID === candidate ||
+                (messageMentions &&
+                  messageMentions.includes(m.userID) &&
+                  m.name.toLowerCase().trim().includes(candidate))
             );
 
-            const isValid = isMentionAll ||
-              specialTags.some(t => t.toLowerCase() === candidate) ||
+            const isValid =
+              isMentionAll ||
+              specialTags.some((t) => t.toLowerCase() === candidate) ||
               !!mentionMember;
-
 
             if (isValid) {
               return (
@@ -2106,7 +2390,11 @@ export const GroupChatWindow = ({
                     e.stopPropagation();
                     if (isMentionAll) {
                       // Không làm gì khi nhấn @All
-                    } else if (candidate === 'gif' || candidate === 'sticker' || candidate === 'bot') {
+                    } else if (
+                      candidate === 'gif' ||
+                      candidate === 'sticker' ||
+                      candidate === 'bot'
+                    ) {
                       // Không làm gì với lệnh hệ thống
                     } else if (mentionMember) {
                       handleShowUserProfile(mentionMember.userID);
@@ -2132,7 +2420,7 @@ export const GroupChatWindow = ({
 
     try {
       // 1. Lấy thông tin cơ bản từ danh sách members hiện có
-      const memberInfo = members.find(m => m.userID === targetUserID);
+      const memberInfo = members.find((m) => m.userID === targetUserID);
 
       // 2. Fetch thông tin đầy đủ từ server
       const userRes = await axiosInstance.post('/usersID', { userID: targetUserID });
@@ -2233,7 +2521,7 @@ export const GroupChatWindow = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowSearchPanel(v => !v);
+                  setShowSearchPanel((v) => !v);
                 }}
                 title="Tìm kiếm"
                 className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showSearchPanel ? 'bg-blue-50 text-[#0068ff]' : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'}`}
@@ -2246,22 +2534,26 @@ export const GroupChatWindow = ({
                   e.stopPropagation();
                   setShowMembersSidebar(!showMembersSidebar);
                   if (!showMembersSidebar) {
-                    const currentRole = members.find(m => m.userID === userID)?.role;
+                    const currentRole = members.find((m) => m.userID === userID)?.role;
                     if (currentRole === 'owner' || currentRole === 'admin') {
                       fetchJoinRequests();
                     }
                   }
                 }}
                 title="Danh sách thành viên"
-                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors relative ${showMembersSidebar
-                  ? 'bg-blue-50 text-[#0068ff]'
-                  : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
-                  }`}
+                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors relative ${
+                  showMembersSidebar
+                    ? 'bg-blue-50 text-[#0068ff]'
+                    : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
+                }`}
               >
                 <FaUserFriends />
                 {(() => {
-                  const currentRole = members.find(m => m.userID === userID)?.role;
-                  if ((currentRole === 'owner' || currentRole === 'admin') && joinRequests.length > 0) {
+                  const currentRole = members.find((m) => m.userID === userID)?.role;
+                  if (
+                    (currentRole === 'owner' || currentRole === 'admin') &&
+                    joinRequests.length > 0
+                  ) {
                     return (
                       <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-0.5">
                         {joinRequests.length > 9 ? '9+' : joinRequests.length}
@@ -2278,10 +2570,11 @@ export const GroupChatWindow = ({
                   setShowGroupInfoPanel(!showGroupInfoPanel);
                 }}
                 title="Thông tin nhóm"
-                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${showGroupInfoPanel
-                  ? 'bg-blue-50 text-[#0068ff]'
-                  : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
-                  }`}
+                className={`cursor-pointer w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
+                  showGroupInfoPanel
+                    ? 'bg-blue-50 text-[#0068ff]'
+                    : 'text-gray-500 hover:bg-blue-50 hover:text-[#0068ff]'
+                }`}
               >
                 <FaInfoCircle />
               </button>
@@ -2291,9 +2584,9 @@ export const GroupChatWindow = ({
           {/* Pinned Messages & Notes Bar - New Implementation */}
           <PinnedMessagesPanel
             groupID={groupID}
-            onClose={() => { }}
+            onClose={() => {}}
             onViewBoard={(tab) => {
-              setBoardTab(tab as any || 'all');
+              setBoardTab((tab as any) || 'all');
               setShowBoard(true);
             }}
             onScrollToMessage={(msgId) => {
@@ -2301,7 +2594,7 @@ export const GroupChatWindow = ({
                 setHighlightedMsgId(msgId);
                 msgRefsMap.current.get(msgId)?.scrollIntoView({
                   behavior: 'smooth',
-                  block: 'center'
+                  block: 'center',
                 });
                 setTimeout(() => setHighlightedMsgId(null), 2500);
               }
@@ -2351,22 +2644,29 @@ export const GroupChatWindow = ({
                       }}
                       className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${
                         // Highlight nếu bất kỳ message nào trong group được highlight
-                        (group.messages as any).some((msg: Message) => msg.messageID === highlightedMsgId)
+                        (group.messages as any).some(
+                          (msg: Message) => msg.messageID === highlightedMsgId
+                        )
                           ? 'bg-blue-200/50 rounded-xl px-2 py-1 -mx-2 -my-1'
                           : ''
-                        }`}
+                      }`}
                     >
                       {!isMine && (
                         <div className="relative flex-shrink-0 mr-2">
                           <img
-                            src={firstMsg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${group.senderID}`}
+                            src={
+                              firstMsg.senderInfo?.avatar ||
+                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${group.senderID}`
+                            }
                             alt="avatar"
                             className="w-8 h-8 rounded-full object-cover"
                           />
                         </div>
                       )}
 
-                      <div className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}>
+                      <div
+                        className={`flex flex-col max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}
+                      >
                         {!isMine && (
                           <span className="text-xs text-gray-500 mb-1 font-semibold px-1 flex items-center">
                             {firstMsg.senderInfo?.name}
@@ -2385,8 +2685,9 @@ export const GroupChatWindow = ({
 
                           {/* Action buttons for image group */}
                           <div
-                            className={`absolute ${isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
-                              } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
+                            className={`absolute ${
+                              isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
+                            } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
                           >
                             <button
                               onClick={() => handleAddReaction(firstMsg.messageID || '', '👍')}
@@ -2405,7 +2706,11 @@ export const GroupChatWindow = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setActionMsgId(actionMsgId === firstMsg.messageID ? null : (firstMsg.messageID || null));
+                                setActionMsgId(
+                                  actionMsgId === firstMsg.messageID
+                                    ? null
+                                    : firstMsg.messageID || null
+                                );
                               }}
                               className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
                               title="Thêm"
@@ -2484,8 +2789,11 @@ export const GroupChatWindow = ({
                       }
                     }}
                     // highlight search group
-                    className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${highlightedMsgId === msg.messageID ? 'bg-yellow-200/70 rounded-xl px-2 py-1 -mx-2 -my-1' : ''
-                      }`}
+                    className={`flex mb-3 ${isMine ? 'justify-end' : 'justify-start'} transition-all duration-300 ${
+                      highlightedMsgId === msg.messageID
+                        ? 'bg-yellow-200/70 rounded-xl px-2 py-1 -mx-2 -my-1'
+                        : ''
+                    }`}
                   >
                     {/* Notification — căn giữa, không có avatar/bubble */}
                     {msg.type === 'notification' ? (
@@ -2508,8 +2816,14 @@ export const GroupChatWindow = ({
                               }
 
                               // [NEW] Xử lý thông báo Bình chọn (Poll Notification)
-                              if (msg.content?.startsWith('##POLL_') || msg.content?.startsWith('POLL_NOTIF|')) {
-                                let type = '', pollID = '', question = '', personName = '';
+                              if (
+                                msg.content?.startsWith('##POLL_') ||
+                                msg.content?.startsWith('POLL_NOTIF|')
+                              ) {
+                                let type = '',
+                                  pollID = '',
+                                  question = '',
+                                  personName = '';
 
                                 if (msg.content.startsWith('POLL_NOTIF|')) {
                                   // Format: POLL_NOTIF|ACTION|pollID|question|userName
@@ -2519,7 +2833,8 @@ export const GroupChatWindow = ({
                                   question = parts[3];
                                   personName = parts[4] || '';
                                   if (action === 'CREATE') type = '##POLL_CREATED##';
-                                  else if (action === 'VOTE' || action === 'JOIN') type = '##POLL_VOTED##';
+                                  else if (action === 'VOTE' || action === 'JOIN')
+                                    type = '##POLL_VOTED##';
                                   else if (action === 'LOCK') type = '##POLL_CLOSED##';
                                   else if (action === 'SHARE') type = '##POLL_SHARED##';
                                   else if (action === 'LEAVE') type = '##POLL_LEFT##';
@@ -2567,13 +2882,17 @@ export const GroupChatWindow = ({
                                       className="text-blue-600 hover:text-blue-700 font-bold text-xs shrink-0 ml-1"
                                       onClick={() => {
                                         // Tìm tin nhắn chứa pollID này để cuộn tới
-                                        const targetMsg = messages.find(m => m.pollID === pollID && m.type === 'poll');
+                                        const targetMsg = messages.find(
+                                          (m) => m.pollID === pollID && m.type === 'poll'
+                                        );
                                         if (targetMsg?.messageID) {
                                           setHighlightedMsgId(targetMsg.messageID);
-                                          msgRefsMap.current.get(targetMsg.messageID)?.scrollIntoView({
-                                            behavior: 'smooth',
-                                            block: 'center',
-                                          });
+                                          msgRefsMap.current
+                                            .get(targetMsg.messageID)
+                                            ?.scrollIntoView({
+                                              behavior: 'smooth',
+                                              block: 'center',
+                                            });
                                           setTimeout(() => setHighlightedMsgId(null), 2500);
                                         } else {
                                           // Nếu không tìm thấy trong list hiện tại (có thể là tin nhắn cũ), mở modal Board
@@ -2643,21 +2962,26 @@ export const GroupChatWindow = ({
                               if (parsed.type === 'join_request_notification') {
                                 return (
                                   <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block shadow-sm border border-gray-100">
-                                    🔔 <b>{parsed.inviteeName}</b> được <b>{parsed.inviterName}</b> mời tham gia nhóm và cần bạn phê duyệt.{' '}
+                                    🔔 <b>{parsed.inviteeName}</b> được <b>{parsed.inviterName}</b>{' '}
+                                    mời tham gia nhóm và cần bạn phê duyệt.{' '}
                                     <button
                                       className="text-blue-500 underline font-medium not-italic"
-                                      onClick={() => setPendingApprovalModal({
-                                        requestID: parsed.requestID,
-                                        inviteeName: parsed.inviteeName,
-                                        inviterName: parsed.inviterName,
-                                      })}
+                                      onClick={() =>
+                                        setPendingApprovalModal({
+                                          requestID: parsed.requestID,
+                                          inviteeName: parsed.inviteeName,
+                                          inviterName: parsed.inviterName,
+                                        })
+                                      }
                                     >
                                       Chi tiết
                                     </button>
                                   </span>
                                 );
                               }
-                            } catch { /* không phải JSON hoặc không phải friendship */ }
+                            } catch {
+                              /* không phải JSON hoặc không phải friendship */
+                            }
                             return (
                               <span className="text-xs text-gray-500 italic bg-gray-100 rounded-full px-3 py-1 inline-block shadow-sm border border-gray-100">
                                 {msg.content}
@@ -2675,7 +2999,9 @@ export const GroupChatWindow = ({
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-800">Cuộc gọi nhóm</p>
-                            <p className="text-xs text-gray-500">{msg.senderInfo?.name} đã bắt đầu</p>
+                            <p className="text-xs text-gray-500">
+                              {msg.senderInfo?.name} đã bắt đầu
+                            </p>
                           </div>
                           <button
                             onClick={() => {
@@ -2703,7 +3029,10 @@ export const GroupChatWindow = ({
                         {!isMine && msg.type !== 'poll' && (
                           <div className="relative flex-shrink-0 mr-2">
                             <img
-                              src={msg.senderInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`}
+                              src={
+                                msg.senderInfo?.avatar ||
+                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.senderID}`
+                              }
                               alt="avatar"
                               className="w-8 h-8 rounded-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
                               onClick={() => handleShowUserProfile(msg.senderID)}
@@ -2711,7 +3040,9 @@ export const GroupChatWindow = ({
                           </div>
                         )}
 
-                        <div className={`flex flex-col ${msg.type === 'poll' ? 'w-full max-w-full items-center' : `max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}`}>
+                        <div
+                          className={`flex flex-col ${msg.type === 'poll' ? 'w-full max-w-full items-center' : `max-w-[65%] ${isMine ? 'items-end' : 'items-start'}`}`}
+                        >
                           {!isMine && msg.type !== 'poll' && (
                             <span
                               className="text-xs text-gray-500 mb-1 font-semibold px-1 flex items-center cursor-pointer hover:text-blue-500 transition-colors"
@@ -2724,31 +3055,37 @@ export const GroupChatWindow = ({
 
                           <div className="relative group">
                             <div
-                              className={`${msg.type === 'notification'
-                                ? 'bg-transparent'
-                                : msg.type === 'poll'
-                                  ? '' // [UPDATE] Thẻ Poll tự lo phần UI/Background
-                                  : msg.type === 'sticker' || msg.type === 'gif'
-                                    ? ''
-                                    : isMine
-                                      ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
-                                      : (() => {
-                                        const senderRole = getSenderRole(msg.senderID);
-                                        const isAdminMsg =
-                                          groupInfo?.settings?.highlightAdminMessages &&
-                                          (senderRole === 'owner' || senderRole === 'admin');
-                                        if (isAdminMsg && senderRole === 'owner')
-                                          return 'bg-yellow-50 text-gray-800 border border-yellow-300';
-                                        if (isAdminMsg && senderRole === 'admin')
-                                          return 'bg-blue-50 text-gray-800 border border-blue-300';
-                                        return 'bg-white text-gray-800 border border-gray-100';
-                                      })()
-                                } ${msg.type === 'image' || msg.type === 'video' || msg.type === 'sticker' || msg.type === 'gif' || msg.type === 'poll'
+                              className={`${
+                                msg.type === 'notification'
+                                  ? 'bg-transparent'
+                                  : msg.type === 'poll'
+                                    ? '' // [UPDATE] Thẻ Poll tự lo phần UI/Background
+                                    : msg.type === 'sticker' || msg.type === 'gif'
+                                      ? ''
+                                      : isMine
+                                        ? 'bg-[#e3f2ff] text-gray-800 border border-[#d1e9ff]'
+                                        : (() => {
+                                            const senderRole = getSenderRole(msg.senderID);
+                                            const isAdminMsg =
+                                              groupInfo?.settings?.highlightAdminMessages &&
+                                              (senderRole === 'owner' || senderRole === 'admin');
+                                            if (isAdminMsg && senderRole === 'owner')
+                                              return 'bg-yellow-50 text-gray-800 border border-yellow-300';
+                                            if (isAdminMsg && senderRole === 'admin')
+                                              return 'bg-blue-50 text-gray-800 border border-blue-300';
+                                            return 'bg-white text-gray-800 border border-gray-100';
+                                          })()
+                              } ${
+                                msg.type === 'image' ||
+                                msg.type === 'video' ||
+                                msg.type === 'sticker' ||
+                                msg.type === 'gif' ||
+                                msg.type === 'poll'
                                   ? 'p-0 rounded-2xl overflow-hidden'
                                   : msg.type === 'file'
                                     ? 'rounded-2xl'
                                     : 'px-4 py-2.5 rounded-2xl'
-                                } ${msg.type !== 'notification' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'shadow-sm' : ''} ${isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'rounded-br-sm' : ''} ${!isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'rounded-bl-sm' : ''}`}
+                              } ${msg.type !== 'notification' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'shadow-sm' : ''} ${isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'rounded-br-sm' : ''} ${!isMine && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'sticker' && msg.type !== 'gif' && msg.type !== 'poll' ? 'rounded-bl-sm' : ''}`}
                               onClick={(e) => e.stopPropagation()}
                             >
                               {msg.replyTo && (
@@ -2757,18 +3094,27 @@ export const GroupChatWindow = ({
                                   onClick={() => {
                                     if (msg.replyTo?.messageID) {
                                       setHighlightedMsgId(msg.replyTo.messageID);
-                                      msgRefsMap.current.get(msg.replyTo.messageID)?.scrollIntoView({
-                                        behavior: 'smooth',
-                                        block: 'center',
-                                      });
+                                      msgRefsMap.current
+                                        .get(msg.replyTo.messageID)
+                                        ?.scrollIntoView({
+                                          behavior: 'smooth',
+                                          block: 'center',
+                                        });
                                       setTimeout(() => setHighlightedMsgId(null), 2500);
                                     }
                                   }}
                                 >
-                                  <span className={`font-semibold ${isMine ? 'text-blue-600' : 'text-gray-700'}`}>
-                                    Trả lời {msg.replyTo.senderID === userID ? 'chính mình' : (msg.replyTo.senderName || 'tin nhắn')}
+                                  <span
+                                    className={`font-semibold ${isMine ? 'text-blue-600' : 'text-gray-700'}`}
+                                  >
+                                    Trả lời{' '}
+                                    {msg.replyTo.senderID === userID
+                                      ? 'chính mình'
+                                      : msg.replyTo.senderName || 'tin nhắn'}
                                   </span>
-                                  <div className={`mt-0.5 ${isMine ? 'text-gray-600' : 'text-gray-500'}`}>
+                                  <div
+                                    className={`mt-0.5 ${isMine ? 'text-gray-600' : 'text-gray-500'}`}
+                                  >
                                     {msg.replyTo.type === 'text' || msg.replyTo.type === 'emoji' ? (
                                       <span className="line-clamp-1">{msg.replyTo.content}</span>
                                     ) : msg.replyTo.type === 'image' ? (
@@ -2785,7 +3131,8 @@ export const GroupChatWindow = ({
                                       </span>
                                     ) : msg.replyTo.type === 'file' ? (
                                       <span className="flex items-center gap-1">
-                                        <FaPaperclip className="text-[10px]" /> {msg.replyTo.content || 'File'}
+                                        <FaPaperclip className="text-[10px]" />{' '}
+                                        {msg.replyTo.content || 'File'}
                                       </span>
                                     ) : msg.replyTo.type === 'sticker' ? (
                                       <span>Sticker</span>
@@ -2801,6 +3148,15 @@ export const GroupChatWindow = ({
                                   src={fixImageUrl(msg.media_url[0])}
                                   alt="img"
                                   className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg hover:opacity-90 transition-opacity"
+                                  onClick={() => {
+                                    const imageIndex = chatImages.findIndex(
+                                      (img) => img.url === msg.media_url[0]
+                                    );
+                                    if (imageIndex !== -1) {
+                                      setImageViewerIndex(imageIndex);
+                                      setShowImageViewer(true);
+                                    }
+                                  }}
                                   onClick={() => openImageViewer(
                                     fixImageUrl(msg.media_url[0]),
                                     (msg.media_url as string[]).map(fixImageUrl),
@@ -2825,11 +3181,19 @@ export const GroupChatWindow = ({
                                   onClick={() => window.open(msg.media_url[0], '_blank')}
                                 />
                               ) : msg.type === 'video' && msg.media_url?.length ? (
-                                <video src={msg.media_url[0]} controls className="max-w-[280px] rounded-lg" />
+                                <video
+                                  src={msg.media_url[0]}
+                                  controls
+                                  className="max-w-[280px] rounded-lg"
+                                />
                               ) : msg.type === 'audio' && msg.media_url?.length ? (
                                 <AudioPlayer src={msg.media_url[0]} isMine={isMine} />
                               ) : msg.type === 'file' && msg.media_url?.length ? (
-                                <FileDisplay fileName={msg.content || 'file'} fileUrl={msg.media_url[0]} isMine={isMine} />
+                                <FileDisplay
+                                  fileName={msg.content || 'file'}
+                                  fileUrl={msg.media_url[0]}
+                                  isMine={isMine}
+                                />
                               ) : msg.type === 'poll' && msg.pollID ? (
                                 <PollMessage
                                   pollID={msg.pollID}
@@ -2858,8 +3222,11 @@ export const GroupChatWindow = ({
                               {msg.type !== 'notification' && (
                                 <>
                                   <div
-                                    className={`absolute ${isMine ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'
-                                      } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
+                                    className={`absolute ${
+                                      isMine
+                                        ? 'left-0 -translate-x-full'
+                                        : 'right-0 translate-x-full'
+                                    } top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 px-2`}
                                   >
                                     <button
                                       onClick={() => handleAddReaction(msg.messageID, '👍')}
@@ -2878,7 +3245,9 @@ export const GroupChatWindow = ({
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setActionMsgId(actionMsgId === msg.messageID ? null : msg.messageID);
+                                        setActionMsgId(
+                                          actionMsgId === msg.messageID ? null : msg.messageID
+                                        );
                                       }}
                                       className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 text-gray-600"
                                       title="Thêm"
@@ -2965,8 +3334,14 @@ export const GroupChatWindow = ({
                   </span>
                   <div className="bg-white px-4 py-2.5 rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.08)] flex gap-1">
                     <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"></div>
-                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                    <div
+                      className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
+                      style={{ animationDelay: '0.2s' }}
+                    ></div>
+                    <div
+                      className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
+                      style={{ animationDelay: '0.4s' }}
+                    ></div>
                   </div>
                 </div>
               </div>
@@ -3032,8 +3407,18 @@ export const GroupChatWindow = ({
             {!canSendMessages ? (
               // Hiển thị thông báo khi không có quyền gửi tin nhắn
               <div className="flex items-center justify-center gap-2 px-4 py-4 bg-gray-50 border-t border-gray-200">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                <svg
+                  className="w-5 h-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                  />
                 </svg>
                 <p className="text-sm text-gray-500 m-0 italic">
                   Chỉ trưởng nhóm và phó nhóm mới có thể gửi tin nhắn
@@ -3205,7 +3590,7 @@ export const GroupChatWindow = ({
             <MentionDropdown
               ref={mentionDropdownRef}
               isOpen={showMentionDropdown && canSendMessages}
-              members={members.filter(m => m.userID !== userID)}
+              members={members.filter((m) => m.userID !== userID)}
               query={mentionSearch}
               onSelect={handleMentionSelect}
               onClose={() => setShowMentionDropdown(false)}
@@ -3216,11 +3601,15 @@ export const GroupChatWindow = ({
             {/* Ô nhập văn bản với lớp phủ Highlight và Suggestions */}
             {canSendMessages && (
               <div className="flex flex-col bg-white">
-
                 {/* Thanh Suggestion cho @Bot */}
                 {inputText.toLowerCase().includes('@bot') && (
                   <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-100 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden w-full text-sm">
-                    {['Tóm tắt nhóm chat', 'Lên lịch họp', 'Dịch tin nhắn gần nhất', 'Tạo bình chọn'].map((sug, i) => (
+                    {[
+                      'Tóm tắt nhóm chat',
+                      'Lên lịch họp',
+                      'Dịch tin nhắn gần nhất',
+                      'Tạo bình chọn',
+                    ].map((sug, i) => (
                       <button
                         key={i}
                         onClick={() => {
@@ -3242,11 +3631,17 @@ export const GroupChatWindow = ({
                     {(() => {
                       const query = inputText.substring(8).trim().toLowerCase();
                       const filtered = query
-                        ? STICKER_DATA.filter(s => s.name.includes(query) || s.tags.some(t => t.includes(query)))
+                        ? STICKER_DATA.filter(
+                            (s) => s.name.includes(query) || s.tags.some((t) => t.includes(query))
+                          )
                         : STICKER_DATA;
 
                       if (filtered.length === 0) {
-                        return <span className="text-xs text-gray-500 mx-auto italic py-1">Vui lòng thử lại với từ khóa khác</span>;
+                        return (
+                          <span className="text-xs text-gray-500 mx-auto italic py-1">
+                            Vui lòng thử lại với từ khóa khác
+                          </span>
+                        );
                       }
 
                       return filtered.map((sticker, i) => (
@@ -3259,7 +3654,11 @@ export const GroupChatWindow = ({
                           className="w-[60px] h-[60px] shrink-0 bg-gray-50 rounded-xl p-1.5 hover:bg-blue-50 hover:scale-110 transition-all border border-gray-100/50 shadow-sm"
                           title={sticker.name}
                         >
-                          <img src={sticker.url} alt={sticker.name} className="w-full h-full object-contain" />
+                          <img
+                            src={sticker.url}
+                            alt={sticker.name}
+                            className="w-full h-full object-contain"
+                          />
                         </button>
                       ));
                     })()}
@@ -3275,7 +3674,9 @@ export const GroupChatWindow = ({
                         Đang tìm GIF...
                       </div>
                     ) : suggestedGifs.length === 0 ? (
-                      <span className="text-xs text-gray-500 mx-auto italic py-1">Không tìm thấy GIF phù hợp</span>
+                      <span className="text-xs text-gray-500 mx-auto italic py-1">
+                        Không tìm thấy GIF phù hợp
+                      </span>
                     ) : (
                       suggestedGifs.map((gif, i) => (
                         <button
@@ -3286,7 +3687,11 @@ export const GroupChatWindow = ({
                           }}
                           className="w-[100px] h-[70px] shrink-0 bg-gray-50 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-400 hover:scale-105 transition-all shadow-sm"
                         >
-                          <img src={gif.images.fixed_height.url} alt="gif" className="w-full h-full object-cover" />
+                          <img
+                            src={gif.images.fixed_height.url}
+                            alt="gif"
+                            className="w-full h-full object-cover"
+                          />
                         </button>
                       ))
                     )}
@@ -3302,9 +3707,10 @@ export const GroupChatWindow = ({
                       aria-hidden="true"
                       style={{
                         letterSpacing: 'normal',
-                        fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                        fontFamily:
+                          'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                         margin: 0,
-                        border: 'none'
+                        border: 'none',
                       }}
                     >
                       {renderHighlightedInputText(inputText)}
@@ -3337,19 +3743,20 @@ export const GroupChatWindow = ({
                       }}
                       placeholder={
                         inputText.toLowerCase().startsWith('@gif')
-                          ? "Gõ từ khóa để tìm kiếm GIF"
+                          ? 'Gõ từ khóa để tìm kiếm GIF'
                           : inputText.toLowerCase().startsWith('@sticker')
-                            ? "Gõ từ khóa để tìm kiếm Sticker"
+                            ? 'Gõ từ khóa để tìm kiếm Sticker'
                             : inputText.toLowerCase().includes('@bot')
-                              ? "Bạn có yêu cầu gì"
-                              : `Nhập @, tin nhắn tới ${groupInfo?.name || "nhóm"}`
+                              ? 'Bạn có yêu cầu gì'
+                              : `Nhập @, tin nhắn tới ${groupInfo?.name || 'nhóm'}`
                       }
                       className="absolute inset-0 w-full h-full px-4 py-2 bg-transparent text-transparent caret-gray-900 text-sm font-sans focus:outline-none z-20 box-border leading-[24px]"
                       style={{
                         letterSpacing: 'normal',
-                        fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                        fontFamily:
+                          'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                         margin: 0,
-                        border: 'none'
+                        border: 'none',
                       }}
                     />
                   </div>
@@ -3357,10 +3764,11 @@ export const GroupChatWindow = ({
                   <button
                     onClick={handleSendMessage}
                     disabled={!inputText.trim() || isUploading}
-                    className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${inputText.toLowerCase().includes('@bot')
-                      ? 'bg-indigo-500 hover:bg-indigo-600 text-white shadow-sm'
-                      : 'bg-[#0068ff] text-white hover:bg-[#0077c2]'
-                      }`}
+                    className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
+                      inputText.toLowerCase().includes('@bot')
+                        ? 'bg-indigo-500 hover:bg-indigo-600 text-white shadow-sm'
+                        : 'bg-[#0068ff] text-white hover:bg-[#0077c2]'
+                    }`}
                     title="Gửi"
                   >
                     <FaPaperPlane className="text-sm" />
@@ -3422,10 +3830,10 @@ export const GroupChatWindow = ({
               setGroupInfo((prev) =>
                 prev
                   ? {
-                    ...prev,
-                    name: data.name ?? prev.name,
-                    avatar: data.avatar ?? prev.avatar,
-                  }
+                      ...prev,
+                      name: data.name ?? prev.name,
+                      avatar: data.avatar ?? prev.avatar,
+                    }
                   : prev
               );
             }}
@@ -3461,68 +3869,96 @@ export const GroupChatWindow = ({
               </button>
             </div>
 
-            {joinRequests.length > 0 && (() => {
-              const currentRole = members.find(m => m.userID === userID)?.role;
-              if (currentRole !== 'owner' && currentRole !== 'admin') return null;
-              return (
-                <div className="px-3 pb-2">
-                  <p className="text-xs font-semibold text-gray-500 mb-2">Yêu cầu tham gia nhóm ({joinRequests.length})</p>
-                  <div className="space-y-2">
-                    {joinRequests.map((req) => (
-                      <div key={req.requestID} className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <img
-                            src={req.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.userID}`}
-                            alt={req.name}
-                            className="w-9 h-9 rounded-full object-cover shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 m-0 truncate">{req.name}</p>
-                            <p className="text-xs text-gray-500 m-0">được thêm bởi {req.requestedByName}</p>
+            {joinRequests.length > 0 &&
+              (() => {
+                const currentRole = members.find((m) => m.userID === userID)?.role;
+                if (currentRole !== 'owner' && currentRole !== 'admin') return null;
+                return (
+                  <div className="px-3 pb-2">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">
+                      Yêu cầu tham gia nhóm ({joinRequests.length})
+                    </p>
+                    <div className="space-y-2">
+                      {joinRequests.map((req) => (
+                        <div
+                          key={req.requestID}
+                          className="bg-gray-50 rounded-xl p-3 border border-gray-200"
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <img
+                              src={
+                                req.avatar ||
+                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.userID}`
+                              }
+                              alt={req.name}
+                              className="w-9 h-9 rounded-full object-cover shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 m-0 truncate">
+                                {req.name}
+                              </p>
+                              <p className="text-xs text-gray-500 m-0">
+                                được thêm bởi {req.requestedByName}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await axiosInstance.post(
+                                    `/groups/${groupID}/join-requests/${req.requestID}/reject`
+                                  );
+                                  setJoinRequests((prev) =>
+                                    prev.filter((r) => r.requestID !== req.requestID)
+                                  );
+                                  toast.success(`Đã từ chối ${req.name}`);
+                                } catch {
+                                  toast.error('Lỗi khi từ chối');
+                                }
+                              }}
+                              className="flex-1 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm text-gray-700 font-medium transition-colors"
+                            >
+                              Từ chối
+                            </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await axiosInstance.post(
+                                    `/groups/${groupID}/join-requests/${req.requestID}/approve`
+                                  );
+                                  setJoinRequests((prev) =>
+                                    prev.filter((r) => r.requestID !== req.requestID)
+                                  );
+                                  fetchGroupData();
+                                  toast.success(`Đã đồng ý cho ${req.name} vào nhóm`);
+                                } catch {
+                                  toast.error('Lỗi khi phê duyệt');
+                                }
+                              }}
+                              className="flex-1 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-sm text-white font-semibold transition-colors"
+                            >
+                              Đồng ý
+                            </button>
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={async () => {
-                              try {
-                                await axiosInstance.post(`/groups/${groupID}/join-requests/${req.requestID}/reject`);
-                                setJoinRequests(prev => prev.filter(r => r.requestID !== req.requestID));
-                                toast.success(`Đã từ chối ${req.name}`);
-                              } catch { toast.error('Lỗi khi từ chối'); }
-                            }}
-                            className="flex-1 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-sm text-gray-700 font-medium transition-colors"
-                          >
-                            Từ chối
-                          </button>
-                          <button
-                            onClick={async () => {
-                              try {
-                                await axiosInstance.post(`/groups/${groupID}/join-requests/${req.requestID}/approve`);
-                                setJoinRequests(prev => prev.filter(r => r.requestID !== req.requestID));
-                                fetchGroupData();
-                                toast.success(`Đã đồng ý cho ${req.name} vào nhóm`);
-                              } catch { toast.error('Lỗi khi phê duyệt'); }
-                            }}
-                            className="flex-1 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-sm text-white font-semibold transition-colors"
-                          >
-                            Đồng ý
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })()}
+                );
+              })()}
 
             <div className="px-3 py-2">
-              <p className="text-xs font-semibold text-gray-500 mb-1">Danh sách thành viên ({members.length})</p>
+              <p className="text-xs font-semibold text-gray-500 mb-1">
+                Danh sách thành viên ({members.length})
+              </p>
             </div>
             <div className="flex-1 overflow-y-auto px-2 pb-2">
               {members.map((member) => {
-                const currentUserMember = members.find(m => m.userID === userID);
+                const currentUserMember = members.find((m) => m.userID === userID);
                 const currentUserRole = currentUserMember?.role;
-                const canManage = currentUserRole === 'owner' ||
+                const canManage =
+                  currentUserRole === 'owner' ||
                   (currentUserRole === 'admin' && member.role === 'member');
 
                 return (
@@ -3532,21 +3968,31 @@ export const GroupChatWindow = ({
                     onClick={() => handleShowUserProfile(member.userID)}
                   >
                     <img
-                      src={member.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.userID}`}
+                      src={
+                        member.avatar ||
+                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.userID}`
+                      }
                       alt={member.name}
                       className="w-10 h-10 rounded-full object-cover"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 m-0 truncate">{member.name}</p>
+                      <p className="text-sm font-semibold text-gray-900 m-0 truncate">
+                        {member.name}
+                      </p>
                       <p
-                        className={`text-xs m-0 ${member.role === 'owner'
-                          ? 'text-red-500 font-semibold'
-                          : member.role === 'admin'
-                            ? 'text-orange-500 font-semibold'
-                            : 'text-gray-500'
-                          }`}
+                        className={`text-xs m-0 ${
+                          member.role === 'owner'
+                            ? 'text-red-500 font-semibold'
+                            : member.role === 'admin'
+                              ? 'text-orange-500 font-semibold'
+                              : 'text-gray-500'
+                        }`}
                       >
-                        {member.role === 'owner' ? 'Trưởng nhóm' : member.role === 'admin' ? 'Phó nhóm' : 'Thành viên'}
+                        {member.role === 'owner'
+                          ? 'Trưởng nhóm'
+                          : member.role === 'admin'
+                            ? 'Phó nhóm'
+                            : 'Thành viên'}
                       </p>
                     </div>
 
@@ -3610,11 +4056,13 @@ export const GroupChatWindow = ({
         {showSearchPanel && (
           <GroupSearchModal
             groupID={groupID}
-            members={members.map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar }))}
+            members={members.map((m) => ({ userID: m.userID, name: m.name, avatar: m.avatar }))}
             onClose={() => setShowSearchPanel(false)}
             onScrollToMessage={(msgId) => {
               setHighlightedMsgId(msgId);
-              msgRefsMap.current.get(msgId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              msgRefsMap.current
+                .get(msgId)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
               setTimeout(() => setHighlightedMsgId(null), 2500);
             }}
           />
@@ -3626,7 +4074,7 @@ export const GroupChatWindow = ({
         <ForwardMessageModal
           message={{ ...forwardingMessage, chatID: forwardingMessage.groupID } as any}
           onClose={() => setForwardingMessage(null)}
-          user={{ userID, name: members.find(m => m.userID === userID)?.name || 'User' }}
+          user={{ userID, name: members.find((m) => m.userID === userID)?.name || 'User' }}
         />
       )}
 
@@ -3691,9 +4139,7 @@ export const GroupChatWindow = ({
           onSuccess={(data) => {
             setShowEditGroupInfoModal(false);
             setGroupInfo((prev) =>
-              prev
-                ? { ...prev, name: data.name, avatar: data.avatar ?? prev.avatar }
-                : prev
+              prev ? { ...prev, name: data.name, avatar: data.avatar ?? prev.avatar } : prev
             );
           }}
         />
@@ -3704,20 +4150,20 @@ export const GroupChatWindow = ({
         show={showPinLimitModal}
         onClose={() => setShowPinLimitModal(false)}
         pinnedItems={[
-          ...pinnedMessages.map(m => ({
+          ...pinnedMessages.map((m) => ({
             id: m.messageID,
             type: 'message' as const,
             content: m.content || '[Media]',
             senderName: m.senderInfo?.name,
-            timestamp: m.timestamp.toString()
+            timestamp: m.timestamp.toString(),
           })),
-          ...pinnedNotes.map(n => ({
+          ...pinnedNotes.map((n) => ({
             id: n.noteID,
             type: 'note' as const,
             content: n.content,
             creatorName: n.creatorInfo?.name,
-            timestamp: n.createdAt
-          }))
+            timestamp: n.createdAt,
+          })),
         ]}
         onReplace={handleReplacePinnedItem}
       />
@@ -3737,19 +4183,28 @@ export const GroupChatWindow = ({
 
             <div className="px-5 py-4">
               <p className="text-sm text-gray-700">
-                <b>{pendingApprovalModal.inviteeName}</b> được <b>{pendingApprovalModal.inviterName}</b> mời tham gia nhóm.
+                <b>{pendingApprovalModal.inviteeName}</b> được{' '}
+                <b>{pendingApprovalModal.inviterName}</b> mời tham gia nhóm.
               </p>
-              <p className="text-xs text-gray-500 mt-1">Bạn có muốn đồng ý cho họ vào nhóm không?</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Bạn có muốn đồng ý cho họ vào nhóm không?
+              </p>
             </div>
             <div className="flex gap-2 px-5 pb-4">
               <button
                 onClick={async () => {
                   try {
-                    await axiosInstance.post(`/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/reject`);
-                    setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
+                    await axiosInstance.post(
+                      `/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/reject`
+                    );
+                    setJoinRequests((prev) =>
+                      prev.filter((r) => r.requestID !== pendingApprovalModal.requestID)
+                    );
                     toast.success(`Đã từ chối ${pendingApprovalModal.inviteeName}`);
                     setPendingApprovalModal(null);
-                  } catch { toast.error('Lỗi khi từ chối'); }
+                  } catch {
+                    toast.error('Lỗi khi từ chối');
+                  }
                 }}
                 className="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm text-gray-700 font-medium transition-colors"
               >
@@ -3758,12 +4213,18 @@ export const GroupChatWindow = ({
               <button
                 onClick={async () => {
                   try {
-                    await axiosInstance.post(`/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/approve`);
-                    setJoinRequests(prev => prev.filter(r => r.requestID !== pendingApprovalModal.requestID));
+                    await axiosInstance.post(
+                      `/groups/${groupID}/join-requests/${pendingApprovalModal.requestID}/approve`
+                    );
+                    setJoinRequests((prev) =>
+                      prev.filter((r) => r.requestID !== pendingApprovalModal.requestID)
+                    );
                     fetchGroupData();
                     toast.success(`Đã đồng ý cho ${pendingApprovalModal.inviteeName} vào nhóm`);
                     setPendingApprovalModal(null);
-                  } catch { toast.error('Lỗi khi phê duyệt'); }
+                  } catch {
+                    toast.error('Lỗi khi phê duyệt');
+                  }
                 }}
                 className="flex-1 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-sm text-white font-semibold transition-colors"
               >
@@ -3785,6 +4246,9 @@ export const GroupChatWindow = ({
           onReject={handleRejectFriendFromProfile}
           onRecall={handleRecallFriendFromProfile}
           onStatusChange={(status) => {
+            setSelectedUserForProfile((prev: any) =>
+              prev ? { ...prev, friendStatus: status } : prev
+            );
             setSelectedUserForProfile((prev: unknown) => prev ? { ...prev, friendStatus: status } : prev);
           }}
         />
@@ -3794,7 +4258,7 @@ export const GroupChatWindow = ({
         <UserProfileModal
           user={members.find((m) => m.userID === userID) as unknown}
           onClose={() => setShowUserProfile(false)}
-          setUser={() => { }}
+          setUser={() => {}}
         />
       )}
 
@@ -3807,11 +4271,17 @@ export const GroupChatWindow = ({
           groupID={groupID}
           groupName={groupInfo?.name || 'Nhóm'}
           groupAvatar={groupInfo?.avatar}
-          members={members.filter(m => m.userID !== userID).map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar }))}
+          members={members
+            .filter((m) => m.userID !== userID)
+            .map((m) => ({ userID: m.userID, name: m.name, avatar: m.avatar }))}
           isCallee={groupCallIsCallee}
           initialWithVideo={groupCallWithVideo}
           initialParticipants={groupCallInitialParticipants}
-          onClose={() => { setShowGroupCall(false); setJoinExistingCall(false); setGroupCallIsCallee(false); }}
+          onClose={() => {
+            setShowGroupCall(false);
+            setJoinExistingCall(false);
+            setGroupCallIsCallee(false);
+          }}
         />
       )}
 
@@ -3825,7 +4295,13 @@ export const GroupChatWindow = ({
           initialPollId={boardInitialPollId}
           canCreateNotes={canCreateNotes}
           canCreatePolls={canCreatePolls}
-          members={groupInfo?.members?.map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar })) || []}
+          members={
+            groupInfo?.members?.map((m) => ({
+              userID: m.userID,
+              name: m.name,
+              avatar: m.avatar,
+            })) || []
+          }
         />
       )}
 
