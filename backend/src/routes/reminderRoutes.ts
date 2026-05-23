@@ -36,7 +36,6 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const { reminderID, chatID, userID, userName, title, datetime, repeat } = req.body;
 
-    // Create reminder
     const reminder = new Reminder({
       reminderID,
       chatID,
@@ -48,7 +47,6 @@ router.post('/', authMiddleware, async (req, res) => {
     });
     await reminder.save();
 
-    // Create event for timeline
     const event = new ReminderEvent({
       eventID: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       chatID,
@@ -64,6 +62,12 @@ router.post('/', authMiddleware, async (req, res) => {
     });
     await event.save();
 
+    // Emit real-time tới cả 2 người trong chat
+    const io = req.app.get('io');
+    if (io) {
+      io.to(chatID).emit('reminder_event', event.toObject());
+    }
+
     res.json({ reminder, event });
   } catch (error) {
     console.error('Error creating reminder:', error);
@@ -71,7 +75,7 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Update reminder (mark as done or update repeat)
+// Update reminder
 router.put('/:reminderID', authMiddleware, async (req, res) => {
   try {
     const { reminderID } = req.params;
@@ -105,7 +109,6 @@ router.delete('/:reminderID', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Reminder not found' });
     }
 
-    // Create delete event for timeline
     const event = new ReminderEvent({
       eventID: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       chatID: chatID || reminder.chatID,
@@ -121,8 +124,13 @@ router.delete('/:reminderID', authMiddleware, async (req, res) => {
     });
     await event.save();
 
-    // Delete reminder
     await Reminder.deleteOne({ reminderID });
+
+    // Emit real-time tới cả 2 người trong chat
+    const io = req.app.get('io');
+    if (io) {
+      io.to(chatID || reminder.chatID).emit('reminder_event', event.toObject());
+    }
 
     res.json({ message: 'Reminder deleted', event });
   } catch (error) {
@@ -131,11 +139,11 @@ router.delete('/:reminderID', authMiddleware, async (req, res) => {
   }
 });
 
-// Get upcoming reminders (for checking/notifications)
+// Get upcoming reminders
 router.get('/upcoming', authMiddleware, async (req, res) => {
   try {
     const now = new Date();
-    const soon = new Date(now.getTime() + 60 * 60 * 1000); // Next hour
+    const soon = new Date(now.getTime() + 60 * 60 * 1000);
 
     const reminders = await Reminder.find({
       done: false,

@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
 import EditGroupInfoModal from './EditGroupInfoModal';
 import GroupBoardModal from './GroupBoardModal';
+import GroupReminderModal from './GroupReminderModal';
 import { TransferOwnershipModal } from './TransferOwnershipModal';
 import './GroupInfoPanel.css';
 
@@ -181,6 +182,7 @@ const GroupInfoPanel = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showGroupBoard, setShowGroupBoard] = useState(false);
+  const [showGroupReminder, setShowGroupReminder] = useState(false);
   const [showTransferOwnership, setShowTransferOwnership] = useState(false);
 
   const currentMember = groupInfo.members.find(m => m.userID === currentUserID);
@@ -553,7 +555,7 @@ const GroupInfoPanel = ({
             {showBoardExpanded && (
               <div style={{ padding: '8px 16px 12px', backgroundColor: '#ffffff' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-                  <button style={S.boardItem(tab === 'reminders')} onClick={() => setTab('reminders')}>
+                  <button style={S.boardItem(tab === 'reminders')} onClick={() => { setShowGroupReminder(true); }}>
                     <FaClock style={{ fontSize: 11 }} />
                     Danh sách nhắc hẹn
                   </button>
@@ -584,7 +586,6 @@ const GroupInfoPanel = ({
                     Ghi chú, ghim, bình chọn
                   </button>
                 </div>
-                {tab === 'reminders' && <EmptyState text="Chưa có nhắc hẹn" />}
               </div>
             )}
           </div>
@@ -745,6 +746,15 @@ const GroupInfoPanel = ({
         canCreateNotes={canCreateNotes}
         canCreatePolls={canCreatePolls}
       />
+
+      {/* Group Reminder Modal */}
+      {showGroupReminder && (
+        <GroupReminderModal
+          groupID={groupInfo.groupID}
+          userID={currentUserID}
+          onClose={() => setShowGroupReminder(false)}
+        />
+      )}
 
       {/* Transfer Ownership Modal */}
       {showTransferOwnership && (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import axiosInstance from '../utils/axios';
 import socket from '../utils/socket';
@@ -19,7 +19,6 @@ import {
   FaMicrophone,
   FaStop,
   FaBell,
-  FaPhone,
   FaPlay,
   FaPause,
   FaEllipsisV,
@@ -28,7 +27,7 @@ import {
   FaCrown,
   FaUserShield,
 } from 'react-icons/fa';
-import { BsPin, BsPinAngleFill } from 'react-icons/bs';
+import { BsPin } from 'react-icons/bs';
 import { EmojiClickData } from 'emoji-picker-react';
 import StickerEmojiPicker from './StickerEmojiPicker';
 import ForwardMessageModal from './ForwardMessageModal';
@@ -51,6 +50,8 @@ import PollMessage from './PollMessage';
 import { PinnedMessagesPanel } from './PinnedMessagesPanel';
 import GroupBoardModal from './GroupBoardModal';
 import { GroupSearchModal } from './GroupSearchModal';
+import GroupReminderModal from './GroupReminderModal';
+import type { GroupReminder as GroupReminderType } from './GroupReminderModal';
 
 const API = 'http://localhost:5000/api';
 
@@ -376,6 +377,32 @@ const AudioPlayer = ({ src, isMine }: { src: string; isMine: boolean }) => {
   );
 };
 
+// ==================== Hàm chuẩn hóa URL hình ảnh ====================
+// Loại bỏ giao thức, host, query parameters và decode các ký tự đặc biệt để so sánh URL chính xác hơn
+const cleanUrl = (u: string): string => {
+  if (!u) return '';
+  try {
+    let decoded = decodeURIComponent(u).trim();
+    decoded = decoded.split('?')[0]; // Bỏ query parameters
+    decoded = decoded.replace(/^(https?:)?\/\/[^\/]+/, ''); // Bỏ protocol và host (ví dụ: http://localhost:5000)
+    return decoded;
+  } catch (e) {
+    return u.trim();
+  }
+};
+
+// Fix Cloudinary URL để browser hiển thị được mọi format ảnh
+const fixImageUrl = (url: string): string => {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  let fixed = url.includes('/raw/upload/')
+    ? url.replace('/raw/upload/', '/image/upload/')
+    : url;
+  if (!fixed.includes('/f_auto')) {
+    fixed = fixed.replace('/upload/', '/upload/f_auto,q_auto,w_1200,c_limit/');
+  }
+  return fixed;
+};
+
 export const GroupChatWindow = ({
   groupID,
   userID,
@@ -404,7 +431,39 @@ export const GroupChatWindow = ({
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
-  const [chatImages, setChatImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
+  const [viewerImages, setViewerImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
+
+  // Lấy danh sách ảnh từ danh sách tin nhắn hiện tại để truyền vào bộ xem ảnh
+  const chatImages = useMemo(() => {
+    return messages
+      .filter((m) => m.type === 'image' && m.media_url?.length)
+      .flatMap((m) =>
+        (m.media_url || []).map((url) => ({
+          url: fixImageUrl(typeof url === 'string' ? url : ''),
+          timestamp: m.timestamp.toString(),
+          messageID: m.messageID,
+        }))
+      );
+  }, [messages]);
+
+  // Helper: mở image viewer - tìm trong chatImages trước, fallback sang set ảnh tùy ý
+  const openImageViewer = (url: string, fallbackUrls?: string[], fallbackTimestamp?: string) => {
+    const targetUrl = cleanUrl(url);
+    const idx = chatImages.findIndex((img) => cleanUrl(img.url) === targetUrl);
+    if (idx !== -1) {
+      setViewerImages(chatImages);
+      setImageViewerIndex(idx);
+      setShowImageViewer(true);
+    } else if (fallbackUrls && fallbackUrls.length > 0) {
+      const ts = fallbackTimestamp || new Date().toISOString();
+      const imgs = fallbackUrls.map((u) => ({ url: u, timestamp: ts }));
+      const fallbackIdx = fallbackUrls.indexOf(url);
+      setViewerImages(imgs);
+      setImageViewerIndex(fallbackIdx !== -1 ? fallbackIdx : 0);
+      setShowImageViewer(true);
+    }
+  };
+
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const msgRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   const [memberMenuId, setMemberMenuId] = useState<string | null>(null);
@@ -423,6 +482,8 @@ export const GroupChatWindow = ({
   const [boardTab, setBoardTab] = useState<'all' | 'pinned' | 'notes' | 'polls'>('all');
   const [boardInitialPollId, setBoardInitialPollId] = useState<string | undefined>(undefined);
   const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [showGroupReminder, setShowGroupReminder] = useState(false);
+  const [groupReminderInitial, setGroupReminderInitial] = useState<GroupReminderType | undefined>(undefined);
 
   // Lắng nghe sự kiện mở chi tiết bình chọn từ các component con (như PollMessage)
   useEffect(() => {
@@ -647,15 +708,6 @@ export const GroupChatWindow = ({
         (messagesRes.data.messages || []).filter((m: Message) => m.pinnedInfo && m.pinnedInfo.pinnedBy)
       );
 
-      // Load all images from chat
-      const images = (messagesRes.data.messages || [])
-        .filter((m: Message) => m.type === 'image' && m.media_url?.length)
-        .map((m: Message) => ({
-          url: m.media_url[0],
-          timestamp: m.timestamp.toString(),
-          messageID: m.messageID,
-        }));
-      setChatImages(images);
     } catch (error) {
       console.error('Error fetching group data:', error);
     } finally {
@@ -785,17 +837,14 @@ export const GroupChatWindow = ({
     if (message.groupID !== groupID) return;
 
     setMessages((prev) => {
-      // KIỂM TRA TRÙNG LẶP: Nếu messageID đã tồn tại thì không thêm nữa
-      const exists = prev.some((m) => m.messageID === message.messageID);
+      // KIỂM TRA TRÙNG LẶP: Nếu messageID hoặc tempID đã tồn tại thì không thêm nữa
+      const exists = prev.some((m) => 
+        (message.messageID && m.messageID === message.messageID) ||
+        (message.tempID && m.tempID === message.tempID)
+      );
       if (exists) return prev;
 
-      // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn (Trừ Poll và Notification hệ thống)
-      // Tin nhắn văn bản đã được thêm và xác nhận qua callback socket.emit('send_group_message')
-      if (message.senderID === userID && message.type !== 'poll' && message.type !== 'notification') {
-        return prev;
-      }
-
-      // Tin nhắn người khác → thêm bình thường
+      // Không lọc bỏ tin nhắn của chính mình nữa để đồng bộ tin nhắn gửi từ Mobile
       return [...prev, message];
     });
 
@@ -2329,11 +2378,8 @@ export const GroupChatWindow = ({
                           <ImageGrid
                             messages={group.messages as any}
                             onImageClick={(url, allUrls) => {
-                              const imageIndex = chatImages.findIndex((img) => img.url === url);
-                              if (imageIndex !== -1) {
-                                setImageViewerIndex(imageIndex);
-                                setShowImageViewer(true);
-                              }
+                              const ts = group.messages[0]?.timestamp?.toString() || new Date().toISOString();
+                              openImageViewer(url, allUrls, ts);
                             }}
                           />
 
@@ -2544,6 +2590,55 @@ export const GroupChatWindow = ({
                                 );
                               }
 
+                              // Group Reminder notification
+                              if (msg.content?.startsWith('##GROUP_REMINDER##')) {
+                                // Format: ##GROUP_REMINDER##|reminderID|title|datetime|creatorName
+                                const parts = msg.content.split('|');
+                                const rID = parts[1];
+                                const title = parts[2];
+                                const datetime = parts[3];
+                                const creatorName = parts[4];
+                                const isMe = msg.senderID === userID;
+                                const d = new Date(datetime);
+                                const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+                                const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                                return (
+                                  <div className="flex flex-col items-center gap-1 w-full">
+                                    {/* Dòng text nhỏ */}
+                                    <div className="flex items-center gap-1.5 text-gray-500 bg-gray-50 rounded-full px-4 py-1.5 shadow-sm border border-blue-100 max-w-full">
+                                      <span className="text-sm">🔔</span>
+                                      <span className="text-xs font-medium truncate">
+                                        <b>{isMe ? 'Bạn' : creatorName}</b> tạo nhắc hẹn mới{' '}
+                                        <b className="text-gray-700">{title}</b>
+                                        {' - '}{dateStr}
+                                      </span>
+                                      <button
+                                        className="text-[#0068ff] hover:underline font-bold text-xs shrink-0 ml-1"
+                                        onClick={() => {
+                                          setGroupReminderInitial(undefined);
+                                          setShowGroupReminder(true);
+                                        }}
+                                      >
+                                        Xem
+                                      </button>
+                                    </div>
+                                    {/* Card nhắc hẹn với RSVP real-time */}
+                                    <GroupReminderCard
+                                      reminderID={rID}
+                                      title={title}
+                                      datetime={datetime}
+                                      creatorName={creatorName}
+                                      userID={userID}
+                                      groupID={groupID}
+                                      onOpenModal={(reminder) => {
+                                        setGroupReminderInitial(reminder as GroupReminderType);
+                                        setShowGroupReminder(true);
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              }
+
                               const parsed = JSON.parse(msg.content || '');
                               if (parsed.type === 'join_request_notification') {
                                 return (
@@ -2703,16 +2798,15 @@ export const GroupChatWindow = ({
 
                               {msg.type === 'image' && msg.media_url?.length ? (
                                 <img
-                                  src={msg.media_url[0]}
+                                  src={fixImageUrl(msg.media_url[0])}
                                   alt="img"
                                   className="max-w-[400px] max-h-[400px] w-auto h-auto object-contain cursor-pointer rounded-lg hover:opacity-90 transition-opacity"
-                                  onClick={() => {
-                                    const imageIndex = chatImages.findIndex((img) => img.url === msg.media_url[0]);
-                                    if (imageIndex !== -1) {
-                                      setImageViewerIndex(imageIndex);
-                                      setShowImageViewer(true);
-                                    }
-                                  }}
+                                  onClick={() => openImageViewer(
+                                    fixImageUrl(msg.media_url[0]),
+                                    (msg.media_url as string[]).map(fixImageUrl),
+                                    msg.timestamp?.toString()
+                                  )}
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                 />
                               ) : msg.type === 'sticker' && msg.media_url?.length ? (
                                 <div className="p-0">
@@ -3028,9 +3122,9 @@ export const GroupChatWindow = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      toast('Tính năng nhắc hẹn đang phát triển');
+                      setShowGroupReminder(true);
                     }}
-                    title="Nhắc hẹn"
+                    title="Nhắc hẹn nhóm"
                     className="w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors text-gray-500 hover:text-[#0068ff] hover:bg-gray-100"
                   >
                     <FaBell />
@@ -3536,9 +3630,9 @@ export const GroupChatWindow = ({
         />
       )}
 
-      {showImageViewer && (
+      {showImageViewer && viewerImages.length > 0 && (
         <ImageViewerModal
-          images={chatImages}
+          images={viewerImages}
           initialIndex={imageViewerIndex}
           onClose={() => setShowImageViewer(false)}
         />
@@ -3581,7 +3675,7 @@ export const GroupChatWindow = ({
               await axiosInstance.delete(`/groups/${groupID}`);
               toast.success('Đã giải tán nhóm');
               window.location.href = '/home';
-            } catch (error: any) {
+            } catch (error: unknown) {
               toast.error(error.response?.data?.message || 'Lỗi khi giải tán nhóm');
             }
           }}
@@ -3691,14 +3785,14 @@ export const GroupChatWindow = ({
           onReject={handleRejectFriendFromProfile}
           onRecall={handleRecallFriendFromProfile}
           onStatusChange={(status) => {
-            setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: status } : prev);
+            setSelectedUserForProfile((prev: unknown) => prev ? { ...prev, friendStatus: status } : prev);
           }}
         />
       )}
 
       {showUserProfile && (
         <UserProfileModal
-          user={members.find((m) => m.userID === userID) as any}
+          user={members.find((m) => m.userID === userID) as unknown}
           onClose={() => setShowUserProfile(false)}
           setUser={() => { }}
         />
@@ -3734,8 +3828,154 @@ export const GroupChatWindow = ({
           members={groupInfo?.members?.map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar })) || []}
         />
       )}
+
+      {showGroupReminder && (
+        <GroupReminderModal
+          groupID={groupID}
+          userID={userID}
+          initialReminder={groupReminderInitial}
+          onClose={() => { setShowGroupReminder(false); setGroupReminderInitial(undefined); }}
+        />
+      )}
     </div>
   );
 };
 
 export default GroupChatWindow;
+
+
+// ── GroupReminderCard ──────────────────────────────────────────────────────
+interface _GRParticipant {
+  userID: string;
+  name: string;
+  avatar?: string;
+  status: 'joined' | 'declined' | 'pending';
+}
+interface _GRData {
+  reminderID: string;
+  title: string;
+  datetime: string;
+  participants: _GRParticipant[];
+}
+
+const GroupReminderCard = ({
+  reminderID, title, datetime, userID, groupID, onOpenModal,
+}: {
+  reminderID: string; title: string; datetime: string; creatorName: string;
+  userID: string; groupID: string; onOpenModal: (reminder: _GRData) => void;
+}) => {
+  const [data, setData] = useState<_GRData | null>(null);
+  const [rsvpLoading, setRsvpLoading] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await axiosInstance.get(`/group-reminders/${groupID}`);
+      const found = (res.data as _GRData[]).find((r) => r.reminderID === reminderID);
+      if (found) setData(found);
+      else setDeleted(true);
+    } catch { /* silent */ }
+  }, [groupID, reminderID]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    const onUpdated = (r: _GRData) => { if (r.reminderID === reminderID) setData(r); };
+    const onDeleted = ({ reminderID: id }: { reminderID: string }) => {
+      if (id === reminderID) setDeleted(true);
+    };
+    socket.on('group_reminder_updated', onUpdated);
+    socket.on('group_reminder_deleted', onDeleted);
+    return () => {
+      socket.off('group_reminder_updated', onUpdated);
+      socket.off('group_reminder_deleted', onDeleted);
+    };
+  }, [reminderID]);
+
+  const handleRSVP = (status: 'joined' | 'declined') => {
+    setRsvpLoading(true);
+    socket.emit('group_reminder_rsvp', { reminderID, userID, status });
+    // Optimistic update
+    setData((prev) => {
+      if (!prev) return prev;
+      const exists = prev.participants.find((p) => p.userID === userID);
+      const updated = exists
+        ? prev.participants.map((p) => p.userID === userID ? { ...p, status } : p)
+        : [...prev.participants, { userID, name: 'Bạn', status }];
+      return { ...prev, participants: updated };
+    });
+    setTimeout(() => setRsvpLoading(false), 500);
+  };
+
+  const participants = data?.participants || [];
+  const joined = participants.filter((p) => p.status === 'joined');
+  const declined = participants.filter((p) => p.status === 'declined');
+  const myStatus = participants.find((p) => p.userID === userID)?.status || 'pending';
+  const isPast = new Date(datetime) <= new Date();
+
+  const d = new Date(datetime);
+  const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+  if (deleted) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-4 flex flex-col items-center gap-2 min-w-[240px] max-w-[300px]">
+        <span className="text-2xl opacity-30">🔕</span>
+        <p className="text-[13px] text-gray-400 m-0">Nhắc hẹn đã bị xóa</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 shadow-sm flex flex-col items-center gap-3 min-w-[240px] max-w-[300px]">
+      <span className="text-2xl">🔔</span>
+      <p className="text-[15px] font-bold text-gray-900 text-center m-0">{title}</p>
+      <p className="text-[12px] text-gray-500 flex items-center gap-1 m-0">🕐 {dateStr}</p>
+
+      {/* Số người tham gia / từ chối */}
+      <div className="flex items-center gap-2 text-[12px]">
+        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${joined.length > 0 ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-400'}`}>
+          ✓ {joined.length} tham gia
+        </span>
+        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${declined.length > 0 ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}>
+          ✗ {declined.length} từ chối
+        </span>
+      </div>
+
+      {/* RSVP buttons */}
+      {!isPast && (
+        <div className="flex gap-2 w-full">
+          <button
+            onClick={() => handleRSVP('joined')}
+            disabled={rsvpLoading}
+            className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${
+              myStatus === 'joined'
+                ? 'bg-green-500 text-white'
+                : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200'
+            }`}
+          >
+            {myStatus === 'joined' ? '✓ Đã tham gia' : 'Tham gia'}
+          </button>
+          <button
+            onClick={() => handleRSVP('declined')}
+            disabled={rsvpLoading}
+            className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${
+              myStatus === 'declined'
+                ? 'bg-red-500 text-white'
+                : 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200'
+            }`}
+          >
+            {myStatus === 'declined' ? '✗ Đã từ chối' : 'Từ chối'}
+          </button>
+        </div>
+      )}
+
+      <button
+        onClick={() => data && onOpenModal(data)}
+        className="w-full py-1.5 border border-gray-200 text-gray-500 rounded-xl text-[12px] font-medium hover:bg-gray-50 transition-colors"
+      >
+        Xem chi tiết
+      </button>
+    </div>
+  );
+};

@@ -4,6 +4,7 @@ import GroupMember from '../models/GroupMember';
 import MessageReaction from '../models/MessageReaction';
 import Users from '../models/User';
 import Group from '../models/Group';
+import GroupReminder from '../models/GroupReminder';
 import { v4 as uuidv4 } from 'uuid';
 import {
   processBotAction,
@@ -895,6 +896,175 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
     } catch (error) {
       console.error('❌ Error forwarding message to group:', error);
       socket.emit('error_notification', { message: 'Lỗi khi chuyển tiếp tin nhắn' });
+    }
+  });
+
+  // ==================== GROUP REMINDER REAL-TIME ====================
+
+  const enrichParticipants = async (participants: any[]) => {
+    return Promise.all(
+      participants.map(async (p) => {
+        const user = await Users.findOne({ userID: p.userID }).select('name anhDaiDien');
+        return {
+          userID: p.userID,
+          status: p.status,
+          updatedAt: p.updatedAt,
+          name: user?.name || p.userID,
+          avatar: user?.anhDaiDien || null,
+        };
+      })
+    );
+  };
+
+  // Tạo nhắc hẹn nhóm
+  socket.on('create_group_reminder', async (data: any) => {
+    try {
+      const { groupID, creatorID, title, datetime, repeat, note } = data;
+
+      const member = await GroupMember.findOne({ groupID, userID: creatorID, isActive: true });
+      if (!member) {
+        socket.emit('error_notification', { message: 'Bạn không có quyền tạo nhắc hẹn' });
+        return;
+      }
+
+      const members = await GroupMember.find({ groupID, isActive: true }).select('userID');
+      const participants = members.map((m) => ({
+        userID: m.userID,
+        status: 'pending',
+        updatedAt: new Date(),
+      }));
+
+      const reminderID = `grem_${uuidv4()}`;
+      const reminder = new GroupReminder({
+        reminderID,
+        groupID,
+        creatorID,
+        title,
+        datetime: new Date(datetime),
+        repeat: repeat || 'none',
+        note: note || '',
+        participants,
+        done: false,
+      });
+
+      await reminder.save();
+
+      const enriched = {
+        ...reminder.toObject(),
+        participants: await enrichParticipants(reminder.participants),
+      };
+
+      // Broadcast reminder data tới tất cả thành viên nhóm
+      io.to(groupID).emit('group_reminder_created', enriched);
+
+      // Lấy thông tin người tạo để hiển thị trong notification
+      const creator = await Users.findOne({ userID: creatorID });
+      const creatorName = creator?.name || 'Người dùng';
+
+      // Tạo notification message trong chat để mọi người thấy
+      const notifMessageID = generateMessageID();
+      const notifContent = `##GROUP_REMINDER##|${reminderID}|${title}|${new Date(datetime).toISOString()}|${creatorName}`;
+      const notifMsg = new GroupMessage({
+        messageID: notifMessageID,
+        groupID,
+        senderID: creatorID,
+        content: notifContent,
+        type: 'notification',
+        timestamp: new Date(),
+        media_url: [],
+        status: 'sent',
+      });
+      await notifMsg.save();
+
+      io.to(groupID).emit('new_group_message', {
+        ...notifMsg.toObject(),
+        senderInfo: { name: creatorName, avatar: creator?.anhDaiDien || null },
+      });
+    } catch (error) {
+      console.error('❌ Error creating group reminder:', error);
+      socket.emit('error_notification', { message: 'Lỗi khi tạo nhắc hẹn' });
+    }
+  });
+
+  // RSVP nhắc hẹn nhóm (tham gia / từ chối)
+  socket.on('group_reminder_rsvp', async (data: any) => {
+    try {
+      const { reminderID, userID, status } = data; // status: 'joined' | 'declined'
+
+      if (!['joined', 'declined'].includes(status)) {
+        socket.emit('error_notification', { message: 'Trạng thái không hợp lệ' });
+        return;
+      }
+
+      const reminder = await GroupReminder.findOne({ reminderID });
+      if (!reminder) {
+        socket.emit('error_notification', { message: 'Nhắc hẹn không tồn tại' });
+        return;
+      }
+
+      const member = await GroupMember.findOne({ groupID: reminder.groupID, userID, isActive: true });
+      if (!member) {
+        socket.emit('error_notification', { message: 'Bạn không phải thành viên nhóm' });
+        return;
+      }
+
+      const existingIdx = reminder.participants.findIndex((p) => p.userID === userID);
+      if (existingIdx >= 0) {
+        reminder.participants[existingIdx].status = status;
+        reminder.participants[existingIdx].updatedAt = new Date();
+      } else {
+        reminder.participants.push({ userID, status, updatedAt: new Date() });
+      }
+
+      await reminder.save();
+
+      const enriched = {
+        ...reminder.toObject(),
+        participants: await enrichParticipants(reminder.participants),
+      };
+
+      // Broadcast tới tất cả thành viên nhóm
+      io.to(reminder.groupID).emit('group_reminder_updated', enriched);
+    } catch (error) {
+      console.error('❌ Error updating RSVP:', error);
+      socket.emit('error_notification', { message: 'Lỗi khi cập nhật trạng thái' });
+    }
+  });
+
+  // Xóa nhắc hẹn nhóm
+  socket.on('delete_group_reminder', async (data: any) => {
+    try {
+      const { reminderID, userID } = data;
+
+      const reminder = await GroupReminder.findOne({ reminderID });
+      if (!reminder) {
+        socket.emit('error_notification', { message: 'Nhắc hẹn không tồn tại' });
+        return;
+      }
+
+      const member = await GroupMember.findOne({ groupID: reminder.groupID, userID, isActive: true });
+      if (!member) {
+        socket.emit('error_notification', { message: 'Bạn không phải thành viên nhóm' });
+        return;
+      }
+
+      const canDelete =
+        reminder.creatorID === userID ||
+        member.role === 'owner' ||
+        member.role === 'admin';
+
+      if (!canDelete) {
+        socket.emit('error_notification', { message: 'Bạn không có quyền xóa nhắc hẹn này' });
+        return;
+      }
+
+      const groupID = reminder.groupID;
+      await GroupReminder.deleteOne({ reminderID });
+
+      io.to(groupID).emit('group_reminder_deleted', { reminderID, groupID });
+    } catch (error) {
+      console.error('❌ Error deleting group reminder:', error);
+      socket.emit('error_notification', { message: 'Lỗi khi xóa nhắc hẹn' });
     }
   });
 };

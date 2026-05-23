@@ -16,8 +16,36 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MAX_WIDTH = Math.min(SCREEN_WIDTH * 0.7, 300);
 
 const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
-  // Gom tất cả URLs từ các messages
-  const allImages = messages.flatMap(msg => msg.media_url || []);
+  // Gom tất cả URLs từ các messages, fix raw Cloudinary URLs
+  const fixUrl = (url: string): string => {
+    if (!url || !url.includes('res.cloudinary.com')) return url;
+    let fixed = url.includes('/raw/upload/')
+      ? url.replace('/raw/upload/', '/image/upload/')
+      : url;
+    if (!fixed.includes('/f_auto')) {
+      fixed = fixed.replace('/upload/', '/upload/f_auto,q_auto,w_1200,c_limit/');
+    }
+    return fixed;
+  };
+  const allImages = messages.flatMap(msg => {
+    // Trích xuất danh sách URLs một cách an toàn (đề phòng media_url là string, mảng hoặc chuỗi JSON)
+    let urls: string[] = [];
+    if (Array.isArray(msg.media_url)) {
+      urls = msg.media_url;
+    } else if (typeof msg.media_url === 'string') {
+      try {
+        const parsed = JSON.parse(msg.media_url);
+        if (Array.isArray(parsed)) {
+          urls = parsed;
+        } else {
+          urls = [msg.media_url];
+        }
+      } catch {
+        urls = [msg.media_url];
+      }
+    }
+    return urls.map(fixUrl);
+  });
   const count = allImages.length;
 
   if (count === 0) return null;
@@ -182,7 +210,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
 
 const styles = StyleSheet.create({
   container: {
-    maxWidth: MAX_WIDTH,
+    width: MAX_WIDTH, // Sửa từ maxWidth thành width để tránh bị co về 0 khi các phần tử con dùng flex: 1
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -197,6 +225,7 @@ const styles = StyleSheet.create({
   // 2 ảnh
   twoImageRow: {
     flexDirection: 'row',
+    width: '100%', // Đảm bảo hàng chiếm hết chiều rộng của container
     gap: 4,
   },
   twoImageItem: {
@@ -210,6 +239,7 @@ const styles = StyleSheet.create({
   // 3 ảnh
   threeImageContainer: {
     flexDirection: 'row',
+    width: '100%', // Đảm bảo container chiếm hết chiều rộng của container cha
     gap: 4,
     height: 200,
   },
@@ -234,10 +264,12 @@ const styles = StyleSheet.create({
 
   // 4+ ảnh
   fourImageGrid: {
+    width: '100%', // Căng tràn 100% width của container
     gap: 4,
   },
   gridRow: {
     flexDirection: 'row',
+    width: '100%', // Đảm bảo hàng chiếm hết width
     gap: 4,
   },
   fourImageItem: {
