@@ -10,8 +10,8 @@ interface Message {
 interface ImageGridProps {
   messages: Message[];
   onImageClick?: (url: string, allUrls: string[]) => void;
-  onImageAction?: (url: string, event: React.MouseEvent) => void; // New prop for showing action menu
-  showActionMenu?: boolean; // Toggle between viewer mode and action menu mode
+  onImageAction?: (url: string, event: React.MouseEvent) => void;
+  showActionMenu?: boolean;
 }
 
 const ImageGrid: React.FC<ImageGridProps> = ({
@@ -20,11 +20,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   onImageAction,
   showActionMenu = false,
 }) => {
-  // Gom tất cả URLs từ các messages
-  const allImages = messages.flatMap((msg) => msg.media_url || []);
-const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
+  // Gom tất cả URLs từ các messages và xử lý format
   const allImages = messages.flatMap(msg => {
-    // Trích xuất danh sách URLs một cách an toàn (đề phòng media_url là string, mảng hoặc chuỗi JSON)
+    // Trích xuất danh sách URLs một cách an toàn
     let urls: any[] = [];
     if (Array.isArray(msg.media_url)) {
       urls = msg.media_url;
@@ -51,6 +49,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
       })
       .filter((u: string) => u && u.startsWith('http'));
   });
+
   const count = allImages.length;
 
   // Debug: log nếu có URL không hợp lệ
@@ -81,7 +80,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
       className={className}
       loading="lazy"
       decoding="async"
-      onClick={() => handleClick(url)}
+      onClick={(e) => handleClick(url, e)}
       onError={(e) => {
         (e.currentTarget as HTMLImageElement).style.display = 'none';
       }}
@@ -92,12 +91,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
   if (count === 1) {
     return (
       <div className="image-grid image-grid-1">
-        <img
-          src={allImages[0]}
-          alt="Image"
-          onClick={(e) => handleClick(allImages[0], e)}
-          className="grid-image"
-        />
         {renderImg(allImages[0], 'Image', 'grid-image')}
       </div>
     );
@@ -108,13 +101,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
     return (
       <div className="image-grid image-grid-2">
         {allImages.map((url, idx) => (
-          <img
-            key={idx}
-            src={url}
-            alt={`Image ${idx + 1}`}
-            onClick={(e) => handleClick(url, e)}
-            className="grid-image"
-          />
           <React.Fragment key={idx}>
             {renderImg(url, `Image ${idx + 1}`, 'grid-image')}
           </React.Fragment>
@@ -127,25 +113,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
   if (count === 3) {
     return (
       <div className="image-grid image-grid-3">
-        <img
-          src={allImages[0]}
-          alt="Image 1"
-          onClick={(e) => handleClick(allImages[0], e)}
-          className="grid-image grid-image-large"
-        />
-        <div className="grid-small-column">
-          <img
-            src={allImages[1]}
-            alt="Image 2"
-            onClick={(e) => handleClick(allImages[1], e)}
-            className="grid-image grid-image-small"
-          />
-          <img
-            src={allImages[2]}
-            alt="Image 3"
-            onClick={(e) => handleClick(allImages[2], e)}
-            className="grid-image grid-image-small"
-          />
         {renderImg(allImages[0], 'Image 1', 'grid-image grid-image-large')}
         <div className="grid-small-column">
           {renderImg(allImages[1], 'Image 2', 'grid-image grid-image-small')}
@@ -161,12 +128,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
       <div className="image-grid image-grid-4">
         {allImages.map((url, idx) => (
           <div key={idx} className="grid-image-wrapper">
-            <img
-              src={url}
-              alt={`Image ${idx + 1}`}
-              onClick={(e) => handleClick(url, e)}
-              className="grid-image"
-            />
             {renderImg(url, `Image ${idx + 1}`, 'grid-image')}
           </div>
         ))}
@@ -180,12 +141,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ messages, onImageClick }) => {
     <div className="image-grid image-grid-4">
       {allImages.slice(0, 4).map((url, idx) => (
         <div key={idx} className="grid-image-wrapper">
-          <img
-            src={url}
-            alt={`Image ${idx + 1}`}
-            onClick={(e) => handleClick(url, e)}
-            className="grid-image"
-          />
           {renderImg(url, `Image ${idx + 1}`, 'grid-image')}
           {idx === 3 && remaining > 0 && (
             <div className="grid-overlay" onClick={(e) => handleClick(url, e)}>
