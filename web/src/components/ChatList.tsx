@@ -127,12 +127,21 @@ const getLastMsgPreview = (chat: Chat, userID: string, userName?: string): strin
       if (last.content?.startsWith('##FRIENDSHIP##')) {
         const parts = last.content.split('|');
         const senderID = parts[1];
-        const receiverID = parts[2];
         const senderName = parts[3];
         const receiverName = parts[4];
-
         const otherName = userID === senderID ? receiverName : senderName;
         return `Bạn và ${otherName} đã trở thành bạn bè`;
+      }
+      if (last.content?.startsWith('##GROUP_REMINDER##')) {
+        // Format: ##GROUP_REMINDER##|reminderID|title|datetime|creatorName
+        const parts = last.content.split('|');
+        const title = parts[2];
+        const creatorName = parts[4];
+        const isMe = last.senderID === userID;
+        return `🔔 ${isMe ? 'Bạn' : creatorName} tạo nhắc hẹn: ${title}`;
+      }
+      if (last.content?.startsWith('POLL_NOTIF|') || last.content?.startsWith('##POLL_')) {
+        return '📊 Bình chọn';
       }
       return last.content || '';
     case 'call-missed':
