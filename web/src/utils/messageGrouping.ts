@@ -26,45 +26,47 @@ export interface MessageGroup {
 }
 
 /**
- * Group consecutive image messages from the same sender within 60 seconds
+ * Group image messages that share the same groupId.
+ * Only groups messages that have valid media_url (skips optimistic messages still uploading).
  */
 export function groupMessages(messages: Message[]): (Message | MessageGroup)[] {
-  const result: (Message | MessageGroup)[] = [];
+  // Collect messages per groupId - only those with valid media_url
   const groupMap = new Map<string, Message[]>();
-
   for (const msg of messages) {
-    // Chỉ group các ảnh có groupId (được gửi cùng lúc)
-    if (msg.type === 'image' && msg.groupId) {
-      if (!groupMap.has(msg.groupId)) {
-        groupMap.set(msg.groupId, []);
-      }
+    if (msg.type === 'image' && msg.groupId && msg.media_url && msg.media_url.length > 0) {
+      if (!groupMap.has(msg.groupId)) groupMap.set(msg.groupId, []);
       groupMap.get(msg.groupId)!.push(msg);
-    } else {
-      // Flush các groups đã tích lũy trước message này
-      for (const [groupId, groupMessages] of groupMap.entries()) {
-        result.push(createGroup(groupMessages));
-      }
-      groupMap.clear();
-      
-      // Thêm message đơn lẻ
-      result.push(msg);
     }
   }
 
-  // Flush các groups còn lại
-  for (const [groupId, groupMessages] of groupMap.entries()) {
-    result.push(createGroup(groupMessages));
+  const result: (Message | MessageGroup)[] = [];
+  const insertedGroups = new Set<string>();
+
+  for (const msg of messages) {
+    if (msg.type === 'image' && msg.groupId) {
+      const gid = msg.groupId;
+      // No media_url yet (optimistic) → render as single message
+      if (!msg.media_url || msg.media_url.length === 0) {
+        result.push(msg);
+        continue;
+      }
+      if (insertedGroups.has(gid)) continue;
+      insertedGroups.add(gid);
+      const groupMsgs = groupMap.get(gid)!;
+      groupMsgs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      result.push(createGroup(groupMsgs));
+    } else {
+      result.push(msg);
+    }
   }
 
   return result;
 }
 
-function createGroup(messages: Message[]): MessageGroup {
-  // Nếu chỉ có 1 ảnh, trả về message đơn lẻ
+function createGroup(messages: Message[]): Message | MessageGroup {
   if (messages.length === 1) {
-    return messages[0] as any;
+    return messages[0];
   }
-
   const firstMsg = messages[0];
   return {
     groupId: firstMsg.groupId || `group_${firstMsg.messageID || firstMsg.tempID || Date.now()}`,
@@ -74,24 +76,14 @@ function createGroup(messages: Message[]): MessageGroup {
   };
 }
 
-/**
- * Check if item is a message group
- */
 export function isMessageGroup(item: Message | MessageGroup): item is MessageGroup {
   return 'messages' in item && Array.isArray((item as MessageGroup).messages);
 }
 
-/**
- * Get layout for image grid based on count
- */
-export function getImageGridLayout(count: number): {
-  rows: number;
-  cols: number;
-  maxDisplay: number;
-} {
+export function getImageGridLayout(count: number): { rows: number; cols: number; maxDisplay: number } {
   if (count === 1) return { rows: 1, cols: 1, maxDisplay: 1 };
   if (count === 2) return { rows: 1, cols: 2, maxDisplay: 2 };
-  if (count === 3) return { rows: 2, cols: 2, maxDisplay: 3 }; // 1 lớn + 2 nhỏ
+  if (count === 3) return { rows: 2, cols: 2, maxDisplay: 3 };
   if (count === 4) return { rows: 2, cols: 2, maxDisplay: 4 };
-  return { rows: 2, cols: 2, maxDisplay: 4 }; // 4 ảnh + overlay "+X"
+  return { rows: 2, cols: 2, maxDisplay: 4 };
 }

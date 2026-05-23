@@ -23,6 +23,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GroupManagementModal from './GroupManagementModal';
 import GroupMembersModal from './GroupMembersModal';
 import AddMembersModal from './AddMembersModal';
+
+// Fix Cloudinary URL: raw→image, thêm f_auto,q_auto,w_1200,c_limit để convert HEIC/HEIF→JPEG
+const fixImageUrl = (url: string): string => {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  let fixed = url.includes('/raw/upload/')
+    ? url.replace('/raw/upload/', '/image/upload/')
+    : url;
+  if (!fixed.includes('/f_auto')) {
+    fixed = fixed.replace('/upload/', '/upload/f_auto,q_auto,w_1200,c_limit/');
+  }
+  return fixed;
+};
 import { EditGroupInfoModal } from './EditGroupInfoModal';
 import { GroupBoardModal } from './GroupBoardModal';
 import { TransferOwnershipModal } from './TransferOwnershipModal';
@@ -441,7 +453,7 @@ const ChatInfoPanel = ({
     .filter((m) => m.type === 'image' && m.media_url?.length)
     .flatMap((m) =>
       (m.media_url || []).map((url, i) => ({
-        url,
+        url: fixImageUrl(url),
         timestamp: m.timestamp,
         id: `${m.messageID}_${i}`,
       }))
@@ -451,7 +463,7 @@ const ChatInfoPanel = ({
     .filter((m) => m.type === 'video' && m.media_url?.length)
     .flatMap((m) =>
       (m.media_url || []).map((url, i) => ({
-        url,
+        url: fixImageUrl(url),
         timestamp: m.timestamp,
         id: `${m.messageID}_${i}`,
       }))

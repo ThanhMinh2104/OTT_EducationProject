@@ -244,7 +244,7 @@ const GroupBoardModal = ({
       socket.off('poll_updated', handlePollUpdated);
       socket.off('poll_deleted', handlePollDeleted);
     };
-  }, [show, groupID]);
+  }, [show, groupID, initialPollId, initialTab, fetchData, userID]);
 
   const handleBackToList = () => {
     if (viewMode === 'view-poll' || viewMode === 'create-poll') {
@@ -304,6 +304,9 @@ const GroupBoardModal = ({
     setDuplicateIndices([]);
     setViewMode('create-poll');
   };
+
+  // ── Group Reminder handlers ──────────────────────────────────────────────
+  // (Reminder logic moved to GroupReminderModal)
 
   const handleSubmitVotes = async () => {
     if (!selectedPoll) return;
@@ -1179,10 +1182,11 @@ const GroupBoardModal = ({
                   )}
                 </>
               )}
+
             </>
           )}
 
-          {/* CREATE NOTE VIEW */}
+          {/* Note/Poll views */}
           {viewMode === 'create-note' && (
             <div className="p-6 note-form-container">
               <div className="mb-4">
@@ -1738,6 +1742,7 @@ const GroupBoardModal = ({
           )}
         </div>
       </div>
+
       {/* Confirm Modal */}
       {showConfirmModal && (
         <div

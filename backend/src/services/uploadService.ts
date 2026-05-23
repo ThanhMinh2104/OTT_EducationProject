@@ -1,27 +1,57 @@
 import { Readable } from 'stream';
 import cloudinary from '../config/cloudinary';
 
-const FILE_TYPE_MATCH: Record<string, string[]> = {
-  image: ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp'],
-  video: ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/ogg'],
-  audio: ['audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/m4a', 'audio/x-m4a'],
-  document: [
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-powerpoint',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'text/plain',
-    'text/csv',
-    'application/zip',
-    'application/x-zip-compressed',
-    'application/x-rar-compressed',
-    'application/x-7z-compressed',
-  ],
-};
+// ── MIME types ──────────────────────────────────────────────────────────────
+// Bao quát Android (JPEG/PNG/WebP/GIF) và iOS/iPhone (HEIC/HEIF) + các định dạng phổ biến
+const IMAGE_MIMES = new Set([
+  // JPEG - Android, iOS, mọi thiết bị
+  'image/jpeg', 'image/jpg', 'image/pjpeg',
+  // PNG
+  'image/png', 'image/x-png',
+  // WebP - Android native
+  'image/webp',
+  // GIF
+  'image/gif',
+  // BMP
+  'image/bmp', 'image/x-bmp', 'image/x-ms-bmp',
+  // HEIC/HEIF - iPhone iOS 11+
+  'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence',
+  // AVIF - Android 12+
+  'image/avif',
+  // TIFF
+  'image/tiff', 'image/x-tiff',
+  // SVG
+  'image/svg+xml',
+  // ICO
+  'image/x-icon', 'image/vnd.microsoft.icon',
+]);
 
+const VIDEO_MIMES = new Set([
+  'video/mp4', 'video/quicktime', 'video/x-msvideo',
+  'video/webm', 'video/ogg', 'video/3gpp', 'video/3gpp2',
+  'video/x-matroska', 'video/mpeg',
+]);
+
+const AUDIO_MIMES = new Set([
+  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave',
+  'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac',
+  'audio/m4a', 'audio/x-m4a', 'audio/flac', 'audio/x-flac',
+  'audio/amr', // Android voice recording
+]);
+
+// ── Extensions ───────────────────────────────────────────────────────────────
+const IMAGE_EXTS = new Set([
+  'jpg', 'jpeg', 'jfif', 'pjpeg', 'pjp',  // JPEG variants
+  'png', 'webp', 'gif', 'bmp', 'tiff', 'tif',
+  'heic', 'heif',                           // iPhone
+  'avif',                                   // Android 12+
+  'svg', 'ico',
+]);
+
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'webm', 'mkv', 'ogv', '3gp', '3g2', 'mpeg', 'mpg']);
+const AUDIO_EXTS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'amr', 'opus', 'weba']);
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function bufferToStream(buffer: Buffer): Readable {
   const readable = new Readable();
   readable.push(buffer);
@@ -34,47 +64,51 @@ function randomString(length = 6): string {
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+function detectFileType(mimetype: string, filename: string): 'image' | 'video' | 'audio' | 'document' {
+  // 1. Thử detect từ mimetype trước
+  const mime = (mimetype || '').toLowerCase().trim();
+  if (mime && mime !== 'application/octet-stream') {
+    if (IMAGE_MIMES.has(mime) || mime.startsWith('image/')) return 'image';
+    if (VIDEO_MIMES.has(mime) || mime.startsWith('video/')) return 'video';
+    if (AUDIO_MIMES.has(mime) || mime.startsWith('audio/')) return 'audio';
+  }
+
+  // 2. Fallback: detect từ extension
+  const ext = (filename.split('.').pop() || '').toLowerCase().trim();
+  if (IMAGE_EXTS.has(ext)) return 'image';
+  if (VIDEO_EXTS.has(ext)) return 'video';
+  if (AUDIO_EXTS.has(ext)) return 'audio';
+
+  return 'document';
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
 export async function uploadToCloudinary(file: Express.Multer.File): Promise<string> {
-  let fileType: string | null = null;
+  const fileType = detectFileType(file.mimetype, file.originalname);
 
-  // Nếu không có mimetype hoặc mimetype là application/octet-stream, coi như file thông thường
-  if (!file.mimetype || file.mimetype === 'application/octet-stream') {
-    fileType = 'document';
-  } else {
-    for (const [type, mimes] of Object.entries(FILE_TYPE_MATCH)) {
-      if (mimes.includes(file.mimetype)) {
-        fileType = type;
-        break;
-      }
-    }
-  }
-
-  // Nếu vẫn không match, coi như document/raw file
-  if (!fileType) {
-    console.warn(`Unknown file type: ${file.mimetype}, treating as document`);
-    fileType = 'document';
-  }
-
-  const ext = file.originalname.split('.').pop() || 'bin';
-  const publicId = `${fileType}_${randomString()}_${Date.now()}`; // Không thêm extension vào publicId
-  
   // Xác định resource_type cho Cloudinary
   let resourceType: 'image' | 'video' | 'raw' = 'raw';
   if (fileType === 'image') resourceType = 'image';
   else if (fileType === 'video') resourceType = 'video';
   else if (fileType === 'audio') resourceType = 'video'; // Cloudinary xử lý audio như video
 
-  console.log('Uploading to Cloudinary:', { fileType, resourceType, publicId, mimetype: file.mimetype, size: file.size });
+  const publicId = `${fileType}_${randomString()}_${Date.now()}`;
+
+  console.log('Uploading to Cloudinary:', {
+    fileType, resourceType, publicId,
+    mimetype: file.mimetype,
+    filename: file.originalname,
+    size: file.size,
+  });
 
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { 
-        folder: 'AnhChat', 
-        public_id: publicId, 
+      {
+        folder: 'AnhChat',
+        public_id: publicId,
         resource_type: resourceType,
-        // Không convert format, giữ nguyên m4a
-        access_mode: 'public', // Đảm bảo file có thể truy cập public
-        type: 'upload' // Upload type
+        access_mode: 'public',
+        type: 'upload',
       },
       (error, result) => {
         if (error) {
