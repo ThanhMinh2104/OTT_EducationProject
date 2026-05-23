@@ -553,7 +553,7 @@ const GroupInfoPanel = ({
             {showBoardExpanded && (
               <div style={{ padding: '8px 16px 12px', backgroundColor: '#ffffff' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-                  <button style={S.boardItem(tab === 'reminders')} onClick={() => setTab('reminders')}>
+                  <button style={S.boardItem(tab === 'reminders')} onClick={() => { setShowGroupBoard(true); }}>
                     <FaClock style={{ fontSize: 11 }} />
                     Danh sách nhắc hẹn
                   </button>

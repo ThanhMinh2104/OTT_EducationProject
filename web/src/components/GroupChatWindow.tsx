@@ -19,7 +19,6 @@ import {
   FaMicrophone,
   FaStop,
   FaBell,
-  FaPhone,
   FaPlay,
   FaPause,
   FaEllipsisV,
@@ -28,7 +27,7 @@ import {
   FaCrown,
   FaUserShield,
 } from 'react-icons/fa';
-import { BsPin, BsPinAngleFill } from 'react-icons/bs';
+import { BsPin } from 'react-icons/bs';
 import { EmojiClickData } from 'emoji-picker-react';
 import StickerEmojiPicker from './StickerEmojiPicker';
 import ForwardMessageModal from './ForwardMessageModal';
@@ -51,6 +50,8 @@ import PollMessage from './PollMessage';
 import { PinnedMessagesPanel } from './PinnedMessagesPanel';
 import GroupBoardModal from './GroupBoardModal';
 import { GroupSearchModal } from './GroupSearchModal';
+import GroupReminderModal from './GroupReminderModal';
+import type { GroupReminder as GroupReminderType } from './GroupReminderModal';
 
 const API = 'http://localhost:5000/api';
 
@@ -481,6 +482,8 @@ export const GroupChatWindow = ({
   const [boardTab, setBoardTab] = useState<'all' | 'pinned' | 'notes' | 'polls'>('all');
   const [boardInitialPollId, setBoardInitialPollId] = useState<string | undefined>(undefined);
   const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [showGroupReminder, setShowGroupReminder] = useState(false);
+  const [groupReminderInitial, setGroupReminderInitial] = useState<GroupReminderType | undefined>(undefined);
 
   // Lắng nghe sự kiện mở chi tiết bình chọn từ các component con (như PollMessage)
   useEffect(() => {
@@ -2587,6 +2590,55 @@ export const GroupChatWindow = ({
                                 );
                               }
 
+                              // Group Reminder notification
+                              if (msg.content?.startsWith('##GROUP_REMINDER##')) {
+                                // Format: ##GROUP_REMINDER##|reminderID|title|datetime|creatorName
+                                const parts = msg.content.split('|');
+                                const rID = parts[1];
+                                const title = parts[2];
+                                const datetime = parts[3];
+                                const creatorName = parts[4];
+                                const isMe = msg.senderID === userID;
+                                const d = new Date(datetime);
+                                const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+                                const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                                return (
+                                  <div className="flex flex-col items-center gap-1 w-full">
+                                    {/* Dòng text nhỏ */}
+                                    <div className="flex items-center gap-1.5 text-gray-500 bg-gray-50 rounded-full px-4 py-1.5 shadow-sm border border-blue-100 max-w-full">
+                                      <span className="text-sm">🔔</span>
+                                      <span className="text-xs font-medium truncate">
+                                        <b>{isMe ? 'Bạn' : creatorName}</b> tạo nhắc hẹn mới{' '}
+                                        <b className="text-gray-700">{title}</b>
+                                        {' - '}{dateStr}
+                                      </span>
+                                      <button
+                                        className="text-[#0068ff] hover:underline font-bold text-xs shrink-0 ml-1"
+                                        onClick={() => {
+                                          setGroupReminderInitial(undefined);
+                                          setShowGroupReminder(true);
+                                        }}
+                                      >
+                                        Xem
+                                      </button>
+                                    </div>
+                                    {/* Card nhắc hẹn với RSVP real-time */}
+                                    <GroupReminderCard
+                                      reminderID={rID}
+                                      title={title}
+                                      datetime={datetime}
+                                      creatorName={creatorName}
+                                      userID={userID}
+                                      groupID={groupID}
+                                      onOpenModal={(reminder) => {
+                                        setGroupReminderInitial(reminder as GroupReminderType);
+                                        setShowGroupReminder(true);
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              }
+
                               const parsed = JSON.parse(msg.content || '');
                               if (parsed.type === 'join_request_notification') {
                                 return (
@@ -3070,9 +3122,9 @@ export const GroupChatWindow = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      toast('Tính năng nhắc hẹn đang phát triển');
+                      setShowGroupReminder(true);
                     }}
-                    title="Nhắc hẹn"
+                    title="Nhắc hẹn nhóm"
                     className="w-8 h-8 flex items-center justify-center rounded-lg text-base transition-colors text-gray-500 hover:text-[#0068ff] hover:bg-gray-100"
                   >
                     <FaBell />
@@ -3733,14 +3785,14 @@ export const GroupChatWindow = ({
           onReject={handleRejectFriendFromProfile}
           onRecall={handleRecallFriendFromProfile}
           onStatusChange={(status) => {
-            setSelectedUserForProfile((prev: any) => prev ? { ...prev, friendStatus: status } : prev);
+            setSelectedUserForProfile((prev: unknown) => prev ? { ...prev, friendStatus: status } : prev);
           }}
         />
       )}
 
       {showUserProfile && (
         <UserProfileModal
-          user={members.find((m) => m.userID === userID) as any}
+          user={members.find((m) => m.userID === userID) as unknown}
           onClose={() => setShowUserProfile(false)}
           setUser={() => { }}
         />
@@ -3776,8 +3828,141 @@ export const GroupChatWindow = ({
           members={groupInfo?.members?.map(m => ({ userID: m.userID, name: m.name, avatar: m.avatar })) || []}
         />
       )}
+
+      {showGroupReminder && (
+        <GroupReminderModal
+          groupID={groupID}
+          userID={userID}
+          initialReminder={groupReminderInitial}
+          onClose={() => { setShowGroupReminder(false); setGroupReminderInitial(undefined); }}
+        />
+      )}
     </div>
   );
 };
 
 export default GroupChatWindow;
+
+
+// ── GroupReminderCard ──────────────────────────────────────────────────────
+interface _GRParticipant {
+  userID: string;
+  name: string;
+  avatar?: string;
+  status: 'joined' | 'declined' | 'pending';
+}
+interface _GRData {
+  reminderID: string;
+  title: string;
+  datetime: string;
+  participants: _GRParticipant[];
+}
+
+const GroupReminderCard = ({
+  reminderID, title, datetime, userID, groupID, onOpenModal,
+}: {
+  reminderID: string; title: string; datetime: string; creatorName: string;
+  userID: string; groupID: string; onOpenModal: (reminder: _GRData) => void;
+}) => {
+  const [data, setData] = useState<_GRData | null>(null);
+  const [rsvpLoading, setRsvpLoading] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await axiosInstance.get(`/group-reminders/${groupID}`);
+      const found = (res.data as _GRData[]).find((r) => r.reminderID === reminderID);
+      if (found) setData(found);
+    } catch { /* silent */ }
+  }, [groupID, reminderID]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    const onUpdated = (r: _GRData) => { if (r.reminderID === reminderID) setData(r); };
+    const onDeleted = ({ reminderID: id }: { reminderID: string }) => { if (id === reminderID) setData(null); };
+    socket.on('group_reminder_updated', onUpdated);
+    socket.on('group_reminder_deleted', onDeleted);
+    return () => {
+      socket.off('group_reminder_updated', onUpdated);
+      socket.off('group_reminder_deleted', onDeleted);
+    };
+  }, [reminderID]);
+
+  const handleRSVP = (status: 'joined' | 'declined') => {
+    setRsvpLoading(true);
+    socket.emit('group_reminder_rsvp', { reminderID, userID, status });
+    // Optimistic update
+    setData((prev) => {
+      if (!prev) return prev;
+      const exists = prev.participants.find((p) => p.userID === userID);
+      const updated = exists
+        ? prev.participants.map((p) => p.userID === userID ? { ...p, status } : p)
+        : [...prev.participants, { userID, name: 'Bạn', status }];
+      return { ...prev, participants: updated };
+    });
+    setTimeout(() => setRsvpLoading(false), 500);
+  };
+
+  const participants = data?.participants || [];
+  const joined = participants.filter((p) => p.status === 'joined');
+  const declined = participants.filter((p) => p.status === 'declined');
+  const myStatus = participants.find((p) => p.userID === userID)?.status || 'pending';
+  const isPast = new Date(datetime) <= new Date();
+
+  const d = new Date(datetime);
+  const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 shadow-sm flex flex-col items-center gap-3 min-w-[240px] max-w-[300px]">
+      <span className="text-2xl">🔔</span>
+      <p className="text-[15px] font-bold text-gray-900 text-center m-0">{title}</p>
+      <p className="text-[12px] text-gray-500 flex items-center gap-1 m-0">🕐 {dateStr}</p>
+
+      {/* Số người tham gia / từ chối */}
+      <div className="flex items-center gap-2 text-[12px]">
+        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${joined.length > 0 ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-400'}`}>
+          ✓ {joined.length} tham gia
+        </span>
+        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${declined.length > 0 ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}>
+          ✗ {declined.length} từ chối
+        </span>
+      </div>
+
+      {/* RSVP buttons */}
+      {!isPast && (
+        <div className="flex gap-2 w-full">
+          <button
+            onClick={() => handleRSVP('joined')}
+            disabled={rsvpLoading}
+            className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${
+              myStatus === 'joined'
+                ? 'bg-green-500 text-white'
+                : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200'
+            }`}
+          >
+            {myStatus === 'joined' ? '✓ Đã tham gia' : 'Tham gia'}
+          </button>
+          <button
+            onClick={() => handleRSVP('declined')}
+            disabled={rsvpLoading}
+            className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${
+              myStatus === 'declined'
+                ? 'bg-red-500 text-white'
+                : 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200'
+            }`}
+          >
+            {myStatus === 'declined' ? '✗ Đã từ chối' : 'Từ chối'}
+          </button>
+        </div>
+      )}
+
+      <button
+        onClick={() => data && onOpenModal(data)}
+        className="w-full py-1.5 border border-gray-200 text-gray-500 rounded-xl text-[12px] font-medium hover:bg-gray-50 transition-colors"
+      >
+        Xem chi tiết
+      </button>
+    </div>
+  );
+};
