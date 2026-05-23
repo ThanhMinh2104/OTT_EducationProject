@@ -63,6 +63,8 @@ import MentionDropdown from '../components/MentionDropdown';
 import HighlightedTextInput from '../components/HighlightedTextInput';
 import PollBubble from '../components/PollBubble';
 import { GroupBoardModal } from '../components/GroupBoardModal';
+import ReminderModal from '../components/ReminderModal';
+import GroupReminderModal from '../components/GroupReminderModal';
 
 const GIPHY_API_KEY = 'iw8DsJkjCByct4EHovySloueKpn6ljwK';
 
@@ -142,6 +144,13 @@ const getLastMsgPreview = (chat: Chat, userID: string): string => {
   // Xử lý notification type (bao gồm POLL_NOTIF)
   if (last.type === 'notification') {
     const c = last.content || '';
+    if (c.startsWith('##GROUP_REMINDER##')) {
+      const parts = c.split('|');
+      const title = parts[2] || 'nhắc hẹn';
+      const creatorName = parts[4] || '';
+      const displayName = isMine ? 'Bạn' : creatorName;
+      return `🔔 ${displayName} tạo nhắc hẹn: ${title}`;
+    }
     if (c.startsWith('POLL_NOTIF|')) {
       const parts = c.split('|');
       const action = parts[1];
@@ -226,6 +235,17 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [showGroupBoard, setShowGroupBoard] = useState(false);
+  const [showReminder, setShowReminder] = useState(false);
+  const [showGroupReminder, setShowGroupReminder] = useState(false);
+  const [groupReminderInitial, setGroupReminderInitial] = useState<_MGRData | undefined>(undefined);
+
+  // Reminder events cho chat 1-1 (timeline)
+  const [reminderEvents, setReminderEvents] = useState<Array<{
+    eventID: string; chatID: string; type: 'created' | 'deleted';
+    reminderID: string; reminderData: { title: string; datetime: string; repeat: string };
+    userName: string; userID: string; createdAt: string;
+  }>>([]);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [boardInitialTab, setBoardInitialTab] = useState<'all' | 'pinned' | 'notes' | 'polls'>('all');
   const [boardInitialPollId, setBoardInitialPollId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1359,6 +1379,30 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     };
 
     socket.on('new_message', onNewMessage);
+
+    // Reminder events cho chat 1-1
+    const onReminderEvent = (evt: any) => {
+      if (evt.chatID !== chatID) return;
+      setReminderEvents(prev => {
+        // Nếu là event deleted, cập nhật event created tương ứng thành deleted
+        if (evt.type === 'deleted') {
+          const updated = prev.map(e =>
+            e.reminderID === evt.reminderID ? { ...e, type: 'deleted' as const } : e
+          );
+          // Nếu chưa có event nào cho reminderID này, thêm mới
+          if (!prev.find(e => e.reminderID === evt.reminderID)) {
+            return [...prev, evt];
+          }
+          return updated;
+        }
+        if (prev.find(e => e.eventID === evt.eventID)) return prev;
+        return [...prev, evt];
+      });
+    };
+    if (!isGroup) {
+      socket.on('reminder_event', onReminderEvent);
+    }
+
     // Lắng nghe group messages
     if (isGroup) {
       socket.on('new_group_message', onNewGroupMessage);
@@ -1424,6 +1468,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
     return () => {
       socket.off('new_message', onNewMessage);
+      if (!isGroup) socket.off('reminder_event', onReminderEvent);
       if (isGroup) {
         socket.off('new_group_message', onNewGroupMessage);
         socket.off('group_typing_start', onTypingStart);
@@ -1597,6 +1642,16 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               return current;
             });
           }
+          // Load reminder events cho chat 1-1
+          try {
+            const evtRes = await fetch(`${API_URL}/api/reminders/events/${chat.chatID}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (evtRes.ok) {
+              const evtData = await evtRes.json();
+              setReminderEvents(evtData || []);
+            }
+          } catch { /* silent */ }
         }
       } catch (err) {
         // Giữ nguyên cached messages nếu fetch thất bại
@@ -2407,6 +2462,68 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     const isNotif = item.type === 'notification';
     const timeStr = new Date(item.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
+    // Reminder event (chat 1-1)
+    if (item.type === 'reminder_event') {
+      try {
+        const evt = JSON.parse(item.content || '{}');
+        const isMe = evt.userID === user?.userID;
+        const d = new Date(evt.reminderData?.datetime || '');
+        const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+        const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        return (
+          <View key={item.messageID} style={{ alignItems: 'center', marginVertical: 6, gap: 8 }}>
+            {/* Notification row */}
+            <View style={styles.pollNotifRow}>
+              <View style={[styles.pollNotifIcon, { backgroundColor: '#eff6ff' }]}>
+                <Ionicons name="notifications" size={14} color="#0068ff" />
+              </View>
+              <Text style={styles.pollNotifText}>
+                <Text style={{ fontWeight: '600', color: '#1a1a1a' }}>{isMe ? 'Bạn' : evt.userName}</Text>
+                {evt.type === 'created' ? ' tạo nhắc hẹn: ' : ' xóa nhắc hẹn: '}
+                <Text style={{ fontWeight: '600', color: '#1a1a1a' }}>{evt.reminderData?.title}</Text>
+                {evt.type === 'created' && (
+                  <Text style={{ color: '#0068ff', fontWeight: '600' }} onPress={() => setShowReminder(true)}>{'  '}Xem</Text>
+                )}
+              </Text>
+            </View>
+            {/* Card chỉ hiện khi tạo */}
+            {evt.type === 'created' && (
+              <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#e5e7eb', width: 260, gap: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="notifications" size={18} color="#0068ff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#111' }} numberOfLines={2}>{evt.reminderData?.title}</Text>
+                    <Text style={{ fontSize: 12, color: '#888', marginTop: 2 }}>🕐 {dateStr}</Text>
+                  </View>
+                </View>
+                {evt.reminderData?.repeat !== 'none' && (
+                  <View style={{ backgroundColor: '#eff6ff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' }}>
+                    <Text style={{ fontSize: 11, color: '#0068ff', fontWeight: '600' }}>
+                      {evt.reminderData?.repeat === 'daily' ? 'Hàng ngày' : 'Hàng tuần'}
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={{ paddingVertical: 9, borderRadius: 12, borderWidth: 1.5, borderColor: '#0068ff', alignItems: 'center' }}
+                  onPress={() => setShowReminder(true)}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0068ff' }}>Xem chi tiết</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {/* Card đã xóa */}
+            {evt.type === 'deleted' && (
+              <View style={{ backgroundColor: '#f9fafb', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#e5e7eb', width: 260, alignItems: 'center', gap: 6 }}>
+                <Ionicons name="notifications-off-outline" size={28} color="#ccc" />
+                <Text style={{ fontSize: 13, color: '#aaa' }}>Nhắc hẹn đã bị xóa</Text>
+              </View>
+            )}
+          </View>
+        );
+      } catch { return null; }
+    }
+
     // Render notification messages (ghim, bỏ ghim, etc.)
     if (isNotification) {
       const content = item.content || '';
@@ -2469,11 +2586,91 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         );
       }
 
+      // Group Reminder: render độc lập như poll (notification row + card)
+      if ((item.content || '').startsWith('##GROUP_REMINDER##')) {
+        const parts = (item.content || '').split('|');
+        const rID = parts[1] || '';
+        const title = parts[2] || '';
+        const datetime = parts[3] || '';
+        const creatorName = parts[4] || '';
+        const isMe = item.senderID === user?.userID;
+        const d = new Date(datetime);
+        const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+        const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        return (
+          <View key={item.messageID || item.tempID} style={{ alignItems: 'center', marginVertical: 6, gap: 8 }}>
+            {/* Notification row — pill style giống poll */}
+            <View style={styles.pollNotifRow}>
+              <View style={[styles.pollNotifIcon, { backgroundColor: '#eff6ff' }]}>
+                <Ionicons name="notifications" size={14} color="#0068ff" />
+              </View>
+              <Text style={styles.pollNotifText}>
+                <Text style={{ fontWeight: '600', color: '#1a1a1a' }}>{isMe ? 'Bạn' : creatorName}</Text>
+                {' '}tạo nhắc hẹn:{' '}
+                <Text style={{ fontWeight: '600', color: '#1a1a1a' }}>{title}</Text>
+                {'. '}
+                <Text style={{ color: '#0068ff', fontWeight: '600' }} onPress={() => setShowGroupReminder(true)}>Xem</Text>
+              </Text>
+            </View>
+            {/* Card độc lập */}
+            <MobileGroupReminderCard
+              reminderID={rID}
+              title={title}
+              datetime={datetime}
+              groupID={selectedChat?.chatID || ''}
+              userID={user?.userID || ''}
+              onOpenDetail={(d) => { setGroupReminderInitial(d); setShowGroupReminder(true); }}
+            />
+          </View>
+        );
+      }
+
       return (
         <View key={item.messageID || item.tempID} style={styles.notificationContainer}>
           <View style={styles.notificationBubble}>
             {(() => {
               const rawContent = item.content || '';
+
+              // Group Reminder notification — render độc lập, không trong bubble
+              if (rawContent.startsWith('##GROUP_REMINDER##')) {
+                return null; // handled above
+              }
+
+              // Group Reminder notification
+              if (rawContent.startsWith('##GROUP_REMINDER##')) {
+                // Format: ##GROUP_REMINDER##|reminderID|title|datetime|creatorName
+                const parts = rawContent.split('|');
+                const rID = parts[1] || '';
+                const title = parts[2] || '';
+                const datetime = parts[3] || '';
+                const creatorName = parts[4] || '';
+                const isMe = item.senderID === user?.userID;
+                const d = new Date(datetime);
+                const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+                const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                return (
+                  <View style={{ alignItems: 'center', gap: 6 }}>
+                    <View style={styles.pollNotifRow}>
+                      <Text style={{ fontSize: 13 }}>🔔</Text>
+                      <Text style={styles.pollNotifText}>
+                        <Text style={{ fontWeight: '600', color: '#1a1a1a' }}>{isMe ? 'Bạn' : creatorName}</Text>
+                        {' '}tạo nhắc hẹn{' '}
+                        <Text style={{ fontWeight: '600', color: '#1a1a1a' }}>{title}</Text>
+                        {' - '}{dateStr}
+                      </Text>
+                    </View>
+                    <MobileGroupReminderCard
+                      reminderID={rID}
+                      title={title}
+                      datetime={datetime}
+                      groupID={selectedChat?.chatID || ''}
+                      userID={user?.userID || ''}
+                      onOpenDetail={(d) => { setGroupReminderInitial(d); setShowGroupReminder(true); }}
+                    />
+                  </View>
+                );
+              }
+
               // Xử lý thông báo Poll
               if (rawContent.startsWith('POLL_NOTIF|')) {
                 const parts = rawContent.split('|');
@@ -3636,11 +3833,29 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               seenMsgIDs.add(msg.messageID);
               result.push(msg);
             } else if (msg.tempID) {
-              // Bỏ qua optimistic nếu đã có message thật cùng tempID
               if (tempIDsWithRealMsg.has(msg.tempID)) continue;
               result.push(msg);
             }
           }
+
+          // Merge reminder events vào timeline (chỉ cho chat 1-1)
+          if (selectedChat?.type !== 'group' && reminderEvents.length > 0) {
+            for (const evt of reminderEvents) {
+              result.push({
+                messageID: `reminder_evt_${evt.eventID}`,
+                chatID: evt.chatID,
+                senderID: evt.userID,
+                type: 'reminder_event',
+                content: JSON.stringify(evt),
+                timestamp: evt.createdAt,
+                media_url: [],
+                status: 'sent',
+                senderInfo: { name: evt.userName },
+              } as any);
+            }
+            result.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          }
+
           return groupMessages(result);
         })()}
         keyExtractor={(item, index) => {
@@ -3923,11 +4138,12 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
                 <TouchableOpacity style={styles.iconBtn} onPress={handlePickVideo}>
                   <Ionicons name="videocam-outline" size={24} color="#555" />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.iconBtn} onPress={handlePickFile}>
-                  <Ionicons name="attach-outline" size={24} color="#555" />
-                </TouchableOpacity>
                 <TouchableOpacity style={styles.iconBtn} onPress={startRecording}>
                   <Ionicons name="mic-outline" size={24} color="#555" />
+                </TouchableOpacity>
+                {/* Nút 3 chấm — gom file, nhắc hẹn */}
+                <TouchableOpacity style={styles.iconBtn} onPress={() => setShowMoreMenu(true)}>
+                  <Ionicons name="ellipsis-horizontal" size={24} color="#555" />
                 </TouchableOpacity>
               </>
             )}
@@ -4647,6 +4863,54 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           </View>
         </Modal>
       )}
+      {/* More Menu (3 chấm) */}
+      <Modal visible={showMoreMenu} transparent animationType="fade" onRequestClose={() => setShowMoreMenu(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
+          activeOpacity={1} onPress={() => setShowMoreMenu(false)}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: Math.max(insets.bottom, 16) }}>
+            <View style={{ width: 36, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 8 }} />
+            {[
+              { icon: 'attach-outline', label: 'Gửi tệp', onPress: () => { setShowMoreMenu(false); handlePickFile(); } },
+              {
+                icon: 'notifications-outline', label: 'Nhắc hẹn', onPress: () => {
+                  setShowMoreMenu(false);
+                  if (selectedChat?.type === 'group') setShowGroupReminder(true);
+                  else setShowReminder(true);
+                }
+              },
+            ].map((item) => (
+              <TouchableOpacity key={item.label} onPress={item.onPress}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' }}>
+                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#f0f4ff', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={item.icon as any} size={22} color="#0068ff" />
+                </View>
+                <Text style={{ fontSize: 16, color: '#111', fontWeight: '500' }}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Reminder Modals */}
+      {showReminder && selectedChat?.type !== 'group' && user && (
+        <ReminderModal
+          visible={showReminder}
+          chatID={selectedChat?.chatID || ''}
+          userID={user.userID}
+          userName={user.name}
+          onClose={() => setShowReminder(false)}
+        />
+      )}
+      {showGroupReminder && selectedChat?.type === 'group' && user && (
+        <GroupReminderModal
+          visible={showGroupReminder}
+          groupID={selectedChat.chatID}
+          userID={user.userID}
+          initialReminder={groupReminderInitial as any}
+          onClose={() => { setShowGroupReminder(false); setGroupReminderInitial(undefined); }}
+        />
+      )}
+
       {showGroupBoard && selectedChat?.type === 'group' && (
         <GroupBoardModal
           visible={showGroupBoard}
@@ -5829,3 +6093,151 @@ const styles = StyleSheet.create({
 });
 
 export default ChatScreenEnhanced;
+
+// ── MobileGroupReminderCard ─────────────────────────────────────────────────
+import axiosInstance from '../utils/axios';
+import { StyleSheet as RNStyleSheet } from 'react-native';
+
+interface _MGRParticipant { userID: string; name: string; avatar?: string; status: 'joined' | 'declined' | 'pending'; }
+interface _MGRData { reminderID: string; title: string; datetime: string; participants: _MGRParticipant[]; }
+
+const MobileGroupReminderCard = ({
+  reminderID, title, datetime, groupID, userID, onOpenDetail,
+}: {
+  reminderID: string; title: string; datetime: string;
+  groupID: string; userID: string; onOpenDetail: (data: _MGRData) => void;
+}) => {
+  const [data, setData] = React.useState<_MGRData | null>(null);
+  const [rsvpLoading, setRsvpLoading] = React.useState(false);
+  const [deleted, setDeleted] = React.useState(false);
+
+  const fetchData = React.useCallback(async () => {
+    try {
+      const res = await axiosInstance.get(`/group-reminders/${groupID}`);
+      const found = (res.data as _MGRData[]).find(r => r.reminderID === reminderID);
+      if (found) setData(found);
+      else setDeleted(true); // không tìm thấy = đã bị xóa
+    } catch { /* silent */ }
+  }, [groupID, reminderID]);
+
+  React.useEffect(() => { fetchData(); }, [fetchData]);
+
+  React.useEffect(() => {
+    const onUpdated = (r: _MGRData) => { if (r.reminderID === reminderID) setData(r); };
+    const onDeleted = ({ reminderID: id }: { reminderID: string }) => {
+      if (id === reminderID) setDeleted(true);
+    };
+    socket.on('group_reminder_updated', onUpdated);
+    socket.on('group_reminder_deleted', onDeleted);
+    return () => { socket.off('group_reminder_updated', onUpdated); socket.off('group_reminder_deleted', onDeleted); };
+  }, [reminderID]);
+
+  const handleRSVP = (status: 'joined' | 'declined') => {
+    setRsvpLoading(true);
+    socket.emit('group_reminder_rsvp', { reminderID, userID, status });
+    setData(prev => {
+      if (!prev) return prev;
+      const exists = prev.participants.find(p => p.userID === userID);
+      const updated = exists
+        ? prev.participants.map(p => p.userID === userID ? { ...p, status } : p)
+        : [...prev.participants, { userID, name: 'Bạn', status }];
+      return { ...prev, participants: updated };
+    });
+    setTimeout(() => setRsvpLoading(false), 500);
+  };
+
+  const participants = data?.participants || [];
+  const joined = participants.filter(p => p.status === 'joined');
+  const declined = participants.filter(p => p.status === 'declined');
+  const myStatus = participants.find(p => p.userID === userID)?.status || 'pending';
+  const isPast = new Date(datetime) <= new Date();
+
+  const d = new Date(datetime);
+  const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+  // Đã bị xóa — hiện thông báo thay vì card
+  if (deleted) {
+    return (
+      <View style={[cardS.card, { backgroundColor: '#f9fafb', borderColor: '#e5e7eb', alignItems: 'center', paddingVertical: 16 }]}>
+        <Ionicons name="notifications-off-outline" size={28} color="#ccc" />
+        <Text style={{ fontSize: 13, color: '#aaa', marginTop: 6 }}>Nhắc hẹn đã bị xóa</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={cardS.card}>
+      {/* Icon + title + date */}
+      <View style={cardS.topRow}>
+        <View style={cardS.iconWrap}>
+          <Ionicons name="notifications" size={20} color="#0068ff" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={cardS.title} numberOfLines={2}>{title}</Text>
+          <Text style={cardS.date}>🕐 {dateStr}</Text>
+        </View>
+      </View>
+
+      {/* Participant counts */}
+      <View style={cardS.statsRow}>
+        <View style={[cardS.statBadge, { backgroundColor: joined.length > 0 ? '#dcfce7' : '#f5f5f5' }]}>
+          <Text style={[cardS.statText, { color: joined.length > 0 ? '#16a34a' : '#aaa' }]}>✓ {joined.length} tham gia</Text>
+        </View>
+        <View style={[cardS.statBadge, { backgroundColor: declined.length > 0 ? '#fee2e2' : '#f5f5f5' }]}>
+          <Text style={[cardS.statText, { color: declined.length > 0 ? '#ef4444' : '#aaa' }]}>✗ {declined.length} từ chối</Text>
+        </View>
+      </View>
+
+      {/* RSVP buttons */}
+      {!isPast && (
+        <View style={cardS.rsvpRow}>
+          <TouchableOpacity
+            style={[cardS.rsvpBtn, myStatus === 'joined' ? cardS.rsvpJoined : cardS.rsvpJoinedOutline]}
+            onPress={() => handleRSVP('joined')} disabled={rsvpLoading}>
+            <Text style={[cardS.rsvpText, myStatus === 'joined' && { color: '#fff' }]}>
+              {myStatus === 'joined' ? '✓ Đã tham gia' : 'Tham gia'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[cardS.rsvpBtn, myStatus === 'declined' ? cardS.rsvpDeclined : cardS.rsvpDeclinedOutline]}
+            onPress={() => handleRSVP('declined')} disabled={rsvpLoading}>
+            <Text style={[cardS.rsvpText, myStatus === 'declined' && { color: '#fff' }]}>
+              {myStatus === 'declined' ? '✗ Đã từ chối' : 'Từ chối'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Detail button */}
+      <TouchableOpacity style={cardS.detailBtn} onPress={() => data && onOpenDetail(data)}>
+        <Text style={cardS.detailBtnText}>Xem chi tiết</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const cardS = RNStyleSheet.create({
+  card: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: '#e5e7eb',
+    width: 280, gap: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  iconWrap: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 15, fontWeight: '700', color: '#111', lineHeight: 20 },
+  date: { fontSize: 12, color: '#888', marginTop: 2 },
+  statsRow: { flexDirection: 'row', gap: 8 },
+  statBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statText: { fontSize: 12, fontWeight: '600' },
+  rsvpRow: { flexDirection: 'row', gap: 8 },
+  rsvpBtn: { flex: 1, paddingVertical: 9, borderRadius: 12, alignItems: 'center', borderWidth: 1.5 },
+  rsvpJoined: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
+  rsvpJoinedOutline: { backgroundColor: '#f0fdf4', borderColor: '#16a34a' },
+  rsvpDeclined: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
+  rsvpDeclinedOutline: { backgroundColor: '#fef2f2', borderColor: '#ef4444' },
+  rsvpText: { fontSize: 13, fontWeight: '700', color: '#333' },
+  detailBtn: { paddingVertical: 9, borderRadius: 12, borderWidth: 1.5, borderColor: '#0068ff', alignItems: 'center' },
+  detailBtnText: { fontSize: 13, fontWeight: '700', color: '#0068ff' },
+});

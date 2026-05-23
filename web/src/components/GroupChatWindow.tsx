@@ -3675,7 +3675,7 @@ export const GroupChatWindow = ({
               await axiosInstance.delete(`/groups/${groupID}`);
               toast.success('Đã giải tán nhóm');
               window.location.href = '/home';
-            } catch (error: any) {
+            } catch (error: unknown) {
               toast.error(error.response?.data?.message || 'Lỗi khi giải tán nhóm');
             }
           }}
@@ -3866,12 +3866,14 @@ const GroupReminderCard = ({
 }) => {
   const [data, setData] = useState<_GRData | null>(null);
   const [rsvpLoading, setRsvpLoading] = useState(false);
+  const [deleted, setDeleted] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
       const res = await axiosInstance.get(`/group-reminders/${groupID}`);
       const found = (res.data as _GRData[]).find((r) => r.reminderID === reminderID);
       if (found) setData(found);
+      else setDeleted(true);
     } catch { /* silent */ }
   }, [groupID, reminderID]);
 
@@ -3879,7 +3881,9 @@ const GroupReminderCard = ({
 
   useEffect(() => {
     const onUpdated = (r: _GRData) => { if (r.reminderID === reminderID) setData(r); };
-    const onDeleted = ({ reminderID: id }: { reminderID: string }) => { if (id === reminderID) setData(null); };
+    const onDeleted = ({ reminderID: id }: { reminderID: string }) => {
+      if (id === reminderID) setDeleted(true);
+    };
     socket.on('group_reminder_updated', onUpdated);
     socket.on('group_reminder_deleted', onDeleted);
     return () => {
@@ -3912,6 +3916,15 @@ const GroupReminderCard = ({
   const d = new Date(datetime);
   const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
   const dateStr = `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} lúc ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+  if (deleted) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-2xl px-5 py-4 flex flex-col items-center gap-2 min-w-[240px] max-w-[300px]">
+        <span className="text-2xl opacity-30">🔕</span>
+        <p className="text-[13px] text-gray-400 m-0">Nhắc hẹn đã bị xóa</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 shadow-sm flex flex-col items-center gap-3 min-w-[240px] max-w-[300px]">

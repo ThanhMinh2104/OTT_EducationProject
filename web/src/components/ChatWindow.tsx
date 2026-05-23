@@ -346,7 +346,7 @@ const cleanUrl = (u: string): string => {
   try {
     let decoded = decodeURIComponent(u).trim();
     decoded = decoded.split('?')[0]; // Bỏ query parameters
-    decoded = decoded.replace(/^(https?:)?\/\/[^\/]+/, ''); // Bỏ protocol và host (ví dụ: http://localhost:5000)
+    decoded = decoded.replace(/^(https?:)?\/\/[^/]+/, ''); // Bỏ protocol và host (ví dụ: http://localhost:5000)
     return decoded;
   } catch (e) {
     return u.trim();
@@ -825,8 +825,17 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
 
     const onReminderEvent = (data: ReminderEvent) => {
       if (data.chatID !== chatID) return;
-      // Just update state, data is already saved in database via API
       setReminderEvents((prev) => {
+        if (data.type === 'deleted') {
+          // Cập nhật event created tương ứng thành deleted
+          const updated = prev.map(e =>
+            e.reminderID === data.reminderID ? { ...e, type: 'deleted' as const } : e
+          );
+          if (!prev.find(e => e.reminderID === data.reminderID)) {
+            return [...prev, data];
+          }
+          return updated;
+        }
         if (prev.find((e) => e.eventID === data.eventID)) return prev;
         return [...prev, data];
       });
@@ -2385,6 +2394,12 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                           >
                             Xem chi tiết
                           </button>
+                        </div>
+                      )}
+                      {evt.type === 'deleted' && (
+                        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 w-[280px] flex flex-col items-center gap-2">
+                          <span className="text-2xl opacity-30">🔕</span>
+                          <p className="text-[13px] text-gray-400 m-0">Nhắc hẹn đã bị xóa</p>
                         </div>
                       )}
                     </div>
