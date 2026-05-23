@@ -89,6 +89,8 @@ interface Message {
   groupId?: string; // Thêm groupId để gom nhóm ảnh
   mentions?: string[]; // Thêm mentions
   pollID?: string; // Liên kết tới Poll document
+  forwardedFrom?: string; // Thêm forwardedFrom cho chức năng forward
+  tempID?: string; // Thêm tempID cho tin nhắn tạm thời
 }
 
 interface GroupMember {
@@ -507,9 +509,6 @@ export const GroupChatWindow = ({
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
-  const [chatImages, setChatImages] = useState<
-    { url: string; timestamp: string; messageID?: string }[]
-  >([]);
   const [viewerImages, setViewerImages] = useState<{ url: string; timestamp: string; messageID?: string }[]>([]);
 
   // Lấy danh sách ảnh từ danh sách tin nhắn hiện tại để truyền vào bộ xem ảnh
@@ -745,7 +744,7 @@ export const GroupChatWindow = ({
       const senderName =
         msg.senderInfo?.name || members.find((m) => m.userID === msg.senderID)?.name;
       if (senderName) {
-        handleInputChange(`@${senderName} `);
+        setInputText(`@${senderName} `);
         // Tự động focus vào ô nhập
         setTimeout(() => {
           inputRef.current?.focus();
@@ -981,26 +980,15 @@ export const GroupChatWindow = ({
       }
 
       setMessages((prev) => {
-        // KIỂM TRA TRÙNG LẶP: Nếu messageID đã tồn tại thì không thêm nữa
-        const exists = prev.some((m) => m.messageID === message.messageID);
+        // KIỂM TRA TRÙNG LẶP: Nếu messageID hoặc tempID đã tồn tại thì không thêm nữa
+        const exists = prev.some((m) => 
+          (message.messageID && m.messageID === message.messageID) ||
+          (message.tempID && m.tempID === message.tempID)
+        );
         if (exists) {
           console.log('⚠️ Duplicate message detected, skipping:', message.messageID);
           return prev;
         }
-  const handleNewMessage = useCallback((message: Message) => {
-    if (message.groupID !== groupID) return;
-
-    setMessages((prev) => {
-      // KIỂM TRA TRÙNG LẶP: Nếu messageID hoặc tempID đã tồn tại thì không thêm nữa
-      const exists = prev.some((m) => 
-        (message.messageID && m.messageID === message.messageID) ||
-        (message.tempID && m.tempID === message.tempID)
-      );
-      if (exists) return prev;
-
-      // Không lọc bỏ tin nhắn của chính mình nữa để đồng bộ tin nhắn gửi từ Mobile
-      return [...prev, message];
-    });
 
         // Nếu là tin nhắn của chính mình → BỎ QUA hoàn toàn
         // NGOẠI TRỪ: Poll, Notification, và Forwarded message (cần hiển thị ngay)
@@ -3153,15 +3141,11 @@ export const GroupChatWindow = ({
                                       (img) => img.url === msg.media_url[0]
                                     );
                                     if (imageIndex !== -1) {
+                                      setViewerImages(chatImages);
                                       setImageViewerIndex(imageIndex);
                                       setShowImageViewer(true);
                                     }
                                   }}
-                                  onClick={() => openImageViewer(
-                                    fixImageUrl(msg.media_url[0]),
-                                    (msg.media_url as string[]).map(fixImageUrl),
-                                    msg.timestamp?.toString()
-                                  )}
                                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                 />
                               ) : msg.type === 'sticker' && msg.media_url?.length ? (
@@ -4123,7 +4107,7 @@ export const GroupChatWindow = ({
               await axiosInstance.delete(`/groups/${groupID}`);
               toast.success('Đã giải tán nhóm');
               window.location.href = '/home';
-            } catch (error: unknown) {
+            } catch (error: any) {
               toast.error(error.response?.data?.message || 'Lỗi khi giải tán nhóm');
             }
           }}
@@ -4254,13 +4238,27 @@ export const GroupChatWindow = ({
         />
       )}
 
-      {showUserProfile && (
-        <UserProfileModal
-          user={members.find((m) => m.userID === userID) as unknown}
-          onClose={() => setShowUserProfile(false)}
-          setUser={() => {}}
-        />
-      )}
+      {showUserProfile && (() => {
+        const member = members.find((m) => m.userID === userID);
+        if (!member) return null;
+        
+        // Convert GroupMember to User format
+        const userForProfile: any = {
+          userID: member.userID,
+          name: member.name,
+          email: '', // GroupMember không có email, để trống
+          sdt: '', // GroupMember không có sdt, để trống
+          anhDaiDien: member.avatar,
+        };
+        
+        return (
+          <UserProfileModal
+            user={userForProfile}
+            onClose={() => setShowUserProfile(false)}
+            setUser={() => {}}
+          />
+        );
+      })()}
 
       {/* Incoming Group Call Modal — handled globally in HomePage */}
 

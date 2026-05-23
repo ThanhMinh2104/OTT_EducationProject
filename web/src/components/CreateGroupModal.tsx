@@ -132,7 +132,9 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   };
 
   const filteredContacts = contacts.filter((contact) =>
-    contact.name.toLowerCase().includes(searchText.toLowerCase())
+    contact.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+    contact.alias?.toLowerCase().includes(searchText.toLowerCase()) ||
+    contact.sdt?.includes(searchText)
   );
 
   return (
