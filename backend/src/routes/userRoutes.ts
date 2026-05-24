@@ -9,6 +9,7 @@ import LoginHistory from '../models/LoginHistory';
 import sendOtpEmail from '../services/emailService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { uploadToCloudinary } from '../services/uploadService';
+import admin from '../config/firebase';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -26,11 +27,10 @@ const generateUserID = async (): Promise<string> => {
 router.post('/registerUser', async (req: Request, res: Response) => {
   const { sdt, name, ngaySinh, matKhau, email, gioTinh, dongYDieuKhoan } = req.body;
 
-  if (!sdt || !name || !ngaySinh || !matKhau || !email) {
+  if (!sdt || !name || !ngaySinh || !matKhau) {
     return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' }) as any;
   }
 
-  // Kiểm tra đồng ý điều khoản
   if (!dongYDieuKhoan) {
     return res.status(400).json({ message: 'Bạn phải đồng ý với điều khoản sử dụng' }) as any;
   }
@@ -245,6 +245,30 @@ router.post('/send-otp', async (req: Request, res: Response) => {
     res.status(200).json({ message: 'Gửi OTP thành công' });
   } catch (error: any) {
     res.status(500).json({ message: 'Gửi OTP thất bại', error: error.message });
+  }
+});
+
+// Xác thực Firebase Phone ID Token (dùng cho đăng ký bằng SĐT)
+router.post('/verify-firebase-phone', async (req: Request, res: Response) => {
+  const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ message: 'Thiếu idToken' }) as any;
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    const phoneNumber = decoded.phone_number;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ message: 'Token không chứa số điện thoại' }) as any;
+    }
+
+    // Chuẩn hóa số điện thoại: +84xxxxxxxxx → 0xxxxxxxxx
+    const sdt = phoneNumber.startsWith('+84')
+      ? '0' + phoneNumber.slice(3)
+      : phoneNumber;
+
+    res.status(200).json({ verified: true, sdt, phoneNumber });
+  } catch (error: any) {
+    res.status(401).json({ message: 'Token không hợp lệ hoặc đã hết hạn', error: error.message });
   }
 });
 

@@ -3,7 +3,6 @@ import { Toaster } from 'react-hot-toast';
 import LoginPassword from './pages/LoginPassword';
 import SignUpScreen from './pages/SignUpScreen';
 import SignUpInfoScreen from './pages/SignUpInfoScreen';
-import VerifyOTPDK from './pages/VerifyOtpDK';
 import HomePage from './pages/HomePage';
 import ForgotPassword from './pages/ForgotPassword';
 import VerifyCode from './pages/VerifyCode';
@@ -25,7 +24,6 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/verify-code" element={<VerifyCode />} />
         <Route path="/confirm-password" element={<ConfirmPassword />} />
-        <Route path="/verify-otp" element={<VerifyOTPDK />} />
         
         {/* Protected routes */}
         <Route 

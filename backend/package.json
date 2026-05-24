@@ -9,6 +9,7 @@
     "dotenv": "^17.4.0",
     "express": "^5.2.1",
     "express-validator": "^7.3.2",
+    "firebase-admin": "^13.4.0",
     "helmet": "^8.1.0",
     "ioredis": "^5.10.1",
     "joi": "^18.1.2",
