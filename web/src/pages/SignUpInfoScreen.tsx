@@ -20,7 +20,7 @@ const isValidPassword = (p: string) => /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.
 const SignUpInfoScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { email, sdt } = (location.state as { email: string; sdt: string }) || {};
+  const { sdt } = (location.state as { sdt: string }) || {};
 
   const [name, setName] = useState('');
   const [birth, setBirth] = useState('');
@@ -74,7 +74,6 @@ const SignUpInfoScreen = () => {
           name,
           ngaySinh: birth,
           matKhau: password,
-          email,
           gioTinh: gender,
           dongYDieuKhoan: true,
         }),
