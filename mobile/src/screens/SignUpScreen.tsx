@@ -74,7 +74,8 @@ const SignUpScreen = ({ navigation }: Props) => {
         return;
       }
 
-      await axios.post(`${API_URL}/api/send-otp`, { email });
+      // Gửi OTP qua SMS (InfiniReach) - thay vì email
+      await axios.post(`${API_URL}/api/send-otp-sms`, { sdt });
       await AsyncStorage.setItem("emailForSignIn", email);
       await AsyncStorage.setItem("sdt", sdt);
       navigation.navigate("VerifyOtp");
