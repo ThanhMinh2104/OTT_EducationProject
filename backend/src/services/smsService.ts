@@ -36,9 +36,10 @@ function formatPhoneE164(phone: string): string {
 export async function sendOtpSMS(phoneNumber: string, otp: string): Promise<void> {
   const formattedPhone = formatPhoneE164(phoneNumber);
 
-  // Nội dung tránh từ khóa nhạy cảm để không bị filter spam của nhà mạng VN
-  // (Viettel/Mobifone/Vinaphone thường chặn SMS có "OTP", "[Brand]", "mã xác thực" từ số cá nhân)
-const messageBody = `[OTT_Education] Mã OTP của bạn là: ${otp}. Có hiệu lực trong 10 phút. Không chia sẻ mã này.`;
+  const messageBody = `[OTT_Education] Mã OTP của bạn là: ${otp}. Có hiệu lực trong 10 phút. Không chia sẻ mã này.`;
+  
+  // 🔍 DEBUG: Log nội dung tin nhắn để verify code đang chạy đúng version
+  console.log('📝 [SMS DEBUG] messageBody =', messageBody);
 
   // Mock mode khi chưa cấu hình InfiniReach (dev)
   if (!INFINIREACH_API_KEY || !INFINIREACH_FROM_PHONE) {
