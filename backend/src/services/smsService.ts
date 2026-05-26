@@ -38,7 +38,7 @@ export async function sendOtpSMS(phoneNumber: string, otp: string): Promise<void
 
   // Nội dung tránh từ khóa nhạy cảm để không bị filter spam của nhà mạng VN
   // (Viettel/Mobifone/Vinaphone thường chặn SMS có "OTP", "[Brand]", "mã xác thực" từ số cá nhân)
-  const messageBody = `Ma xac nhan cua ban: ${otp}. Hieu luc 10 phut.`;
+const messageBody = `[OTT_Education] Mã OTP của bạn là: ${otp}. Có hiệu lực trong 10 phút. Không chia sẻ mã này.`;
 
   // Mock mode khi chưa cấu hình InfiniReach (dev)
   if (!INFINIREACH_API_KEY || !INFINIREACH_FROM_PHONE) {
