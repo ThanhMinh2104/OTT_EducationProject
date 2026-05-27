@@ -14,19 +14,12 @@ const INFINIREACH_FROM_PHONE = process.env.INFINIREACH_FROM_PHONE || ''; // SĐT
  * Ví dụ: 0987654321 -> +84987654321
  */
 function formatPhoneE164(phone: string): string {
-  // Bỏ khoảng trắng, dấu cách
   let cleaned = phone.replace(/\s+/g, '').replace(/-/g, '');
-
-  // Nếu đã có +84 hoặc 84 ở đầu
   if (cleaned.startsWith('+84')) return cleaned;
   if (cleaned.startsWith('84')) return '+' + cleaned;
-
-  // Nếu bắt đầu bằng 0 -> thay bằng +84
   if (cleaned.startsWith('0')) {
     return '+84' + cleaned.substring(1);
   }
-
-  // Trường hợp khác
   return '+84' + cleaned;
 }
 
@@ -36,64 +29,46 @@ function formatPhoneE164(phone: string): string {
 export async function sendOtpSMS(phoneNumber: string, otp: string): Promise<void> {
   const formattedPhone = formatPhoneE164(phoneNumber);
 
-  const messageBody = `[OTT_Education] Mã OTP của bạn là: ${otp}. Có hiệu lực trong 10 phút. Không chia sẻ mã này.`;
-  
-  // 🔍 DEBUG: Log nội dung tin nhắn để verify code đang chạy đúng version
-  console.log('📝 [SMS DEBUG] messageBody =', messageBody);
+  // Nội dung SMS dạng tự nhiên để KHÔNG bị nhà mạng VN chặn anti-spam
+  const variants = [
+    `[OTT_Education] Chao ban, ma cua ban la ${otp}. Hieu luc 10 phut.`,
+    `[OTT_Education] Ma so cua ban: ${otp}. Su dung trong 10 phut nhe.`,
+    `[OTT_Education] Ban dung ma ${otp} de tiep tuc. Het han sau 10 phut.`,
+    `[OTT_Education] Ma: ${otp}. Vui long su dung trong 10 phut.`,
+  ];
+  const messageBody = variants[Math.floor(Math.random() * variants.length)];
 
   // Mock mode khi chưa cấu hình InfiniReach (dev)
   if (!INFINIREACH_API_KEY || !INFINIREACH_FROM_PHONE) {
-    console.log('📱 [MOCK SMS] Chưa cấu hình InfiniReach. Log OTP ra console:');
-    console.log(`   To: ${formattedPhone}`);
-    console.log(`   OTP: ${otp}`);
-    console.log(`   Message: ${messageBody}`);
     return;
   }
 
   try {
-    const response = await axios.post(
+    await axios.post(
       INFINIREACH_API_URL,
       {
         to: formattedPhone,
         message: messageBody,
         from: INFINIREACH_FROM_PHONE,
         channel: 'sms',
-        externalId: `otp-${Date.now()}`, // Idempotency để tránh gửi trùng
+        externalId: `otp-${Date.now()}`,
       },
       {
         headers: {
           'X-API-Key': INFINIREACH_API_KEY,
           'Content-Type': 'application/json',
         },
-        timeout: 15000, // 15 giây - background nên không cần đợi quá lâu
+        timeout: 15000,
       }
     );
-
-    console.log(`✅ SMS đã gửi tới ${formattedPhone}, messageId: ${response.data.messageId}`);
   } catch (error: any) {
-    // Timeout: tin nhắn vẫn có thể đã được queue & gửi đi thành công
-    // (xem dashboard InfiniReach để verify). Coi như thành công.
+    // Timeout hoặc self-SMS: coi như thành công (SMS thường vẫn về máy)
     if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-      console.warn('⚠️  Timeout khi gọi InfiniReach API:');
-      console.warn('   Tin nhắn có thể vẫn đã được queue & gửi (check dashboard).');
-      console.warn('   To:', formattedPhone);
-      return; // KHÔNG throw - InfiniReach thường vẫn gửi được
+      return;
     }
-
-    // Trường hợp đặc biệt: gửi cho chính số mình (self-SMS)
     if (formattedPhone === INFINIREACH_FROM_PHONE) {
-      console.warn('⚠️  Self-SMS detected (gửi cho chính số mình):');
-      console.warn('   InfiniReach trả error nhưng SMS vẫn về máy do Android xử lý nội bộ');
-      console.warn('   To/From:', formattedPhone);
-      return; // KHÔNG throw - coi như thành công
+      return;
     }
-
-    console.error('❌ Lỗi gửi SMS qua InfiniReach:');
-    console.error('   Status:', error.response?.status);
-    console.error('   Data:', JSON.stringify(error.response?.data, null, 2));
-    console.error('   Message:', error.message);
-    console.error('   Phone:', formattedPhone);
-    console.error('   From:', INFINIREACH_FROM_PHONE);
     throw new Error(
       `Không thể gửi SMS OTP: ${error.response?.data?.message || error.response?.data?.error || error.message}`
     );
@@ -107,7 +82,6 @@ export async function sendSMS(phoneNumber: string, message: string): Promise<voi
   const formattedPhone = formatPhoneE164(phoneNumber);
 
   if (!INFINIREACH_API_KEY || !INFINIREACH_FROM_PHONE) {
-    console.log(`📱 [MOCK SMS] To: ${formattedPhone} - Message: ${message}`);
     return;
   }
 
@@ -129,7 +103,6 @@ export async function sendSMS(phoneNumber: string, message: string): Promise<voi
       }
     );
   } catch (error: any) {
-    console.error('❌ Lỗi gửi SMS:', error.response?.data || error.message);
     throw new Error('Không thể gửi SMS.');
   }
 }

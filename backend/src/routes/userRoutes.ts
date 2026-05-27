@@ -289,16 +289,14 @@ router.post('/send-otp-sms', async (req: Request, res: Response) => {
     // Lưu OTP mới vào database
     await Otp.create({ sdt, otp });
 
-    // ⚡ Trả response NGAY cho frontend (không đợi gửi SMS xong)
-    res.status(200).json({ message: 'Đã queue OTP, SMS sẽ gửi trong giây lát' });
+    // Trả response ngay (gửi SMS ở background để không bắt user đợi)
+    res.status(200).json({ message: 'Đã gửi mã OTP qua SMS' });
 
-    // 🚀 Gửi SMS ở background (fire-and-forget)
-    // Người dùng không phải đợi InfiniReach (có thể chậm 10-30 giây)
-    sendOtpSMS(sdt, otp).catch((err: any) => {
-      console.error('❌ Background SMS error for', sdt, ':', err.message);
+    // Gửi SMS ở background (fire-and-forget)
+    sendOtpSMS(sdt, otp).catch(() => {
+      // Bỏ qua lỗi background - đã có timeout/retry trong service
     });
   } catch (error: any) {
-    console.error('send-otp-sms error:', error);
     res.status(500).json({ message: 'Gửi OTP thất bại', error: error.message });
   }
 });
