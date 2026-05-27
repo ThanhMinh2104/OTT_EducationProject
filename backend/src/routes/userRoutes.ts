@@ -27,7 +27,7 @@ const generateUserID = async (): Promise<string> => {
 router.post('/registerUser', async (req: Request, res: Response) => {
   const { sdt, name, ngaySinh, matKhau, email, gioTinh, dongYDieuKhoan } = req.body;
 
-  if (!sdt || !name || !ngaySinh || !matKhau || !email) {
+  if (!sdt || !name || !ngaySinh || !matKhau) {
     return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' }) as any;
   }
 
@@ -49,7 +49,7 @@ router.post('/registerUser', async (req: Request, res: Response) => {
   const user = await Users.create({
     name,
     userID: userid,
-    email,
+    ...(email ? { email } : {}),
     anhDaiDien:
       'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
     trangThai: 'offline',

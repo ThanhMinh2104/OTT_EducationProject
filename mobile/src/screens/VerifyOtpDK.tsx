@@ -31,7 +31,6 @@ type Props = {
 const VerifyOtpDK = ({ navigation }: Props) => {
   const insets = useSafeAreaInsets();
   const [otp, setOtp] = useState("");
-  const [email, setEmail] = useState("");
   const [sdt, setSdt] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -66,9 +65,7 @@ const VerifyOtpDK = ({ navigation }: Props) => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const storedEmail = await AsyncStorage.getItem("emailForSignIn");
         const storedSdt = await AsyncStorage.getItem("sdt");
-        if (storedEmail) setEmail(storedEmail);
         if (storedSdt) setSdt(storedSdt);
       } catch (error) {
         console.log("Loi khi lay du lieu");
@@ -108,7 +105,7 @@ const VerifyOtpDK = ({ navigation }: Props) => {
         Alert.alert("Thành công", "Xác thực OTP thành công!", [
           {
             text: "OK",
-            onPress: () => navigation.navigate("SignUpInfo", { email, sdt }),
+            onPress: () => navigation.navigate("SignUpInfo", { sdt }),
           },
         ]);
       } else {
