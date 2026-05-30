@@ -455,7 +455,7 @@ const LoginPassword = () => {
 
             {/* Footer */}
             <p className="text-center text-gray-400 text-xs mt-8">
-              OTT Education. All rights reserved.
+              © 2025 OTT Education. All rights reserved.
             </p>
           </div>
         </div>

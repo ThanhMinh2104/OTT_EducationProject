@@ -67,11 +67,6 @@ router.post('/users/unlock/send-otp', async (req: Request, res: Response) => {
 
     // Tạo và gửi OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    if (!user.email) {
-      return res.status(400).json({ message: 'Tài khoản này không có email để gửi OTP' }) as any;
-    }
-
     await Otp.deleteMany({ email: user.email });
     await Otp.create({ email: user.email, otp });
     await sendOtpEmail(user.email, otp);
