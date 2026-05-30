@@ -31,7 +31,6 @@ type Props = {
 const VerifyOtpDK = ({ navigation }: Props) => {
   const insets = useSafeAreaInsets();
   const [otp, setOtp] = useState("");
-  const [email, setEmail] = useState("");
   const [sdt, setSdt] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -66,9 +65,7 @@ const VerifyOtpDK = ({ navigation }: Props) => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const storedEmail = await AsyncStorage.getItem("emailForSignIn");
         const storedSdt = await AsyncStorage.getItem("sdt");
-        if (storedEmail) setEmail(storedEmail);
         if (storedSdt) setSdt(storedSdt);
       } catch (error) {
         console.log("Loi khi lay du lieu");
@@ -96,8 +93,9 @@ const VerifyOtpDK = ({ navigation }: Props) => {
     try {
       setLoading(true);
       setError("");
-      const otpResponse = await axios.post(`${API_URL}/api/verify-otp`, {
-        email,
+      // Xác thực OTP qua SMS (thay vì email)
+      const otpResponse = await axios.post(`${API_URL}/api/verify-otp-sms`, {
+        sdt,
         otp,
       });
 
@@ -107,7 +105,7 @@ const VerifyOtpDK = ({ navigation }: Props) => {
         Alert.alert("Thành công", "Xác thực OTP thành công!", [
           {
             text: "OK",
-            onPress: () => navigation.navigate("SignUpInfo", { email, sdt }),
+            onPress: () => navigation.navigate("SignUpInfo", { sdt }),
           },
         ]);
       } else {
@@ -125,9 +123,10 @@ const VerifyOtpDK = ({ navigation }: Props) => {
     try {
       setResendLoading(true);
       setError("");
-      await axios.post(`${API_URL}/api/send-otp`, { email });
+      // Gửi lại OTP qua SMS
+      await axios.post(`${API_URL}/api/send-otp-sms`, { sdt });
       setResendTimer(60);
-      Alert.alert("Thành công", "Mã OTP mới đã được gửi đến email của bạn!");
+      Alert.alert("Thành công", "Mã OTP mới đã được gửi đến số điện thoại của bạn!");
     } catch (error) {
       setError("Không thể gửi lại mã OTP, vui lòng thử lại");
       console.log("Loi gui lai OTP: ", error);
@@ -175,7 +174,7 @@ const VerifyOtpDK = ({ navigation }: Props) => {
               <Text style={styles.appTitle}>Xác thực</Text>
               <Text style={styles.appTitleAccent}>OTP</Text>
               <Text style={styles.appSubtitle}>
-                Nhập mã OTP đã được gửi đến email của bạn
+                Nhập mã OTP đã được gửi đến số điện thoại của bạn
               </Text>
             </Animated.View>
           </LinearGradient>
@@ -193,7 +192,7 @@ const VerifyOtpDK = ({ navigation }: Props) => {
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Xác nhận mã OTP</Text>
               <Text style={styles.cardSubtitle}>
-                Mã đã được gửi đến {email}
+                Mã đã được gửi đến {sdt}
               </Text>
             </View>
 
