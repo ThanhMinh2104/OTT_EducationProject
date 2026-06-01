@@ -3543,7 +3543,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 socket.emit('friend_request_sent', { from: user?.userID, to: selectedUserForProfile.userID });
               }
             } catch (err: unknown) {
-              toast.error(err.response?.data?.message || 'Lỗi khi gửi lời mời');
+              const error = err as any;
+              toast.error(error.response?.data?.message || 'Lỗi khi gửi lời mời');
             } finally {
               setIsSendingFriendRequest(false);
             }
