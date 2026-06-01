@@ -25,7 +25,6 @@ type Props = { navigation: StackNavigationProp<RootStackParamList, "SignUp"> };
 
 const SignUpScreen = ({ navigation }: Props) => {
   const insets = useSafeAreaInsets();
-  const [email, setEmail] = useState("");
   const [sdt, setSDT] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState("");
@@ -57,10 +56,9 @@ const SignUpScreen = ({ navigation }: Props) => {
   }, []);
 
   useEffect(() => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const phoneRegex = /^(0[35789])[0-9]{8}$/;
-    setEnabled(phoneRegex.test(sdt) && emailRegex.test(email));
-  }, [sdt, email]);
+    setEnabled(phoneRegex.test(sdt));
+  }, [sdt]);
 
   const handleSignUp = async () => {
     try {
@@ -74,8 +72,8 @@ const SignUpScreen = ({ navigation }: Props) => {
         return;
       }
 
-      await axios.post(`${API_URL}/api/send-otp`, { email });
-      await AsyncStorage.setItem("emailForSignIn", email);
+      // Gửi OTP qua SMS (InfiniReach)
+      await axios.post(`${API_URL}/api/send-otp-sms`, { sdt });
       await AsyncStorage.setItem("sdt", sdt);
       navigation.navigate("VerifyOtp");
     } catch (err) {
@@ -153,25 +151,6 @@ const SignUpScreen = ({ navigation }: Props) => {
                   keyboardType="phone-pad"
                   value={sdt}
                   onChangeText={setSDT}
-                  editable={!loading}
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <View style={styles.inputWrapper}>
-                <View style={styles.inputIconContainer}>
-                  <Ionicons name="mail-outline" size={20} color="#9ca3af" />
-                </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nhập email của bạn"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={email}
-                  onChangeText={setEmail}
                   editable={!loading}
                 />
               </View>

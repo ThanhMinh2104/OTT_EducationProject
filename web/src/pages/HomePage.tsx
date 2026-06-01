@@ -116,6 +116,14 @@ const HomePage = () => {
       sessionStorage.setItem('user', JSON.stringify(data));
     });
 
+    // Buộc đăng xuất real-time khi tài khoản bị admin khóa
+    socket.on('forceLogout', (data: { userID: string; reason?: string }) => {
+      if (data.userID === user.userID) {
+        sessionStorage.clear();
+        navigate('/login');
+      }
+    });
+
     // Listen for new messages to show Zalo-style toast notifications
     socket.on('new_message', (msg: Message) => {
       // Don't show notification for own messages
@@ -217,6 +225,7 @@ const HomePage = () => {
 
     return () => {
       socket.off('update_user');
+      socket.off('forceLogout');
       socket.off('new_message');
       socket.off('call-made');
       socket.off('call-rejected');

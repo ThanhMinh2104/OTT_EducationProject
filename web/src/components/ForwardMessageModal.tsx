@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { FaTimes, FaPaperPlane } from 'react-icons/fa';
-import { io, Socket } from 'socket.io-client';
+import socket from '../utils/socket';
 import axiosInstance from '../utils/axios';
 
-const socket: Socket = io('http://localhost:5000');
-const API = 'http://localhost:5000/api';
+const API = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api';
 
 interface Message {
   messageID?: string;

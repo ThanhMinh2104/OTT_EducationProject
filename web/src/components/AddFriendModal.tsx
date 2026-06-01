@@ -7,11 +7,8 @@ import {
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
-import { io, Socket } from 'socket.io-client';
+import socket from '../utils/socket';
 import OtherProfileModal from './OtherProfileModal';
-
-// Kết nối Socket.io để đồng bộ trạng thái real-time
-const socket: Socket = io('http://localhost:5000');
 
 interface Props {
   onClose: () => void;

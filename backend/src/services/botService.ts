@@ -68,12 +68,55 @@ Hãy phân tích và trả về JSON thuần túy, không có ký tự thừa.`;
       };
     }
 
-    // Sử dụng gemini-flash-latest (stable và ít bị quá tải)
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    // Danh sách model theo thứ tự ưu tiên (fallback khi model bị quá tải 503).
+    // Gemini 3.1 Flash Lite có hạn mức cao nhất (500 RPD) -> ưu tiên đầu tiên.
+    // Có thể override model chính qua biến môi trường GEMINI_MODEL.
+    const modelCandidates = Array.from(
+      new Set(
+        [
+          process.env.GEMINI_MODEL,
+          'gemini-3.1-flash-lite',
+          'gemini-2.5-flash',
+          'gemini-flash-latest',
+        ].filter(Boolean) as string[]
+      )
+    );
 
-    const result = await model.generateContent(systemPrompt);
-    const response = await result.response;
-    const text = response.text().trim();
+    let text = '';
+    let lastError: any = null;
+
+    for (const modelName of modelCandidates) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(systemPrompt);
+        const response = await result.response;
+        text = response.text().trim();
+        if (text) {
+          if (modelName !== modelCandidates[0]) {
+            console.log(`✅ Bot fallback dùng model: ${modelName}`);
+          }
+          break; // Thành công -> dừng vòng lặp
+        }
+      } catch (err: any) {
+        lastError = err;
+        // 503 (quá tải) hoặc 429 (hết quota) -> thử model tiếp theo
+        if (err?.status === 503 || err?.status === 429) {
+          console.warn(`⚠️  Model ${modelName} quá tải (${err.status}), thử model tiếp theo...`);
+          continue;
+        }
+        // Lỗi khác (404 model không tồn tại) -> cũng thử model tiếp theo
+        if (err?.status === 404) {
+          console.warn(`⚠️  Model ${modelName} không tồn tại, thử model tiếp theo...`);
+          continue;
+        }
+        // Lỗi nghiêm trọng khác -> dừng và xử lý ở catch ngoài
+        throw err;
+      }
+    }
+
+    if (!text) {
+      throw lastError || new Error('Không model nào phản hồi được');
+    }
 
     // Loại bỏ markdown nếu có
     let cleanText = text;
@@ -93,12 +136,18 @@ Hãy phân tích và trả về JSON thuần túy, không có ký tự thừa.`;
 
     return botResponse;
   } catch (error: any) {
-    console.error('❌ Bot processing error:', error);
+    console.error('❌ Bot processing error:', error?.message || error);
 
-    // Log chi tiết để debug
-    if (error.status === 404) {
-      console.error('Model not found. Available models: gemini-1.5-flash-latest, gemini-1.5-pro-latest');
-    } else if (error.message?.includes('API key')) {
+    // Phân loại lỗi để hiển thị thông báo phù hợp
+    if (error?.status === 503 || error?.status === 429) {
+      return {
+        intent: 'error',
+        content: 'Bot đang quá tải do nhiều người dùng. Vui lòng thử lại sau ít phút! 🤖',
+      };
+    }
+    if (error?.status === 404) {
+      console.error('Model not found. Kiểm tra lại tên model trong GEMINI_MODEL.');
+    } else if (error?.message?.includes('API key')) {
       console.error('Invalid API key. Please check GEMINI_API_KEY in .env');
     }
 

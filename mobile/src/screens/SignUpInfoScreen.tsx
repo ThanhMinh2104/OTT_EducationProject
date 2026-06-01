@@ -47,7 +47,7 @@ type Props = {
 
 const SignUpInfoScreen = ({ navigation, route }: Props) => {
   const insets = useSafeAreaInsets();
-  const { email, sdt } = route.params;
+  const { sdt } = route.params;
   const [name, setName] = useState("");
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [birth, setBirth] = useState("");
@@ -146,7 +146,6 @@ const SignUpInfoScreen = ({ navigation, route }: Props) => {
           name,
           ngaySinh: birth,
           matKhau: password,
-          email,
           gioTinh: gender,
           dongYDieuKhoan: true,
         }),
