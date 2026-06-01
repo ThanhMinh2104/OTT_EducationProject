@@ -57,9 +57,12 @@ import MessageSearchPanel from '../components/MessageSearchPanel';
 import AddFriendModal from '../components/AddFriendModal';
 import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
 import FilePreviewModal from '../components/FilePreviewModal';
-import { Swipeable } from 'react-native-gesture-handler';
 import { CreateGroupModal } from '../components/CreateGroupModal';
 import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
+import { DeleteChatDialog } from '../components/DeleteChatDialog';
+import { CustomToast } from '../components/CustomToast';
+import { useToast } from '../hooks/useToast';
+import { ChatActionSheet } from '../components/ChatActionSheet';
 import MentionDropdown from '../components/MentionDropdown';
 import HighlightedTextInput from '../components/HighlightedTextInput';
 import PollBubble from '../components/PollBubble';
@@ -244,6 +247,9 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   const [user, setUser] = useState<User | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
+  
+  // Toast hook
+  const { toast, showSuccess, showError, hideToast } = useToast();
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [showGroupBoard, setShowGroupBoard] = useState(false);
   const [showReminder, setShowReminder] = useState(false);
@@ -820,7 +826,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
   const [deletingChat, setDeletingChat] = useState<Chat | null>(null);
   const [isDeletingChat, setIsDeletingChat] = useState(false);
-  const deleteButtonPressedRef = useRef(false); // Prevent double-tap
+  const [actionSheetChat, setActionSheetChat] = useState<Chat | null>(null);
 
   // Debug: log khi deletingChat thay đổi
   useEffect(() => {
@@ -828,23 +834,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   }, [deletingChat]);
 
   const confirmDeleteChat = (chat: Chat) => {
-    // Prevent multiple rapid taps
-    if (deleteButtonPressedRef.current) {
-      console.log('⏸️  Delete already in progress, ignoring');
-      return;
-    }
-    
     console.log('🗑️ confirmDeleteChat called for:', chat.chatID, chat.name);
-    deleteButtonPressedRef.current = true;
     
-    // Set state ngay lập tức, không dùng setTimeout
+    // Set state để hiện modal
     setDeletingChat(chat);
     console.log('✅ deletingChat state set immediately');
-    
-    // Reset ref sau 1 giây để cho phép delete chat khác
-    setTimeout(() => {
-      deleteButtonPressedRef.current = false;
-    }, 1000);
   };
 
   const handleDeleteChat = async () => {
@@ -888,10 +882,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       }
 
       setDeletingChat(null);
-      Alert.alert('Thành công', 'Đã xóa cuộc trò chuyện khỏi danh sách của bạn');
+      showSuccess('Thành công', 'Đã xóa cuộc trò chuyện khỏi danh sách của bạn');
     } catch (err: any) {
       console.error('❌ Delete chat error:', err?.message || err);
-      Alert.alert(
+      showError(
         'Không thể xóa',
         err?.message || 'Đã xảy ra lỗi. Vui lòng thử lại.'
       );
@@ -2111,6 +2105,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       fileCount: files.length,
       chatType: selectedChat.type,
       chatID: selectedChat.chatID,
+      API_URL,
       firstFile: {
         uri: files[0]?.uri,
         name: files[0]?.name,
@@ -2147,12 +2142,26 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         } as any);
       });
 
-      console.log('⬆️ Uploading files to server...');
+      console.log('⬆️ Uploading files to:', `${API_URL}/api/upload`);
+      console.log('📦 FormData prepared with', files.length, 'files');
+      
       const res = await fetch(`${API_URL}/api/upload`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          // Không set Content-Type, để fetch tự động set với boundary
+        },
         body: formData,
       });
+
+      console.log('📥 Upload response status:', res.status);
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('❌ Upload failed:', res.status, errorText);
+        throw new Error(`Upload failed: ${res.status} ${errorText}`);
+      }
+
       const data = await res.json();
 
       console.log('✅ Upload response:', {
@@ -2195,9 +2204,23 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         console.error('❌ No URLs in upload response');
         Alert.alert('Lỗi', 'Không nhận được URL từ server');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Upload error:', error);
-      Alert.alert('Lỗi', 'Không thể tải file lên');
+      console.error('❌ Error details:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+      });
+      
+      // Hiển thị lỗi chi tiết hơn
+      let errorMessage = 'Không thể tải file lên';
+      if (error?.message?.includes('Network request failed')) {
+        errorMessage = `Không thể kết nối đến server.\nKiểm tra:\n1. Backend đang chạy?\n2. IP đúng: ${API_URL}\n3. Cùng mạng WiFi?`;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Lỗi Upload', errorMessage);
     } finally {
       setIsUploading(false);
     }
@@ -2332,9 +2355,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   };
 
   const handleDeleteLocal = (msg: Message) => {
-    if (!msg.messageID || !user?.userID || !selectedChat) return;
+    console.log('🗑️ handleDeleteLocal called:', msg.messageID, msg.type);
+    if (!msg.messageID || !user?.userID || !selectedChat) {
+      console.log('❌ Missing required data:', { messageID: msg.messageID, userID: user?.userID, chatID: selectedChat?.chatID });
+      return;
+    }
 
     const isGroup = selectedChat.type === 'group';
+    console.log('📊 Delete info:', { isGroup, chatType: selectedChat.type, chatID: selectedChat.chatID });
 
     // ⭐ Tìm tất cả messages trong cùng group (nếu có)
     let messagesToDelete: Message[] = [msg];
@@ -2347,6 +2375,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     messagesToDelete.forEach((message) => {
       if (isGroup) {
         // ⭐ Group chat: emit delete_group_message_local
+        console.log('📤 Emitting delete_group_message_local:', { messageID: message.messageID, groupID: selectedChat.chatID });
         socket.emit('delete_group_message_local', {
           messageID: message.messageID,
           userID: user.userID,
@@ -2354,6 +2383,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         });
       } else {
         // Private chat: emit delete_message_local
+        console.log('📤 Emitting delete_message_local:', { messageID: message.messageID, chatID: selectedChat.chatID });
         socket.emit('delete_message_local', {
           messageID: message.messageID,
           userID: user.userID,
@@ -2366,9 +2396,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   };
 
   const handleUnsend = (msg: Message) => {
-    if (!msg.messageID || msg.senderID !== user?.userID) return;
+    console.log('🔄 handleUnsend called:', msg.messageID, msg.senderID, user?.userID);
+    if (!msg.messageID || msg.senderID !== user?.userID) {
+      console.log('❌ Cannot unsend: not sender or missing messageID');
+      return;
+    }
 
     const isGroup = selectedChat?.type === 'group';
+    console.log('📊 Unsend info:', { isGroup, chatType: selectedChat?.type, chatID: selectedChat?.chatID });
 
     // ⭐ Backend sẽ tự động xử lý toàn bộ group nếu message thuộc group
     // Chỉ cần gửi 1 lần cho message đầu tiên
@@ -2376,6 +2411,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
     if (isGroup) {
       // ⭐ Group chat: emit unsend_group_message
+      console.log('📤 Emitting unsend_group_message:', { messageID: msg.messageID, groupID: selectedChat!.chatID });
       socket.emit('unsend_group_message', {
         messageID: msg.messageID,
         groupID: selectedChat!.chatID,
@@ -2383,6 +2419,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       });
     } else {
       // Private chat: emit unsend_message
+      console.log('📤 Emitting unsend_message:', { messageID: msg.messageID, chatID: selectedChat!.chatID });
       socket.emit('unsend_message', {
         messageID: msg.messageID,
         chatID: selectedChat!.chatID,
@@ -2394,10 +2431,13 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   };
 
   const handleForwardMessage = (msg: Message) => {
+    console.log('↗️ handleForwardMessage called:', msg.messageID, msg.type);
     if (!msg.messageID) {
+      console.log('❌ Cannot forward: missing messageID');
       Alert.alert('Lỗi', 'Không thể chuyển tiếp tin nhắn này');
       return;
     }
+    console.log('✅ Opening forward modal');
     setForwardingMessage(msg);
     setSelectedChatsForForward([]);
     setShowMenu(false);
@@ -2486,8 +2526,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   };
 
   const handleLongPress = (msg: Message) => {
+    console.log('👆 Long press on message:', msg.messageID, msg.type, msg.senderID);
     setSelectedMessage(msg);
     setShowMenu(true);
+    console.log('✅ Menu should be visible now');
   };
 
   const handleMoveToTop = (msg: Message) => {
@@ -3370,46 +3412,34 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             ) : null
           }
           renderItem={({ item }) => (
-            <Swipeable
-              renderRightActions={() => (
-                <TouchableOpacity
-                  style={styles.swipeDeleteBtn}
-                  onPress={() => {
-                    console.log('🗑️ Delete button pressed for:', item.chatID);
-                    confirmDeleteChat(item);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="trash-outline" size={22} color="#fff" />
-                  <Text style={styles.swipeDeleteText}>Xóa</Text>
-                </TouchableOpacity>
-              )}
-              overshootRight={false}
+            <TouchableOpacity
+              style={styles.chatItem}
+              onPress={() => handleSelectChat(item)}
+              onLongPress={() => {
+                console.log('🗑️ Long press on chat:', item.chatID);
+                setActionSheetChat(item);
+              }}
+              activeOpacity={0.7}
             >
-              <TouchableOpacity
-                style={styles.chatItem}
-                onPress={() => handleSelectChat(item)}
-              >
-                <Image
-                  source={{ uri: getChatAvatar(item) }}
-                  style={styles.chatAvatar}
-                />
-                <View style={styles.chatInfo}>
-                  <View style={styles.chatHeader}>
-                    <Text style={styles.chatName} numberOfLines={1}>{getChatDisplayName(item)}</Text>
-                    <Text style={styles.chatTime}>{getTime(item)}</Text>
-                  </View>
-                  <Text style={styles.lastMessage} numberOfLines={1}>
-                    {getLastMsgPreview(item, user?.userID || '')}
-                  </Text>
+              <Image
+                source={{ uri: getChatAvatar(item) }}
+                style={styles.chatAvatar}
+              />
+              <View style={styles.chatInfo}>
+                <View style={styles.chatHeader}>
+                  <Text style={styles.chatName} numberOfLines={1}>{getChatDisplayName(item)}</Text>
+                  <Text style={styles.chatTime}>{getTime(item)}</Text>
                 </View>
-                {(item.unreadCount ?? 0) > 0 && (
-                  <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadText}>{item.unreadCount}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </Swipeable>
+                <Text style={styles.lastMessage} numberOfLines={1}>
+                  {getLastMsgPreview(item, user?.userID || '')}
+                </Text>
+              </View>
+              {(item.unreadCount ?? 0) > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadText}>{item.unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           )}
           ListEmptyComponent={
             <View style={styles.emptyState}>
@@ -3542,6 +3572,37 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             }
           }}
           currentUser={user}
+        />
+
+        {/* Chat Action Sheet */}
+        <ChatActionSheet
+          visible={!!actionSheetChat}
+          chatName={actionSheetChat ? getChatDisplayName(actionSheetChat) : ''}
+          onDelete={() => {
+            if (actionSheetChat) {
+              confirmDeleteChat(actionSheetChat);
+              setActionSheetChat(null);
+            }
+          }}
+          onCancel={() => setActionSheetChat(null)}
+        />
+
+        {/* Delete Chat Confirmation Dialog */}
+        <DeleteChatDialog
+          visible={!!deletingChat}
+          chatName={deletingChat ? getChatDisplayName(deletingChat) : ''}
+          isDeleting={isDeletingChat}
+          onConfirm={handleDeleteChat}
+          onCancel={() => setDeletingChat(null)}
+        />
+
+        {/* Toast Notification */}
+        <CustomToast
+          visible={toast.visible}
+          type={toast.type}
+          title={toast.title}
+          message={toast.message}
+          onHide={hideToast}
         />
       </View>
     );
@@ -4855,65 +4916,23 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         />
       )}
 
-      {deletingChat && (
-        <>
-          {console.log('🎭 Rendering delete confirmation modal for:', deletingChat.chatID)}
-          <View 
-            style={{
-              position: 'absolute',
-              top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              justifyContent: 'center',
-              alignItems: 'center',
-              zIndex: 9999,
-              elevation: 9999,
-            }}
-          >
-            <TouchableOpacity 
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-              activeOpacity={1}
-              onPress={() => {
-                console.log('🔘 Overlay pressed (outside modal)');
-                if (!isDeletingChat) {
-                  setDeletingChat(null);
-                }
-              }}
-            />
-            <View style={[styles.confirmBox, { zIndex: 10000, elevation: 10000 }]}>
-              <Text style={styles.confirmTitle}>Xóa cuộc trò chuyện</Text>
-              <Text style={styles.confirmMsg}>
-                Toàn bộ nội dung trò chuyện sẽ bị xóa khỏi danh sách chat của bạn.{'\n\n'}
-                <Text style={{ fontWeight: '600' }}>Lưu ý:</Text> Tin nhắn vẫn tồn tại với người khác. 
-                Khi có tin nhắn mới, cuộc trò chuyện sẽ xuất hiện lại nhưng bạn chỉ thấy tin nhắn mới.{'\n\n'}
-                Bạn có chắc chắn muốn xóa?
-              </Text>
-              <View style={styles.confirmBtns}>
-                <TouchableOpacity
-                  style={styles.confirmBtnCancel}
-                  onPress={() => {
-                    console.log('❌ Cancel button pressed');
-                    setDeletingChat(null);
-                  }}
-                  disabled={isDeletingChat}
-                >
-                  <Text style={styles.confirmBtnCancelText}>Hủy</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.confirmBtnDelete, isDeletingChat && { opacity: 0.6 }]}
-                  onPress={handleDeleteChat}
-                  disabled={isDeletingChat}
-                >
-                  {isDeletingChat ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.confirmBtnDeleteText}>Xóa</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </>
-      )}
+      {/* Delete Chat Confirmation Dialog */}
+      <DeleteChatDialog
+        visible={!!deletingChat}
+        chatName={deletingChat ? getChatDisplayName(deletingChat) : ''}
+        isDeleting={isDeletingChat}
+        onConfirm={handleDeleteChat}
+        onCancel={() => setDeletingChat(null)}
+      />
+
+      {/* Toast Notification */}
+      <CustomToast
+        visible={toast.visible}
+        type={toast.type}
+        title={toast.title}
+        message={toast.message}
+        onHide={hideToast}
+      />
 
       {otherProfile && (
         <OtherProfileModal
@@ -5579,36 +5598,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#dbeafe',
   },
   strangerBannerText: { fontSize: 13, color: '#374151' },
-  // Swipe to delete
-  swipeDeleteBtn: {
-    backgroundColor: '#ef4444',
-    justifyContent: 'center', alignItems: 'center',
-    width: 80,
-  },
-  swipeDeleteText: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 3 },
 
   // Confirm modal
   confirmOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center', alignItems: 'center', padding: 24,
   },
-  confirmBox: {
-    backgroundColor: '#fff', borderRadius: 16,
-    padding: 24, width: '100%', maxWidth: 320,
-  },
-  confirmTitle: { fontSize: 17, fontWeight: '700', color: '#111', marginBottom: 8 },
-  confirmMsg: { fontSize: 14, color: '#555', lineHeight: 20, marginBottom: 24 },
-  confirmBtns: { flexDirection: 'row', gap: 12 },
-  confirmBtnCancel: {
-    flex: 1, paddingVertical: 12, borderRadius: 10,
-    backgroundColor: '#e5e7eb', alignItems: 'center',
-  },
-  confirmBtnCancelText: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  confirmBtnDelete: {
-    flex: 1, paddingVertical: 12, borderRadius: 10,
-    backgroundColor: '#ef4444', alignItems: 'center',
-  },
-  confirmBtnDeleteText: { fontSize: 14, fontWeight: '600', color: '#fff' },
 
   strangerLabel: {
     fontSize: 11, color: 'rgba(255,255,255,0.75)',

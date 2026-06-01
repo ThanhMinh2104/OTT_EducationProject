@@ -180,6 +180,8 @@ const GroupInfoPanel = ({
   const [isPinned, setIsPinned] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteHistoryConfirm, setShowDeleteHistoryConfirm] = useState(false);
+  const [isDeletingHistory, setIsDeletingHistory] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showGroupBoard, setShowGroupBoard] = useState(false);
   const [showGroupReminder, setShowGroupReminder] = useState(false);
@@ -197,6 +199,25 @@ const GroupInfoPanel = ({
 
   const canCreatePolls = isOwner || isAdmin ||
     (groupInfo.settings?.memberPermissions?.createPolls ?? true);
+
+  const handleDeleteHistory = async () => {
+    setIsDeletingHistory(true);
+    try {
+      const res = await axiosInstance.delete(`/groups/${groupInfo.groupID}/history`);
+      if (res.status === 200) {
+        toast.success('Đã xóa lịch sử trò chuyện');
+        setShowDeleteHistoryConfirm(false);
+        // Đóng panel và reload trang để cập nhật
+        onClose();
+        window.location.reload();
+      }
+    } catch (err: any) {
+      console.error('Delete history error:', err);
+      toast.error(err?.response?.data?.message || 'Không thể xóa lịch sử');
+    } finally {
+      setIsDeletingHistory(false);
+    }
+  };
 
   const mediaImages = messages
     .filter((m) => m.type === 'image' && m.media_url?.length)
@@ -669,8 +690,12 @@ const GroupInfoPanel = ({
           </div>
         </div>
 
-        {/* Footer - Rời nhóm / Giải tán nhóm */}
+        {/* Footer - Rời nhóm / Giải tán nhóm / Xóa lịch sử */}
         <div style={S.footer}>
+          <button style={S.dangerBtn} onClick={() => setShowDeleteHistoryConfirm(true)}>
+            <FaTrash style={{ fontSize: 12 }} />
+            Xóa lịch sử trò chuyện
+          </button>
           <button style={S.dangerBtn} onClick={() => {
             // Nếu là owner, phải chuyển quyền trước
             if (isOwner) {
@@ -723,6 +748,17 @@ const GroupInfoPanel = ({
           confirmText="Giải tán"
         />
       )}
+
+      {/* Delete history confirm modal */}
+      <ConfirmModal
+        show={showDeleteHistoryConfirm}
+        title="Xóa lịch sử trò chuyện"
+        message={`Toàn bộ tin nhắn sẽ bị xóa khỏi thiết bị của bạn. Người khác vẫn thấy lịch sử chat. Khi có tin nhắn mới, cuộc trò chuyện sẽ xuất hiện lại.`}
+        onConfirm={handleDeleteHistory}
+        onCancel={() => setShowDeleteHistoryConfirm(false)}
+        isDanger
+        confirmText={isDeletingHistory ? 'Đang xóa...' : 'Xóa lịch sử'}
+      />
 
       {/* Edit Group Info Modal */}
       {showEditModal && canEditGroupInfo && (
