@@ -228,16 +228,9 @@ const ChatInfoPanel = ({
     // Listen for group dissolved event
     const handleGroupDissolved = (data: { groupID: string; message: string }) => {
       if (data.groupID === chat.chatID) {
-        console.log('💥 ChatInfoPanel - Group dissolved');
-        Alert.alert('Thông báo', data.message, [
-          {
-            text: 'OK',
-            onPress: () => {
-              onClose();
-              onHistoryDeleted(); // Trigger parent to go back to chat list
-            }
-          }
-        ]);
+        console.log('💥 ChatInfoPanel - Group dissolved, closing panel');
+        // Chỉ đóng panel, KHÔNG hiện Alert (Alert đã hiện từ nơi gọi API)
+        onClose();
       }
     };
 
