@@ -53,7 +53,7 @@ import { GroupSearchModal } from './GroupSearchModal';
 import GroupReminderModal from './GroupReminderModal';
 import type { GroupReminder as GroupReminderType } from './GroupReminderModal';
 
-const API = 'http://localhost:5000/api';
+const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:5000/api';
 
 const authHeaders = (): Record<string, string> => {
   const token = getToken();

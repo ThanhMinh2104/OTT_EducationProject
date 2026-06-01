@@ -6,6 +6,7 @@ import { CreateGroupModal } from './CreateGroupModal';
 import ContactsPanel from './ContactsPanel';
 import StrangerFolderItem from './StrangerFolderItem';
 import StrangerChatList from './StrangerChatList';
+import axiosInstance from '../utils/axios';
 import { DeleteChatDialog } from './DeleteChatDialog';
 import { getToken } from '../utils/auth';
 import toast from 'react-hot-toast';
@@ -234,16 +235,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
   const fetchStrangerSummary = async () => {
     if (!user?.userID) return;
     try {
-      const token = getToken();
-      const res = await fetch('http://localhost:5000/api/chats/strangers/summary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      const data = await res.json();
-      setStrangerSummary(data);
+      const res = await axiosInstance.post('/chats/strangers/summary');
+      setStrangerSummary(res.data);
     } catch (err) {
       console.error('Failed to fetch stranger summary:', err);
     }
@@ -260,13 +253,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
   const fetchMember = async (memberID: string) => {
     if (memberCache[memberID]) return;
     try {
-      const res = await fetch('http://localhost:5000/api/usersID', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userID: memberID }),
-      });
-      const data = await res.json();
-      setMemberCache((prev) => ({ ...prev, [memberID]: data }));
+      const res = await axiosInstance.post('/usersID', { userID: memberID });
+      setMemberCache((prev) => ({ ...prev, [memberID]: res.data }));
     } catch {
       /* ignore */
     }
@@ -276,16 +264,9 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
   const fetchGroups = async () => {
     if (!user?.userID) return;
     try {
-      const token = getToken();
-      const res = await fetch('http://localhost:5000/api/groups', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (res.ok) {
-        const groups = await res.json();
+      const res = await axiosInstance.get('/groups');
+      if (res.status === 200) {
+        const groups = res.data;
         // Convert groups to chat format
         const groupChats: Chat[] = groups.map((g: any) => ({
           chatID: g.groupID,
