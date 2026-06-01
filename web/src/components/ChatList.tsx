@@ -562,10 +562,11 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     
     try {
       const token = getToken();
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
       if (deletingChat.type === 'group') {
         // Group: xóa lịch sử
-        const res = await fetch(`http://localhost:5000/api/groups/${deletingChat.chatID}/history`, {
+        const res = await fetch(`${API_BASE}/api/groups/${deletingChat.chatID}/history`, {
           method: 'DELETE',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -575,7 +576,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         }
       } else {
         // Chat 1-1: xóa lịch sử
-        const res = await fetch(`http://localhost:5000/api/chats/${deletingChat.chatID}/history`, {
+        const res = await fetch(`${API_BASE}/api/chats/${deletingChat.chatID}/history`, {
           method: 'DELETE',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
