@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
+import axiosInstance from '../utils/axios';
 
 const validateName = (name: string) => /^([A-ZÀ-Ỵ][a-zà-ỹ]*)(\s[A-ZÀ-Ỵ][a-zà-ỹ]*)+$/.test(name);
 const validateDateFormat = (date: string) =>
@@ -66,20 +67,15 @@ const SignUpInfoScreen = () => {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/registerUser', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sdt,
-          name,
-          ngaySinh: birth,
-          matKhau: password,
-          email,
-          gioTinh: gender,
-          dongYDieuKhoan: true,
-        }),
+      await axiosInstance.post('/registerUser', {
+        sdt,
+        name,
+        ngaySinh: birth,
+        matKhau: password,
+        email,
+        gioTinh: gender,
+        dongYDieuKhoan: true,
       });
-      if (!response.ok) throw new Error('Đăng ký thất bại');
       toast.success('Đăng ký thành công! Chào mừng bạn đến với OTT Education 🎉', {
         duration: 2000,
         position: 'top-center',

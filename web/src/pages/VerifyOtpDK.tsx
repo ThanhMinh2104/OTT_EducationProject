@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axiosInstance from '../utils/axios';
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
@@ -32,7 +32,7 @@ export default function VerifyOTPDK() {
     try {
       setLoading(true);
       setLog('');
-      const responseData = await axios.post('http://localhost:5000/api/verify-otp', { email, otp });
+      const responseData = await axiosInstance.post('/verify-otp', { email, otp });
 
       const verified: boolean = responseData.data.verified;
       if (!verified) {
@@ -53,7 +53,7 @@ export default function VerifyOTPDK() {
     try {
       setResendLoading(true);
       setLog('');
-      await axios.post('http://localhost:5000/api/send-otp', { email });
+      await axiosInstance.post('/send-otp', { email });
       setResendTimer(60);
       toast.success('Mã OTP mới đã được gửi đến email của bạn! 📧', {
         duration: 3000,

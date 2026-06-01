@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import axiosInstance from '../utils/axios';
 import toast, { Toaster } from 'react-hot-toast';
 
 const SignUpScreen = () => {
@@ -15,21 +15,21 @@ const SignUpScreen = () => {
     try {
       setLoading(true);
       setError('');
-      const responseSDT = await axios.post('http://localhost:5000/api/users/checksdt', { sdt });
+      const responseSDT = await axiosInstance.post('/users/checksdt', { sdt });
       if (responseSDT.data.exists) {
         setError('Số điện thoại đã được đăng ký!');
         toast.error('Số điện thoại đã được đăng ký!', { duration: 3000, position: 'top-center', style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
         return;
       }
 
-      const responseEmail = await axios.post('http://localhost:5000/api/users/email', { email });
+      const responseEmail = await axiosInstance.post('/users/email', { email });
       if (responseEmail.data.exists) {
         setError('Email đã được đăng ký!');
         toast.error('Email đã được đăng ký!', { duration: 3000, position: 'top-center', style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
         return;
       }
 
-      await axios.post('http://localhost:5000/api/send-otp', { email });
+      await axiosInstance.post('/send-otp', { email });
       toast.success('Mã OTP đã được gửi đến email của bạn! 📧', { duration: 2000, position: 'top-center', style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
       setTimeout(() => navigate('/verify-otp', { state: { email, sdt } }), 1000);
     } catch (_err) {

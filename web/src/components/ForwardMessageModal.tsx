@@ -1,10 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FaTimes, FaPaperPlane } from 'react-icons/fa';
-import { io, Socket } from 'socket.io-client';
 import axiosInstance from '../utils/axios';
-
-const socket: Socket = io('http://localhost:5000');
-const API = 'http://localhost:5000/api';
+import socket from '../utils/socket';
 
 interface Message {
   messageID?: string;
@@ -70,12 +67,8 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
             const otherId = c.members.find((m) => m.userID !== user?.userID)?.userID;
             if (!otherId) return;
             try {
-              const res = await fetch(`${API}/usersID`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userID: otherId }),
-              });
-              const info: MemberInfo = await res.json();
+              const res = await axiosInstance.post('/usersID', { userID: otherId });
+              const info: MemberInfo = res.data;
               setMemberCache((prev) => ({ ...prev, [otherId]: info }));
             } catch {
               /* ignore */

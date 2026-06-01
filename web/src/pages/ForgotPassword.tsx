@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axiosInstance from '../utils/axios';
 
 const isPhone = (v: string) => /^(0[35789])[0-9]{8}$/.test(v);
 const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
@@ -24,10 +24,10 @@ const ForgotPassword = () => {
     }
     setIsLoading(true);
     try {
-      const res = await axios.post('http://localhost:5000/api/users/find-by-identity', { identity });
+      const res = await axiosInstance.post('/users/find-by-identity', { identity });
       const { email, sdt } = res.data;
 
-      await axios.post('http://localhost:5000/api/send-otp', { email });
+      await axiosInstance.post('/send-otp', { email });
 
       sessionStorage.setItem('resetSdt', sdt);
       sessionStorage.setItem('resetEmail', email);

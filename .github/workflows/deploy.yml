@@ -1,0 +1,49 @@
+name: Deploy Backend to AWS EC2
+
+on:
+  push:
+    branches:
+      - congminh
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          npm ci
+
+      - name: Build Backend (TypeScript Check)
+        run: |
+          cd backend
+          npm run build
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/congminh' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            cd ~/OTT_EducationProject
+            git checkout ${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }}
+            cd backend
+            docker compose down
+            docker compose up -d --build

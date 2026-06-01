@@ -9,7 +9,7 @@ import socket from '../utils/socket';
 import ConfirmModal from './ConfirmModal';
 import toast from 'react-hot-toast';
 
-const API = 'http://localhost:5000/api';
+const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:5000/api';
 
 interface User {
   userID: string;
