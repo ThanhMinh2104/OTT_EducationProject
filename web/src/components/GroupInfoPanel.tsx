@@ -4,6 +4,7 @@ import {
   FaChevronLeft, FaChevronRight, FaExpand, FaUserPlus, FaCog,
   FaChevronDown, FaChevronUp, FaCopy, FaShare, FaSignOutAlt,
   FaTrash, FaUserShield, FaUsers, FaClock, FaStickyNote, FaImage,
+  FaQrcode,
 } from 'react-icons/fa';
 import { BsPin, BsPinFill } from 'react-icons/bs';
 import axiosInstance from '../utils/axios';
@@ -13,6 +14,7 @@ import EditGroupInfoModal from './EditGroupInfoModal';
 import GroupBoardModal from './GroupBoardModal';
 import GroupReminderModal from './GroupReminderModal';
 import { TransferOwnershipModal } from './TransferOwnershipModal';
+import GroupQRModal from './GroupQRModal';
 import './GroupInfoPanel.css';
 
 interface GroupMember {
@@ -223,7 +225,9 @@ const GroupInfoPanel = ({
   const allImageUrls = mediaImages.map((i) => i.url);
 
   const groupAvatar = groupInfo.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${groupInfo.groupID}`;
-  const groupInviteLink = `zalo.me/g/${groupInfo.groupID.substring(0, 10)}`;
+  const groupInviteLink = `ott-edu://join-group/${groupInfo.groupID}`;
+  const groupInviteLinkDisplay = `ott-edu.app/g/${groupInfo.groupID.substring(0, 10)}`;
+  const [showGroupQR, setShowGroupQR] = useState(false);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(groupInviteLink);
@@ -530,12 +534,15 @@ const GroupInfoPanel = ({
               <span style={S.sectionTitle}>Link tham gia nhóm</span>
             </div>
             <div style={S.linkBox}>
-              <span style={S.linkText}>{groupInviteLink}</span>
+              <span style={S.linkText}>{groupInviteLinkDisplay}</span>
               <button style={S.iconBtn} onClick={handleCopyLink} title="Sao chép">
                 <FaCopy style={{ fontSize: 13 }} />
               </button>
               <button style={S.iconBtn} onClick={handleShareLink} title="Chia sẻ">
                 <FaShare style={{ fontSize: 13 }} />
+              </button>
+              <button style={S.iconBtn} onClick={() => setShowGroupQR(true)} title="Mã QR">
+                <FaQrcode style={{ fontSize: 13 }} />
               </button>
             </div>
           </div>
@@ -782,6 +789,19 @@ const GroupInfoPanel = ({
               toast.error(error.response?.data?.message || 'Lỗi khi chuyển quyền');
             }
           }}
+        />
+      )}
+
+      {/* Group QR Modal */}
+      {showGroupQR && (
+        <GroupQRModal
+          group={{
+            groupID: groupInfo.groupID,
+            name: groupInfo.name,
+            avatar: groupInfo.avatar,
+            memberCount: groupInfo.members?.length,
+          }}
+          onClose={() => setShowGroupQR(false)}
         />
       )}
     </>

@@ -1334,6 +1334,12 @@ export const GroupChatWindow = ({
       console.log('📥 [GroupChatWindow] member_added → refreshing group data');
       fetchGroupData(false);
     });
+
+    socket.on('member_joined_group', (data: { groupID: string; userID: string; userName: string }) => {
+      if (data.groupID !== groupID) return;
+      console.log('📥 [GroupChatWindow] member_joined_group via QR:', data.userName);
+      fetchGroupData(false);
+    });
     socket.on('new_join_request', () => fetchJoinRequests());
     socket.on('join_request_resolved', (data: { requestID: string }) => {
       setJoinRequests((prev) => prev.filter((r) => r.requestID !== data.requestID));
@@ -1393,6 +1399,7 @@ export const GroupChatWindow = ({
       socket.off('member_kicked', handleMemberKicked);
       socket.off('member_left', handleMemberLeft);
       socket.off('member_added');
+      socket.off('member_joined_group');
       socket.off('new_join_request');
       socket.off('join_request_resolved');
       socket.off('new_join_request_notification');

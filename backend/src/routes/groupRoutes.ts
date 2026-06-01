@@ -131,6 +131,148 @@ router.get('/groups', authMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
+// ── JOIN VIA QR / INVITE LINK (phải đặt TRƯỚC /groups/:groupID để tránh conflict) ──
+
+// Lấy thông tin group để hiển thị trước khi join (public info)
+router.get('/groups/join-info/:groupID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID!;
+
+    console.log(`🔍 [join-info] groupID=${groupID}, userID=${userID}`);
+
+    const group = await Group.findOne({ groupID, isActive: true });
+    console.log(`🔍 [join-info] group found:`, group ? `${group.name} (allowInviteLink=${group.settings.allowInviteLink})` : 'NOT FOUND');
+
+    if (!group) {
+      res.status(404).json({ message: 'Nhóm không tồn tại hoặc đã bị xóa' });
+      return;
+    }
+
+    if (!group.settings.allowInviteLink) {
+      res.status(403).json({ message: 'Nhóm này không cho phép tham gia qua link' });
+      return;
+    }
+
+    const existingMember = await GroupMember.findOne({ groupID, userID, isActive: true });
+    const memberCount = await GroupMember.countDocuments({ groupID, isActive: true });
+
+    console.log(`🔍 [join-info] isAlreadyMember=${!!existingMember}, memberCount=${memberCount}`);
+
+    res.json({
+      groupID: group.groupID,
+      name: group.name,
+      avatar: group.avatar,
+      description: group.description,
+      memberCount,
+      requireApproval: group.settings.requireApproval,
+      allowInviteLink: group.settings.allowInviteLink,
+      isAlreadyMember: !!existingMember,
+    });
+  } catch (err: any) {
+    console.error(`❌ [join-info] error:`, err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Tham gia nhóm qua QR / invite link
+router.post('/groups/join/:groupID', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID!;
+
+    const group = await Group.findOne({ groupID, isActive: true });
+    if (!group) {
+      res.status(404).json({ message: 'Nhóm không tồn tại hoặc đã bị xóa' });
+      return;
+    }
+
+    if (!group.settings.allowInviteLink) {
+      res.status(403).json({ message: 'Nhóm này không cho phép tham gia qua link' });
+      return;
+    }
+
+    const existingMember = await GroupMember.findOne({ groupID, userID });
+    if (existingMember?.isActive) {
+      res.status(400).json({ message: 'Bạn đã là thành viên của nhóm này' });
+      return;
+    }
+
+    if (group.blockedMembers.includes(userID)) {
+      res.status(403).json({ message: 'Bạn đã bị chặn khỏi nhóm này' });
+      return;
+    }
+
+    const user = await Users.findOne({ userID });
+    if (!user) {
+      res.status(404).json({ message: 'Người dùng không tồn tại' });
+      return;
+    }
+
+    if (group.settings.requireApproval) {
+      const existingRequest = await GroupJoinRequest.findOne({ groupID, userID, status: 'pending' });
+      if (existingRequest) {
+        res.status(400).json({ message: 'Bạn đã gửi yêu cầu tham gia, đang chờ duyệt' });
+        return;
+      }
+      const requestID = `req_${uuidv4()}`;
+      await GroupJoinRequest.create({ requestID, groupID, userID, requestedBy: userID, status: 'pending' });
+      res.json({ message: 'Đã gửi yêu cầu tham gia nhóm, đang chờ admin duyệt', requireApproval: true });
+      return;
+    }
+
+    if (existingMember) {
+      existingMember.isActive = true;
+      existingMember.leftAt = undefined;
+      existingMember.role = 'member';
+      await existingMember.save();
+    } else {
+      await GroupMember.create({ groupID, userID, role: 'member' });
+    }
+
+    // Gửi notification message
+    const notifMsgID = `gmsg_notif_${uuidv4().substring(0, 8)}_${Date.now()}`;
+    const notifMsg = await GroupMessage.create({
+      messageID: notifMsgID,
+      groupID,
+      senderID: 'system',
+      content: `${user.name} đã tham gia nhóm qua link mời`,
+      type: 'notification',
+      timestamp: new Date(),
+    });
+
+    // Emit real-time: thông báo cho tất cả thành viên trong group
+    const io = req.app.get('io');
+    if (io) {
+      // 1. Broadcast notification message vào group chat
+      io.to(groupID).emit('new_group_message', {
+        ...notifMsg.toObject(),
+        senderInfo: { name: 'Hệ thống', avatar: null },
+      });
+
+      // 2. Thông báo có thành viên mới (để web reload member list)
+      io.to(groupID).emit('member_joined_group', {
+        groupID,
+        userID: user.userID,
+        userName: user.name,
+        avatar: user.anhDaiDien || null,
+        joinedAt: new Date(),
+      });
+
+      // 3. Thêm user mới vào socket room của group
+      // (user mobile sẽ tự join room khi reload chat list)
+    }
+
+    res.json({
+      message: 'Tham gia nhóm thành công',
+      requireApproval: false,
+      group: { groupID: group.groupID, name: group.name, avatar: group.avatar },
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // 3. Lấy chi tiết nhóm
 router.get('/groups/:groupID', authMiddleware, async (req: AuthRequest, res) => {
   try {

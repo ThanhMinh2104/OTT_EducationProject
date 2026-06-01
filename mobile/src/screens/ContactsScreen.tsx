@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   Image, TextInput, ActivityIndicator, Modal, ScrollView,
-  Share, Dimensions,
+  Share, Dimensions, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -276,41 +276,117 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
   // QR handlers
   const qrValue = user ? `ott-edu://add-friend/${user.userID}` : '';
 
+  const qrScannedRef = React.useRef(false);
+
   const handleQRBarCodeScanned = async ({ data }: { data: string }) => {
-    if (qrScanned || qrLoading) return;
+    if (qrScannedRef.current || qrLoading) return;
+    qrScannedRef.current = true;
     setQrScanned(true);
-    const match = data.match(/ott-edu:\/\/add-friend\/(.+)/);
-    if (!match) {
-      alert('QR code không hợp lệ');
+
+    // Phân biệt 2 loại QR: kết bạn vs vào nhóm
+    const friendMatch = data.match(/ott-edu:\/\/add-friend\/(.+)/);
+    const groupMatch = data.match(/ott-edu:\/\/join-group\/(.+)/);
+
+    if (!friendMatch && !groupMatch) {
+      Alert.alert('Lỗi', 'QR code không hợp lệ');
+      qrScannedRef.current = false;
       setQrScanned(false);
       return;
     }
-    const scannedUserID = match[1];
-    if (scannedUserID === user?.userID) {
-      alert('Đây là mã QR của chính bạn!');
-      setQrScanned(false);
+
+    // ── QR kết bạn ──────────────────────────────────────────
+    if (friendMatch) {
+      const scannedUserID = friendMatch[1];
+      if (scannedUserID === user?.userID) {
+        Alert.alert('Thông báo', 'Đây là mã QR của chính bạn!');
+        qrScannedRef.current = false;
+        setQrScanned(false);
+        return;
+      }
+      setQrLoading(true);
+      try {
+        const res = await axiosInstance.get(`/users/qr-profile/${scannedUserID}`);
+        const foundUser = res.data;
+        setShowQRModal(false);
+        setQrScanned(false);
+        setSelectedProfile({
+          userID: foundUser.userID,
+          name: foundUser.name,
+          sdt: foundUser.sdt,
+          anhDaiDien: foundUser.anhDaiDien,
+          anhBia: foundUser.anhBia,
+          friendStatus: foundUser.friendStatus,
+        });
+      } catch {
+        Alert.alert('Lỗi', 'Không tìm thấy người dùng');
+        qrScannedRef.current = false;
+        setQrScanned(false);
+      } finally {
+        setQrLoading(false);
+      }
       return;
     }
-    setQrLoading(true);
-    try {
-      const res = await axiosInstance.get(`/users/qr-profile/${scannedUserID}`);
-      const foundUser = res.data;
-      setShowQRModal(false);
-      setQrScanned(false);
-      // Mở profile người dùng tìm được
-      setSelectedProfile({
-        userID: foundUser.userID,
-        name: foundUser.name,
-        sdt: foundUser.sdt,
-        anhDaiDien: foundUser.anhDaiDien,
-        anhBia: foundUser.anhBia,
-        friendStatus: foundUser.friendStatus,
-      });
-    } catch {
-      alert('Không tìm thấy người dùng');
-      setQrScanned(false);
-    } finally {
-      setQrLoading(false);
+
+    // ── QR vào nhóm ─────────────────────────────────────────
+    if (groupMatch) {
+      const scannedGroupID = groupMatch[1];
+      console.log('🔍 [QR Group] scannedGroupID:', scannedGroupID);
+      setQrLoading(true);
+      try {
+        console.log('🔍 [QR Group] calling API: /groups/join-info/' + scannedGroupID);
+        const infoRes = await axiosInstance.get(`/groups/join-info/${scannedGroupID}`);
+        console.log('✅ [QR Group] join-info response:', infoRes.data);
+        const groupInfo = infoRes.data;
+
+        if (groupInfo.isAlreadyMember) {
+          setShowQRModal(false);
+          setQrScanned(false);
+          alert(`Bạn đã là thành viên của nhóm "${groupInfo.name}"`);
+          return;
+        }
+
+        // Hỏi xác nhận trước khi join
+        setQrLoading(false);
+        setShowQRModal(false);
+        setQrScanned(false);
+
+        Alert.alert(
+          'Tham gia nhóm',
+          `Bạn muốn tham gia nhóm "${groupInfo.name}" (${groupInfo.memberCount} thành viên)?${groupInfo.requireApproval ? '\n\n⚠️ Nhóm này yêu cầu duyệt thành viên.' : ''}`,
+          [
+            { text: 'Hủy', style: 'cancel' },
+            {
+              text: groupInfo.requireApproval ? 'Gửi yêu cầu' : 'Tham gia',
+              onPress: async () => {
+                try {
+                  const joinRes = await axiosInstance.post(`/groups/join/${scannedGroupID}`);
+                  if (joinRes.data.requireApproval) {
+                    Alert.alert('Đã gửi yêu cầu', 'Yêu cầu tham gia nhóm đã được gửi, đang chờ admin duyệt.');
+                  } else {
+                    Alert.alert('Thành công', `Đã tham gia nhóm "${groupInfo.name}"!`);
+                    // Join socket room để nhận messages real-time
+                    const { default: socket } = await import('../utils/socket');
+                    socket.emit('join_group', scannedGroupID);
+                    // Trigger reload chat list ở HomeScreen
+                    if (user?.userID) {
+                      socket.emit('getChat', user.userID);
+                    }
+                  }
+                } catch (err: any) {
+                  Alert.alert('Lỗi', err.response?.data?.message || 'Không thể tham gia nhóm');
+                }
+              },
+            },
+          ]
+        );
+      } catch (err: any) {
+        console.error('❌ [QR Group] error:', err?.response?.status, err?.response?.data, err?.message);
+        Alert.alert('Lỗi', err.response?.data?.message || 'Không thể lấy thông tin nhóm');
+        qrScannedRef.current = false;
+        setQrScanned(false);
+      } finally {
+        setQrLoading(false);
+      }
     }
   };
 
@@ -702,7 +778,10 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
                       )}
                     </View>
                     {qrScanned && !qrLoading && (
-                      <TouchableOpacity style={qrs.rescanBtn} onPress={() => setQrScanned(false)}>
+                      <TouchableOpacity style={qrs.rescanBtn} onPress={() => {
+                        qrScannedRef.current = false;
+                        setQrScanned(false);
+                      }}>
                         <Text style={qrs.rescanBtnText}>Quét lại</Text>
                       </TouchableOpacity>
                     )}
