@@ -464,6 +464,39 @@ router.put('/users/:userID/password', authMiddleware, async (req: AuthRequest, r
   }
 });
 
+// Lấy thông tin public của user theo userID (dùng cho QR kết bạn)
+router.get('/users/qr-profile/:userID', authMiddleware, async (req: AuthRequest, res: Response) => {
+  const { userID } = req.params;
+  const currentUserID = req.userID!;
+  try {
+    const user = await Users.findOne({ userID }).select('userID name sdt anhDaiDien anhBia gioTinh trangThai');
+    if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' }) as any;
+
+    // Kiểm tra trạng thái bạn bè
+    const contact = await (await import('../models/Contacts')).default.findOne({
+      $or: [
+        { userID: currentUserID, contactID: userID },
+        { userID: userID, contactID: currentUserID },
+      ],
+    });
+
+    let friendStatus: string = 'none';
+    if (userID === currentUserID) {
+      friendStatus = 'self';
+    } else if (contact) {
+      if (contact.status === 'accepted') {
+        friendStatus = 'accepted';
+      } else if (contact.status === 'pending') {
+        friendStatus = contact.userID === currentUserID ? 'pending_sent' : 'pending_received';
+      }
+    }
+
+    res.json({ ...user.toObject(), friendStatus });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Lấy email từ số điện thoại (dùng cho luồng quên mật khẩu)
 router.post('/users/get-email-by-phone', async (req: Request, res: Response) => {
   const { sdt } = req.body;

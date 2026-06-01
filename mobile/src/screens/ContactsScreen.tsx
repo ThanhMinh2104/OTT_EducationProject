@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   Image, TextInput, ActivityIndicator, Modal, ScrollView,
+  Share, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,6 +11,9 @@ import { API_URL } from '../utils/config';
 import socket from '../utils/socket';
 import OtherProfileModal, { OtherUser } from '../components/OtherProfileModal';
 import AddFriendModal from '../components/AddFriendModal';
+import QRCode from 'react-native-qrcode-svg';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import axiosInstance from '../utils/axios';
 
 interface Friend {
   userID: string; name: string; sdt?: string;
@@ -91,6 +95,11 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
   const [recallTarget, setRecallTarget] = useState<SentRequest | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<OtherUser | null>(null);
   const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrTab, setQrTab] = useState<'myqr' | 'scan'>('myqr');
+  const [qrScanned, setQrScanned] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [isReceivedExpanded, setIsReceivedExpanded] = useState(true);
   const [isSentExpanded, setIsSentExpanded] = useState(true);
   const [activeMenuFriend, setActiveMenuFriend] = useState<Friend | null>(null);
@@ -264,6 +273,55 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
     } catch { /* ignore */ }
   };
 
+  // QR handlers
+  const qrValue = user ? `ott-edu://add-friend/${user.userID}` : '';
+
+  const handleQRBarCodeScanned = async ({ data }: { data: string }) => {
+    if (qrScanned || qrLoading) return;
+    setQrScanned(true);
+    const match = data.match(/ott-edu:\/\/add-friend\/(.+)/);
+    if (!match) {
+      alert('QR code không hợp lệ');
+      setQrScanned(false);
+      return;
+    }
+    const scannedUserID = match[1];
+    if (scannedUserID === user?.userID) {
+      alert('Đây là mã QR của chính bạn!');
+      setQrScanned(false);
+      return;
+    }
+    setQrLoading(true);
+    try {
+      const res = await axiosInstance.get(`/users/qr-profile/${scannedUserID}`);
+      const foundUser = res.data;
+      setShowQRModal(false);
+      setQrScanned(false);
+      // Mở profile người dùng tìm được
+      setSelectedProfile({
+        userID: foundUser.userID,
+        name: foundUser.name,
+        sdt: foundUser.sdt,
+        anhDaiDien: foundUser.anhDaiDien,
+        anhBia: foundUser.anhBia,
+        friendStatus: foundUser.friendStatus,
+      });
+    } catch {
+      alert('Không tìm thấy người dùng');
+      setQrScanned(false);
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  const handleShareQR = async () => {
+    try {
+      await Share.share({
+        message: `Kết bạn với ${user?.name} trên OTT Education!\nMã: ${qrValue}`,
+      });
+    } catch { /* ignore */ }
+  };
+
   const handleViewProfile = (item: any, status: OtherUser['friendStatus']) => {
     setSelectedProfile({
       userID: item.contactID || item.recipientID || item.userID,
@@ -324,6 +382,17 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
             placeholderTextColor="#9ca3af"
           />
         </View>
+        {/* Nút QR */}
+        <TouchableOpacity
+          style={s.addBtn}
+          onPress={() => {
+            setQrTab('myqr');
+            setQrScanned(false);
+            setShowQRModal(true);
+          }}
+        >
+          <Ionicons name="qr-code-outline" size={20} color="#0068ff" />
+        </TouchableOpacity>
         <TouchableOpacity style={s.addBtn} onPress={() => setShowAddFriend(true)}>
           <Ionicons name="person-add-outline" size={20} color="#0068ff" />
         </TouchableOpacity>
@@ -535,6 +604,115 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
         currentUser={user}
         onStartChat={(chat) => { onStartChat(chat); setShowAddFriend(false); }}
       />
+
+      {/* QR Code Modal */}
+      <Modal
+        visible={showQRModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowQRModal(false)}
+      >
+        <View style={qrs.backdrop}>
+          <View style={qrs.container}>
+            {/* Header */}
+            <View style={qrs.header}>
+              <Text style={qrs.headerTitle}>Mã QR kết bạn</Text>
+              <TouchableOpacity onPress={() => { setShowQRModal(false); setQrScanned(false); }}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Tabs */}
+            <View style={qrs.tabBar}>
+              <TouchableOpacity
+                style={[qrs.tab, qrTab === 'myqr' && qrs.tabActive]}
+                onPress={() => { setQrTab('myqr'); setQrScanned(false); }}
+              >
+                <Ionicons name="qr-code-outline" size={15} color={qrTab === 'myqr' ? '#0068FF' : '#888'} />
+                <Text style={[qrs.tabText, qrTab === 'myqr' && qrs.tabTextActive]}>Mã QR của tôi</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[qrs.tab, qrTab === 'scan' && qrs.tabActive]}
+                onPress={() => {
+                  setQrTab('scan');
+                  setQrScanned(false);
+                  if (!cameraPermission?.granted) requestCameraPermission();
+                }}
+              >
+                <Ionicons name="camera-outline" size={15} color={qrTab === 'scan' ? '#0068FF' : '#888'} />
+                <Text style={[qrs.tabText, qrTab === 'scan' && qrs.tabTextActive]}>Quét mã QR</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Tab: My QR */}
+            {qrTab === 'myqr' && (
+              <View style={qrs.myQRContent}>
+                <Text style={qrs.userName}>{user?.name}</Text>
+                <Text style={qrs.userSubtitle}>Quét mã để kết bạn với tôi</Text>
+                <View style={qrs.qrWrapper}>
+                  {qrValue ? (
+                    <QRCode
+                      value={qrValue}
+                      size={200}
+                      color="#0068FF"
+                      backgroundColor="#fff"
+                    />
+                  ) : (
+                    <ActivityIndicator color="#0068FF" />
+                  )}
+                </View>
+                <TouchableOpacity style={qrs.shareBtn} onPress={handleShareQR}>
+                  <Ionicons name="share-outline" size={18} color="#0068FF" />
+                  <Text style={qrs.shareBtnText}>Chia sẻ mã QR</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Tab: Scan QR */}
+            {qrTab === 'scan' && (
+              <View style={qrs.scanContent}>
+                {!cameraPermission?.granted ? (
+                  <View style={qrs.permissionBox}>
+                    <Ionicons name="camera-off-outline" size={50} color="#ccc" />
+                    <Text style={qrs.permissionText}>Cần quyền camera để quét mã QR</Text>
+                    <TouchableOpacity style={qrs.permissionBtn} onPress={requestCameraPermission}>
+                      <Text style={qrs.permissionBtnText}>Cấp quyền</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={qrs.scanHint}>Hướng camera vào mã QR của người bạn muốn kết bạn</Text>
+                    <View style={qrs.cameraBox}>
+                      <CameraView
+                        style={StyleSheet.absoluteFillObject}
+                        facing="back"
+                        onBarcodeScanned={qrScanned ? undefined : handleQRBarCodeScanned}
+                        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                      />
+                      {/* Corner decorations */}
+                      <View style={[qrs.corner, qrs.cornerTL]} />
+                      <View style={[qrs.corner, qrs.cornerTR]} />
+                      <View style={[qrs.corner, qrs.cornerBL]} />
+                      <View style={[qrs.corner, qrs.cornerBR]} />
+                      {qrLoading && (
+                        <View style={qrs.loadingOverlay}>
+                          <ActivityIndicator size="large" color="#fff" />
+                          <Text style={qrs.loadingText}>Đang tìm kiếm...</Text>
+                        </View>
+                      )}
+                    </View>
+                    {qrScanned && !qrLoading && (
+                      <TouchableOpacity style={qrs.rescanBtn} onPress={() => setQrScanned(false)}>
+                        <Text style={qrs.rescanBtnText}>Quét lại</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Recall confirm */}
       <ConfirmDialog
@@ -755,6 +933,179 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#6b7280',
+  },
+});
+
+const { width: SCREEN_W } = Dimensions.get('window');
+
+const qrs = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+    paddingBottom: 30,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: '#0068FF',
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#888',
+  },
+  tabTextActive: {
+    color: '#0068FF',
+  },
+  // My QR tab
+  myQRContent: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    gap: 12,
+  },
+  userName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  userSubtitle: {
+    fontSize: 13,
+    color: '#888',
+    marginBottom: 4,
+  },
+  qrWrapper: {
+    padding: 20,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#EEF4FF',
+    marginTop: 8,
+  },
+  shareBtnText: {
+    color: '#0068FF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Scan tab
+  scanContent: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  scanHint: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  cameraBox: {
+    width: SCREEN_W - 40,
+    height: SCREEN_W - 40,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#000',
+  },
+  corner: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderColor: '#fff',
+  },
+  cornerTL: { top: 12, left: 12, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 4 },
+  cornerTR: { top: 12, right: 12, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 4 },
+  cornerBL: { bottom: 12, left: 12, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 4 },
+  cornerBR: { bottom: 12, right: 12, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 4 },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  rescanBtn: {
+    marginTop: 16,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    backgroundColor: '#0068FF',
+    borderRadius: 10,
+  },
+  rescanBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Permission
+  permissionBox: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 16,
+  },
+  permissionText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+  permissionBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#0068FF',
+    borderRadius: 10,
+  },
+  permissionBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
