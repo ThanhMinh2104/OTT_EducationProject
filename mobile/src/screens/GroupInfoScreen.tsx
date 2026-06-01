@@ -10,6 +10,8 @@ import {
   Linking,
   Modal,
   Dimensions,
+  Share,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -19,6 +21,7 @@ import { AddMemberModal } from '../components/AddMemberModal';
 import { EditGroupInfoModal } from '../components/EditGroupInfoModal';
 import { GroupBoardModal } from '../components/GroupBoardModal';
 import { TransferOwnershipModal } from '../components/TransferOwnershipModal';
+import QRCode from 'react-native-qrcode-svg';
 
 const { width } = Dimensions.get('window');
 
@@ -241,7 +244,9 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
   const groupAvatar =
     groupInfo?.avatar ||
     `https://api.dicebear.com/7.x/identicon/svg?seed=${groupInfo?.groupID}`;
-  const groupInviteLink = `zalo.me/g/${groupInfo?.groupID.substring(0, 10)}`;
+  const groupInviteLink = `ott-edu://join-group/${groupInfo?.groupID}`;
+  const groupInviteLinkDisplay = `ott-edu.app/g/${groupInfo?.groupID?.substring(0, 10)}`;
+  const [showGroupQR, setShowGroupQR] = useState(false);
 
   // Media từ messages
   const mediaImages = messages
@@ -286,6 +291,15 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
   const handleCopyLink = async () => {
     await Clipboard.setStringAsync(groupInviteLink);
     Alert.alert('Thành công', 'Đã sao chép link tham gia nhóm');
+  };
+
+  const handleShareGroupLink = async () => {
+    try {
+      await Share.share({
+        message: `Tham gia nhóm "${groupInfo?.name}" trên OTT Education!\nLink: ${groupInviteLink}`,
+        title: groupInfo?.name,
+      });
+    } catch { /* ignore */ }
   };
 
   const handleToggleMute = () => {
@@ -466,15 +480,22 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
             <Ionicons name="link" size={16} color="#9ca3af" />
             <Text style={styles.sectionTitle}>Link tham gia nhóm</Text>
           </View>
-          <View style={styles.linkContainer}>
-            <Text style={styles.linkText}>{groupInviteLink}</Text>
+          <TouchableOpacity
+            style={styles.linkContainer}
+            onPress={() => setShowGroupQR(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.linkText}>{groupInviteLinkDisplay}</Text>
             <TouchableOpacity style={styles.iconButton} onPress={handleCopyLink}>
-              <Ionicons name="copy-outline" size={18} color="#fff" />
+              <Ionicons name="copy-outline" size={18} color="#0068ff" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}>
-              <Ionicons name="share-outline" size={18} color="#fff" />
+            <TouchableOpacity style={styles.iconButton} onPress={handleShareGroupLink}>
+              <Ionicons name="share-outline" size={18} color="#0068ff" />
             </TouchableOpacity>
-          </View>
+            <TouchableOpacity style={styles.iconButton} onPress={() => setShowGroupQR(true)}>
+              <Ionicons name="qr-code-outline" size={18} color="#0068ff" />
+            </TouchableOpacity>
+          </TouchableOpacity>
         </View>
 
         {/* Bảng tin nhóm */}
@@ -718,6 +739,72 @@ export const GroupInfoScreen: React.FC<GroupInfoScreenProps> = ({
           onClose();
         }}
       />
+
+      {/* Group QR Modal */}
+      <Modal
+        visible={showGroupQR}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowGroupQR(false)}
+      >
+        <View style={gqr.backdrop}>
+          <View style={gqr.container}>
+            {/* Header */}
+            <View style={gqr.header}>
+              <TouchableOpacity onPress={() => setShowGroupQR(false)}>
+                <Ionicons name="arrow-back" size={22} color="#333" />
+              </TouchableOpacity>
+              <Text style={gqr.headerTitle}>Link nhóm</Text>
+              <View style={{ width: 22 }} />
+            </View>
+
+            {/* Content */}
+            <ScrollView contentContainerStyle={gqr.content} showsVerticalScrollIndicator={false}>
+              {/* Group avatar + name */}
+              <Image
+                source={{ uri: groupAvatar }}
+                style={gqr.groupAvatar}
+              />
+              <Text style={gqr.groupName}>{groupInfo?.name}</Text>
+              <Text style={gqr.subtitle}>
+                Mời mọi người tham gia nhóm bằng mã QR hoặc link dưới đây:
+              </Text>
+
+              {/* QR Code */}
+              <View style={gqr.qrWrapper}>
+                <QRCode
+                  value={groupInviteLink}
+                  size={220}
+                  color="#111827"
+                  backgroundColor="#fff"
+                />
+              </View>
+
+              {/* Link display */}
+              <TouchableOpacity style={gqr.linkBox} onPress={handleCopyLink}>
+                <Text style={gqr.linkText}>{groupInviteLinkDisplay}</Text>
+              </TouchableOpacity>
+
+              {/* Action buttons */}
+              <View style={gqr.actions}>
+                <TouchableOpacity style={gqr.actionBtn} onPress={handleCopyLink}>
+                  <View style={gqr.actionIcon}>
+                    <Ionicons name="copy-outline" size={22} color="#555" />
+                  </View>
+                  <Text style={gqr.actionLabel}>Sao chép link</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={gqr.actionBtn} onPress={handleShareGroupLink}>
+                  <View style={gqr.actionIcon}>
+                    <Ionicons name="share-outline" size={22} color="#555" />
+                  </View>
+                  <Text style={gqr.actionLabel}>Chia sẻ link</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1046,5 +1133,105 @@ const styles = StyleSheet.create({
   fullImage: {
     width: width,
     height: '80%',
+  },
+});
+
+const gqr = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '92%',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  content: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    gap: 14,
+  },
+  groupAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  groupName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  qrWrapper: {
+    padding: 20,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  linkBox: {
+    width: '100%',
+    backgroundColor: '#EEF4FF',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  linkText: {
+    fontSize: 14,
+    color: '#0068FF',
+    fontFamily: 'monospace',
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 32,
+    marginTop: 8,
+    paddingBottom: 16,
+  },
+  actionBtn: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    fontSize: 12,
+    color: '#555',
+    fontWeight: '500',
   },
 });

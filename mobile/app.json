@@ -34,7 +34,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-audio"
+      "expo-audio",
+      "expo-barcode-scanner",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ứng dụng cần quyền camera để quét mã QR kết bạn."
+        }
+      ]
     ]
   }
 }
