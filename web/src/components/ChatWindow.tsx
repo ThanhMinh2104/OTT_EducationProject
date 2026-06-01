@@ -45,7 +45,7 @@ import MentionDropdown, { MentionDropdownHandle } from './MentionDropdown';
 import { getCaretCoordinates } from '../utils/caretPosition';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
-const API = 'http://localhost:5000/api';
+const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:5000/api';
 
 // Giphy API key cho gợi ý @GIF
 const GIPHY_API_KEY = 'iw8DsJkjCByct4EHovySloueKpn6ljwK';
@@ -596,13 +596,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
     if (selectedChat.type === 'private') {
       const otherId = selectedChat.members.find((m) => m.userID !== userID)?.userID;
       if (otherId) {
-        fetch(`${API}/usersID`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userID: otherId }),
-        })
-          .then((r) => r.json())
-          .then((d) => setMemberInfo(d))
+        axiosInstance.post('/usersID', { userID: otherId })
+          .then((res) => setMemberInfo(res.data))
           .catch(() => { });
 
         // Check stranger status & mutual groups
@@ -3543,7 +3538,8 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
                 socket.emit('friend_request_sent', { from: user?.userID, to: selectedUserForProfile.userID });
               }
             } catch (err: unknown) {
-              toast.error(err.response?.data?.message || 'Lỗi khi gửi lời mời');
+              const error = err as any;
+              toast.error(error.response?.data?.message || 'Lỗi khi gửi lời mời');
             } finally {
               setIsSendingFriendRequest(false);
             }

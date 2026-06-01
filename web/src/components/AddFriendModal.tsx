@@ -8,9 +8,9 @@ import {
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
-import socket from '../utils/socket';
 import OtherProfileModal from './OtherProfileModal';
 import QRCodeModal from './QRCodeModal';
+import socket from '../utils/socket';
 
 interface Props {
   onClose: () => void;

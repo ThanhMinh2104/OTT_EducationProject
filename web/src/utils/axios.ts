@@ -1,8 +1,11 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-// Lấy URL từ biến môi trường, fallback về localhost nếu không có
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Nếu chạy production (Vercel), dùng URL tương đối để đi qua Vercel proxy
+// Nếu chạy local, dùng VITE_API_URL hoặc fallback localhost
+const API_URL = import.meta.env.PROD
+  ? ''
+  : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
 // Tạo axios instance
 const axiosInstance = axios.create({

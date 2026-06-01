@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axiosInstance from '../utils/axios';
 import toast, { Toaster } from 'react-hot-toast';
 
 const VerifyCode = () => {
@@ -28,7 +28,7 @@ const VerifyCode = () => {
     setIsLoading(true);
     try {
       // Gọi API xác thực mã OTP
-      const res = await axios.post('http://localhost:5000/api/verify-otp', { email, otp });
+      const res = await axiosInstance.post('/verify-otp', { email, otp });
 
       if (res.data.verified) {
         toast.success('Xác thực OTP thành công! ✅', {
@@ -64,7 +64,7 @@ const VerifyCode = () => {
     setResendSuccess(false);
     try {
       // Gửi lại OTP về email đã lưu
-      await axios.post('http://localhost:5000/api/send-otp', { email });
+      await axiosInstance.post('/send-otp', { email });
       setResendSuccess(true);
       toast.success('Đã gửi lại mã OTP thành công! 📧', {
         duration: 3000,

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import axiosInstance from '../utils/axios';
 import toast, { Toaster } from 'react-hot-toast';
 
 const SignUpScreen = () => {
@@ -14,9 +14,8 @@ const SignUpScreen = () => {
     try {
       setLoading(true);
       setError('');
-
       // Kiểm tra SĐT đã tồn tại chưa
-      const responseSDT = await axios.post('http://localhost:5000/api/users/checksdt', { sdt });
+      const responseSDT = await axiosInstance.post('/users/checksdt', { sdt });
       if (responseSDT.data.exists) {
         setError('Số điện thoại đã được đăng ký!');
         toast.error('Số điện thoại đã được đăng ký!', {
@@ -34,7 +33,7 @@ const SignUpScreen = () => {
       }
 
       // Gửi OTP qua SMS (InfiniReach)
-      await axios.post('http://localhost:5000/api/send-otp-sms', { sdt });
+      await axiosInstance.post('/send-otp-sms', { sdt });
       toast.success('Mã OTP đã được gửi qua SMS!', {
         duration: 2000,
         position: 'top-center',
