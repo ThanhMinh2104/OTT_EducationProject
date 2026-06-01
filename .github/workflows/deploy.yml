@@ -3,7 +3,6 @@ name: Deploy Backend to AWS EC2
 on:
   push:
     branches:
-      - congminh
       - main
 
 jobs:
@@ -31,7 +30,6 @@ jobs:
   deploy:
     needs: build-and-test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/congminh' || github.ref == 'refs/heads/main'
     steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -42,8 +40,8 @@ jobs:
           port: 22
           script: |
             cd ~/OTT_EducationProject
-            git checkout ${{ github.ref_name }}
-            git pull origin ${{ github.ref_name }}
+            git checkout main
+            git pull origin main
             cd backend
             docker compose down
             docker compose up -d --build
