@@ -280,7 +280,7 @@ const HomePage = () => {
     return { userID: otherId, name: selectedChat.name, anhDaiDien: selectedChat.avatar };
   };
 
-  const handleSelectChat = (chat: Chat) => {
+  const handleSelectChat = (chat: Chat | null) => {
     // Show in chat window (both private and group)
     setSelectedChat(chat);
   };
