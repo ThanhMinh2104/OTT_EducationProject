@@ -166,7 +166,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   };
 
   const filteredContacts = contacts.filter((contact) =>
-    contact.name.toLowerCase().includes(searchText.toLowerCase())
+    (contact.name || '').toLowerCase().includes(searchText.toLowerCase())
   );
 
   const renderContact = ({ item }: { item: Contact }) => {
@@ -270,6 +270,13 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               />
             </View>
 
+            {/* Error Message - hiển thị ở trên để dễ thấy */}
+            {error && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+
             {/* Member Count */}
             <View style={styles.memberCount}>
               <Text style={styles.memberCountText}>
@@ -344,13 +351,6 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 })
               )}
             </View>
-
-            {/* Error Message */}
-            {error && (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
           </ScrollView>
 
           {/* Footer */}

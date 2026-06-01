@@ -53,7 +53,7 @@ import { GroupSearchModal } from './GroupSearchModal';
 import GroupReminderModal from './GroupReminderModal';
 import type { GroupReminder as GroupReminderType } from './GroupReminderModal';
 
-const API = 'http://localhost:5000/api';
+const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:5000/api';
 
 const authHeaders = (): Record<string, string> => {
   const token = getToken();
@@ -615,12 +615,8 @@ export const GroupChatWindow = ({
       setSelectedUserForProfile((prev: any) =>
         prev ? { ...prev, friendStatus: 'pending_sent' } : prev
       );
-
-      // Emit socket để thông báo bên kia
-      socket.emit('friend_request_sent', {
-        from: userID,
-        to: selectedUserForProfile.userID,
-      });
+      // Lưu ý: REST endpoint /contacts/send-friend-request đã tự emit
+      // 'new_friend_request' tới người nhận, nên không cần emit socket thủ công ở đây.
     } catch {
       toast.error('Lỗi khi gửi lời mời kết bạn');
     }
@@ -753,9 +749,9 @@ export const GroupChatWindow = ({
     }
   };
 
-  const fetchGroupData = useCallback(async () => {
+  const fetchGroupData = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const [groupRes, messagesRes] = await Promise.all([
         axiosInstance.get(`/groups/${groupID}`),
         axiosInstance.get(`/groups/${groupID}/messages?page=1&limit=50`),
@@ -1244,7 +1240,7 @@ export const GroupChatWindow = ({
       console.log('👤 Member role changed:', data);
       if (data.groupID === groupID) {
         // Refresh group data to get latest member roles
-        fetchGroupData();
+        fetchGroupData(false);
         if (data.userID === userID) {
           toast.success(
             `Vai trò của bạn đã được thay đổi thành ${data.newRole === 'admin' ? 'Phó nhóm' : 'Thành viên'}`
@@ -1267,7 +1263,7 @@ export const GroupChatWindow = ({
           }, 2000);
         } else {
           // Refresh group data to update member list
-          fetchGroupData();
+          fetchGroupData(false);
         }
       }
     },
@@ -1280,7 +1276,7 @@ export const GroupChatWindow = ({
       console.log('🚪 Member left:', data);
       if (data.groupID === groupID) {
         // Refresh group data to update member list
-        fetchGroupData();
+        fetchGroupData(false);
       }
     },
     [groupID, fetchGroupData]
@@ -1334,6 +1330,10 @@ export const GroupChatWindow = ({
     socket.on('member_role_changed', handleMemberRoleChanged);
     socket.on('member_kicked', handleMemberKicked);
     socket.on('member_left', handleMemberLeft);
+    socket.on('member_added', () => {
+      console.log('📥 [GroupChatWindow] member_added → refreshing group data');
+      fetchGroupData(false);
+    });
     socket.on('new_join_request', () => fetchJoinRequests());
     socket.on('join_request_resolved', (data: { requestID: string }) => {
       setJoinRequests((prev) => prev.filter((r) => r.requestID !== data.requestID));
@@ -1392,6 +1392,7 @@ export const GroupChatWindow = ({
       socket.off('member_role_changed', handleMemberRoleChanged);
       socket.off('member_kicked', handleMemberKicked);
       socket.off('member_left', handleMemberLeft);
+      socket.off('member_added');
       socket.off('new_join_request');
       socket.off('join_request_resolved');
       socket.off('new_join_request_notification');
@@ -2194,7 +2195,7 @@ export const GroupChatWindow = ({
       await axiosInstance.put(`/groups/${groupID}/members/${targetUserID}/role`, { role: 'admin' });
       toast.success('Đã thêm phó nhóm');
       setMemberMenuId(null);
-      fetchGroupData();
+      fetchGroupData(false);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Lỗi khi thêm phó nhóm');
     }
@@ -2207,7 +2208,7 @@ export const GroupChatWindow = ({
       });
       toast.success('Đã gỡ quyền phó nhóm');
       setMemberMenuId(null);
-      fetchGroupData();
+      fetchGroupData(false);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Lỗi khi gỡ quyền');
     }
@@ -2220,7 +2221,7 @@ export const GroupChatWindow = ({
       await axiosInstance.delete(`/groups/${groupID}/members/${targetUserID}`);
       toast.success('Đã xóa thành viên khỏi nhóm');
       setMemberMenuId(null);
-      fetchGroupData();
+      fetchGroupData(false);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Lỗi khi xóa thành viên');
     }
@@ -3914,7 +3915,7 @@ export const GroupChatWindow = ({
                                   setJoinRequests((prev) =>
                                     prev.filter((r) => r.requestID !== req.requestID)
                                   );
-                                  fetchGroupData();
+                                  fetchGroupData(false);
                                   toast.success(`Đã đồng ý cho ${req.name} vào nhóm`);
                                 } catch {
                                   toast.error('Lỗi khi phê duyệt');
@@ -4076,7 +4077,7 @@ export const GroupChatWindow = ({
           currentUserID={userID}
           onClose={() => setShowAddMembersModal(false)}
           onSuccess={() => {
-            fetchGroupData();
+            fetchGroupData(false);
             toast.success('Đã thêm thành viên vào nhóm');
           }}
           onBlockedNotification={(content) => {
@@ -4203,7 +4204,7 @@ export const GroupChatWindow = ({
                     setJoinRequests((prev) =>
                       prev.filter((r) => r.requestID !== pendingApprovalModal.requestID)
                     );
-                    fetchGroupData();
+                    fetchGroupData(false);
                     toast.success(`Đã đồng ý cho ${pendingApprovalModal.inviteeName} vào nhóm`);
                     setPendingApprovalModal(null);
                   } catch {

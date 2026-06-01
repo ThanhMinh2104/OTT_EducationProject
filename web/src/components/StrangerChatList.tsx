@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FaArrowLeft, FaSearch } from 'react-icons/fa';
 import socket from '../utils/socket';
-import { getToken } from '../utils/auth';
+import axiosInstance from '../utils/axios';
 
 interface Member {
   userID: string;
@@ -143,13 +143,8 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
   const fetchMember = async (memberID: string) => {
     if (memberCache[memberID]) return;
     try {
-      const res = await fetch('http://localhost:5000/api/usersID', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userID: memberID }),
-      });
-      const data = await res.json();
-      setMemberCache((prev) => ({ ...prev, [memberID]: data }));
+      const res = await axiosInstance.post('/usersID', { userID: memberID });
+      setMemberCache((prev) => ({ ...prev, [memberID]: res.data }));
     } catch {
       /* ignore */
     }
@@ -160,15 +155,8 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
 
     const loadStrangerChats = async () => {
       try {
-        const token = getToken();
-        const res = await fetch('http://localhost:5000/api/chats/strangers', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        });
-        const data = await res.json();
+        const res = await axiosInstance.post('/chats/strangers');
+        const data = res.data;
         
         const sorted = [...data].sort((a: StrangerChat, b: StrangerChat) => {
           const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;

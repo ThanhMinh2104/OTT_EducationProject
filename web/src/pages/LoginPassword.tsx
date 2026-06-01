@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axiosInstance from '../utils/axios';
 import socket from '../utils/socket';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -43,7 +43,7 @@ const LoginPassword = () => {
         localStorage.setItem('deviceId', deviceId);
       }
 
-      const response = await axios.post('http://localhost:5000/api/login', {
+      const response = await axiosInstance.post('/login', {
         sdt,
         matKhau,
         deviceType: 'web',
@@ -60,7 +60,7 @@ const LoginPassword = () => {
 
       sessionStorage.setItem('token', token);
 
-      const res = await axios.post('http://localhost:5000/api/updateStatus', {
+      const res = await axiosInstance.post('/updateStatus', {
         userID: loginUser.userID,
         trangThai: 'online',
       });
@@ -135,7 +135,7 @@ const LoginPassword = () => {
   const handleSendUnlockOTP = async () => {
     try {
       setIsLoading(true);
-      const response = await axios.post('http://localhost:5000/api/users/unlock/send-otp', { sdt });
+      const response = await axiosInstance.post('/users/unlock/send-otp', { sdt });
       setUserEmail(response.data.email);
       setUnlockStep('otp');
       toast.success('Mã OTP đã được gửi đến email của bạn');
@@ -149,7 +149,7 @@ const LoginPassword = () => {
   const handleVerifyUnlockOTP = async () => {
     try {
       setIsLoading(true);
-      await axios.post('http://localhost:5000/api/users/unlock/verify-otp', { sdt, otp });
+      await axiosInstance.post('/users/unlock/verify-otp', { sdt, otp });
       toast.success('Tài khoản đã được mở khóa! Bạn có thể đăng nhập lại.');
       setShowUnlockModal(false);
       setOtp('');

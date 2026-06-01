@@ -197,11 +197,10 @@ const Sidebar = ({ user, setUser, activeTab, setActiveTab }: Props) => {
 
   const handleLogout = async () => {
     if (user) {
-      await fetch('http://localhost:5000/api/updateStatus', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userID: user.userID, trangThai: 'offline' }),
-      });
+      await axiosInstance.post('/updateStatus', {
+        userID: user.userID,
+        trangThai: 'offline',
+      }).catch(() => {});
     }
     sessionStorage.clear();
     navigate('/login');

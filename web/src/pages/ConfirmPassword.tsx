@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axiosInstance from '../utils/axios';
 
 // Kiểm tra mật khẩu: tối thiểu 8 ký tự, phải có cả chữ và số
 const isValidPassword = (p: string): boolean =>
@@ -79,7 +79,7 @@ const ConfirmPassword = () => {
 
     setIsLoading(true);
     try {
-      const res = await axios.post('http://localhost:5000/api/users/doimatkhau', {
+      const res = await axiosInstance.post('/users/doimatkhau', {
         sdt,
         matKhauMoi,
       });

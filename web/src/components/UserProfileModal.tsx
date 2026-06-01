@@ -4,6 +4,7 @@ import { FaTimes, FaPen, FaLock } from 'react-icons/fa';
 import socket from '../utils/socket';
 import { authHeaders } from '../utils/auth';
 import toast, { Toaster } from 'react-hot-toast';
+import axiosInstance from '../utils/axios';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 
@@ -119,30 +120,21 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
     if (file) {
       const form = new FormData();
       form.append('files', file);
-      const res = await fetch('http://localhost:5000/api/upload', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: form,
-      });
-      const data = await res.json();
-      avatarUrl = data.urls[0];
+      const res = await axiosInstance.post('/upload', form);
+      avatarUrl = res.data.urls[0];
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/users/${profile.userID}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({
-          name: profile.name,
-          email: profile.email,
-          sdt: profile.phone,
-          ngaysinh: dob,
-          gioTinh: profile.gender,
-          anhDaiDien: avatarUrl,
-          anhBia: profile.anhBia,
-        }),
+      const res = await axiosInstance.put(`/users/${profile.userID}`, {
+        name: profile.name,
+        email: profile.email,
+        sdt: profile.phone,
+        ngaysinh: dob,
+        gioTinh: profile.gender,
+        anhDaiDien: avatarUrl,
+        anhBia: profile.anhBia,
       });
-      const data = await res.json();
+      const data = res.data;
       if (data.error) {
         setErrorMessage(data.error);
         return;
@@ -188,23 +180,14 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
     if (pwStep === 1) {
       try {
         setPwLoading(true);
-        const res = await fetch('http://localhost:5000/api/send-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user?.email }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setPwError(data.message || 'Gửi OTP thất bại');
-          return;
-        }
+        await axiosInstance.post('/send-otp', { email: user?.email });
         toast.success('Mã OTP đã được gửi đến email của bạn', {
           duration: 3000,
           position: 'top-center',
         });
         setPwStep(2); // Chuyển sang bước nhập OTP
-      } catch {
-        setPwError('Lỗi hệ thống, vui lòng thử lại.');
+      } catch (error: any) {
+        setPwError(error.response?.data?.message || 'Gửi OTP thất bại');
       } finally {
         setPwLoading(false);
       }
@@ -219,13 +202,8 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
       }
       try {
         setPwLoading(true);
-        const res = await fetch('http://localhost:5000/api/verify-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user?.email, otp: pwForm.otp }),
-        });
-        const data = await res.json();
-        if (!data.verified) {
+        const res = await axiosInstance.post('/verify-otp', { email: user?.email, otp: pwForm.otp });
+        if (!res.data.verified) {
           setPwError('Mã OTP không đúng hoặc đã hết hạn');
           return;
         }
@@ -258,16 +236,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
       }
       try {
         setPwLoading(true);
-        const res = await fetch(`http://localhost:5000/api/users/${user?.userID}/password`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ matKhauCu: pwForm.matKhauCu, matKhauMoi: pwForm.matKhauMoi }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setPwError(data.message);
-          return;
-        }
+        await axiosInstance.put(`/users/${user?.userID}/password`, { matKhauCu: pwForm.matKhauCu, matKhauMoi: pwForm.matKhauMoi });
         setPwForm({ matKhauCu: '', matKhauMoi: '', xacNhan: '', otp: '' });
         setPwStep(1);
         toast.success('Đổi mật khẩu thành công! Vui lòng đăng nhập lại.', {
@@ -285,8 +254,8 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
           sessionStorage.clear();
           navigate('/login');
         }, 1500);
-      } catch {
-        setPwError('Lỗi hệ thống, vui lòng thử lại.');
+      } catch (error: any) {
+        setPwError(error.response?.data?.message || 'Lỗi hệ thống, vui lòng thử lại.');
       } finally {
         setPwLoading(false);
       }
