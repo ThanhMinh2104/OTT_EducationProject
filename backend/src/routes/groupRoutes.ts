@@ -38,12 +38,15 @@ router.post('/groups/create', authMiddleware, async (req: AuthRequest, res) => {
 
     const groupID = `grp_${uuidv4()}`;
 
+    // Default avatar: dùng DiceBear API tạo ảnh nhóm nếu user không chọn
+    const defaultGroupAvatar = `https://api.dicebear.com/7.x/shapes/png?seed=${groupID}&size=200`;
+
     // Tạo group
     const group = new Group({
       groupID,
       name,
       description,
-      avatar,
+      avatar: avatar || defaultGroupAvatar,
       ownerID: userID,
     });
     await group.save();
@@ -508,6 +511,14 @@ router.post('/groups/:groupID/members', authMiddleware, async (req: AuthRequest,
         adderName,
         addedName,
       });
+
+      // Emit đến personal room của user mới để họ nhận được nhóm mới
+      io.to(newUserID).emit('added_to_group', {
+        groupID,
+        groupName: group?.name || '',
+        addedBy: userID,
+        adderName,
+      });
     }
 
     res.json({ message: 'Thêm thành viên thành công' });
@@ -576,6 +587,15 @@ router.delete('/groups/:groupID/members/:targetUserID', authMiddleware, async (r
 
       // Gửi event member_kicked
       io.to(groupID).emit('member_kicked', {
+        groupID,
+        kickedUserID: targetUserID,
+        kickedBy: userID,
+        kickerName,
+        kickedName,
+      });
+
+      // Emit đến personal room của user bị kick (vì có thể đã rời group room)
+      io.to(targetUserID).emit('member_kicked', {
         groupID,
         kickedUserID: targetUserID,
         kickedBy: userID,
