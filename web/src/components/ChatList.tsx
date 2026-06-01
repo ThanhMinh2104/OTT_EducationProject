@@ -299,8 +299,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           const existingIds = new Set(prev.map((c) => c.chatID));
           const newGroups = groupChats.filter((g) => !existingIds.has(g.chatID));
           return [...prev, ...newGroups].sort((a, b) => {
-            const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
-            const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
+            const aT = a.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
+            const bT = b.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
             return new Date(bT).getTime() - new Date(aT).getTime();
           });
         });
@@ -336,8 +336,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       console.log(`✅ Loaded ${friendChats.length} friend chats + ${strangers.length} stranger chats`);
       
       const sorted = [...friendChats].sort((a, b) => {
-        const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
-        const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
+        const aT = a.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
+        const bT = b.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
         return new Date(bT).getTime() - new Date(aT).getTime();
       });
       
@@ -406,8 +406,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         });
         
         return [...updated].sort((a, b) => {
-          const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
-          const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
+          const aT = a.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
+          const bT = b.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
           return new Date(bT).getTime() - new Date(aT).getTime();
         });
       });
@@ -525,6 +525,17 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     socket.on('typing_start', onTypingStart);
     socket.on('typing_stop', onTypingStop);
 
+    // Lắng nghe giải tán nhóm (real-time từ mobile/web khác)
+    socket.on('group_dissolved', (data: { groupID: string; message: string }) => {
+      console.log('💥 [WEB] group_dissolved event received:', data);
+      // Xóa nhóm khỏi danh sách chat
+      setChats((prev) => prev.filter((c) => c.chatID !== data.groupID));
+      // Nếu đang mở nhóm đó → đóng lại
+      if (selectedChatId === data.groupID) {
+        onSelectChat(null as any);
+      }
+    });
+
     return () => {
       socket.off('connect', handleConnect);
       socket.off('ChatByUserID');
@@ -542,6 +553,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.off('new_group_created');
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
+      socket.off('group_dissolved');
     };
   }, [user?.userID, selectedChatId, deletedChatIds]);
 
