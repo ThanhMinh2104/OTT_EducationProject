@@ -12,12 +12,14 @@ import {
   ActivityIndicator,
   ScrollView,
   Clipboard,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StackNavigationProp } from "@react-navigation/stack";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import { safePickDocument } from '../utils/documentPickerLock';
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { API_URL } from "../utils/config";
 import socket from "../utils/socket";
@@ -239,20 +241,39 @@ const ChatScreen = ({ navigation, route }: Props) => {
   };
 
   const handlePickFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: "*/*",
-      multiple: true,
-    });
+    try {
+      const result = await safePickDocument({
+        type: "*/*",
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
 
-    if (!result.canceled && result.assets.length > 0) {
-      await uploadFiles(
-        result.assets.map((a) => ({ uri: a.uri, type: "file", name: a.name })),
-      );
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await uploadFiles(
+          result.assets.map((a) => ({
+            uri: a.uri,
+            type: "file",
+            name: a.name,
+            mimeType: a.mimeType,
+          })),
+        );
+      }
+    } catch (err: any) {
+      console.error("❌ handlePickFile error:", err);
+      const msg = err?.message || '';
+      if (!msg.includes('in progress') && !msg.includes('Different document')) {
+        Alert.alert("Lỗi", "Không thể chọn tệp. Vui lòng thử lại.");
+      } else {
+        Alert.alert(
+          'Đang bận',
+          'Bộ chọn tệp đang bị kẹt. Vui lòng đóng app và mở lại để dùng được tính năng này.'
+        );
+      }
     }
   };
 
   const uploadFiles = async (
-    files: { uri: string; type: string; name?: string }[],
+    files: { uri: string; type: string; name?: string; mimeType?: string }[],
   ) => {
     if (!selectedChat || !user) return;
     setIsUploading(true);
@@ -262,14 +283,24 @@ const ChatScreen = ({ navigation, route }: Props) => {
       const formData = new FormData();
 
       files.forEach((file) => {
+        const resolvedType =
+          file.mimeType ||
+          (file.type === "image" ? "image/jpeg" : "application/octet-stream");
+
+        // iOS: Bỏ prefix "file://" để fetch + FormData xử lý đúng
+        let fileUri = file.uri;
+        if (Platform.OS === 'ios' && fileUri.startsWith('file://')) {
+          fileUri = fileUri.replace('file://', '');
+        }
+
         formData.append("files", {
-          uri: file.uri,
+          uri: fileUri,
           name: file.name || `file_${Date.now()}`,
-          type:
-            file.type === "image" ? "image/jpeg" : "application/octet-stream",
+          type: resolvedType,
         } as any);
       });
 
+      console.log('⬆️ Uploading files to', `${API_URL}/api/upload`);
       const res = await fetch(`${API_URL}/api/upload`, {
         method: "POST",
         headers: {
@@ -279,6 +310,7 @@ const ChatScreen = ({ navigation, route }: Props) => {
       });
 
       const data = await res.json();
+      console.log('✅ Upload status:', res.status, 'urls:', data.urls?.length);
 
       if (data.urls && data.urls.length > 0) {
         const msg: Message = {
@@ -294,8 +326,9 @@ const ChatScreen = ({ navigation, route }: Props) => {
         socket.emit("send_message", msg);
         setMessages((prev) => [...prev, msg]);
       }
-    } catch (error) {
-      Alert.alert("Lỗi", "Không thể tải file lên");
+    } catch (error: any) {
+      console.error('❌ Upload error:', error?.message || error);
+      Alert.alert("Lỗi", `Không thể tải file lên. ${error?.message || ''}`);
     } finally {
       setIsUploading(false);
     }

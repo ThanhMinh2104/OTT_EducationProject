@@ -15,15 +15,13 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import { io } from "socket.io-client";
+import socket from "../utils/socket";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { API_URL } from "../utils/config";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-const socket = io(API_URL);
 
 const isValidPhoneNumber = (p: string) => /^(0[35789])[0-9]{8}$/.test(p);
 const isValidPassword = (p: string) =>

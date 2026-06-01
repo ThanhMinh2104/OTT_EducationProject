@@ -77,9 +77,16 @@ const PollBubble = ({ pollID, groupID, userID, members = [], currentUser, onOpen
     };
     socket.on('poll_updated', handlePollUpdated);
     socket.on('poll_voted', handlePollUpdated);
+    const handlePollDeleted = (data: { pollID: string }) => {
+      if (data.pollID === pollID) {
+        setPoll(null);
+      }
+    };
+    socket.on('poll_deleted', handlePollDeleted);
     return () => {
       socket.off('poll_updated', handlePollUpdated);
       socket.off('poll_voted', handlePollUpdated);
+      socket.off('poll_deleted', handlePollDeleted);
     };
   }, [pollID, userID]);
 

@@ -615,12 +615,8 @@ export const GroupChatWindow = ({
       setSelectedUserForProfile((prev: any) =>
         prev ? { ...prev, friendStatus: 'pending_sent' } : prev
       );
-
-      // Emit socket để thông báo bên kia
-      socket.emit('friend_request_sent', {
-        from: userID,
-        to: selectedUserForProfile.userID,
-      });
+      // Lưu ý: REST endpoint /contacts/send-friend-request đã tự emit
+      // 'new_friend_request' tới người nhận, nên không cần emit socket thủ công ở đây.
     } catch {
       toast.error('Lỗi khi gửi lời mời kết bạn');
     }

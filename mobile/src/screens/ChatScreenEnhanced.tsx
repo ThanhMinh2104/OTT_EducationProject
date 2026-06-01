@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackNavigationProp, StackScreenProps } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import { safePickDocument } from '../utils/documentPickerLock';
 import {
   useAudioRecorder,
   RecordingPresets,
@@ -230,6 +231,16 @@ const getFileColor = (name: string) => {
 
 const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, onPendingChatHandled, initialChat, onChatOpened }: Props) => {
   const insets = useSafeAreaInsets();
+  
+  // Debug: log khi component mount
+  useEffect(() => {
+    const instanceId = Math.random().toString(36).substr(2, 9);
+    console.log(`🎬 ChatScreenEnhanced mounted, instance: ${instanceId}`);
+    return () => {
+      console.log(`🎬 ChatScreenEnhanced unmounted, instance: ${instanceId}`);
+    };
+  }, []);
+  
   const [user, setUser] = useState<User | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
@@ -808,23 +819,85 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   };
 
   const [deletingChat, setDeletingChat] = useState<Chat | null>(null);
+  const [isDeletingChat, setIsDeletingChat] = useState(false);
+  const deleteButtonPressedRef = useRef(false); // Prevent double-tap
+
+  // Debug: log khi deletingChat thay đổi
+  useEffect(() => {
+    console.log('🔄 deletingChat changed:', deletingChat ? `${deletingChat.chatID} - ${deletingChat.name}` : 'null');
+  }, [deletingChat]);
 
   const confirmDeleteChat = (chat: Chat) => {
+    // Prevent multiple rapid taps
+    if (deleteButtonPressedRef.current) {
+      console.log('⏸️  Delete already in progress, ignoring');
+      return;
+    }
+    
+    console.log('🗑️ confirmDeleteChat called for:', chat.chatID, chat.name);
+    deleteButtonPressedRef.current = true;
+    
+    // Set state ngay lập tức, không dùng setTimeout
     setDeletingChat(chat);
+    console.log('✅ deletingChat state set immediately');
+    
+    // Reset ref sau 1 giây để cho phép delete chat khác
+    setTimeout(() => {
+      deleteButtonPressedRef.current = false;
+    }, 1000);
   };
 
   const handleDeleteChat = async () => {
-    if (!deletingChat) return;
+    if (!deletingChat || isDeletingChat) return;
+
+    setIsDeletingChat(true);
     try {
       const token = await AsyncStorage.getItem('token');
-      await fetch(`${API_URL}/api/chats/${deletingChat.chatID}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setChats(prev => prev.filter(c => c.chatID !== deletingChat.chatID));
-      setStrangerChats(prev => prev.filter(c => c.chatID !== deletingChat.chatID));
-    } catch { /* ignore */ }
-    finally { setDeletingChat(null); }
+
+      if (deletingChat.type === 'group') {
+        // Group: xóa lịch sử + ẩn khỏi danh sách
+        // Gọi API xóa lịch sử group (cần tạo API mới hoặc dùng logic tương tự chat 1-1)
+        const res = await fetch(`${API_URL}/api/groups/${deletingChat.chatID}/history`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `HTTP ${res.status}`);
+        }
+      } else {
+        // Chat 1-1: xóa lịch sử
+        const res = await fetch(`${API_URL}/api/chats/${deletingChat.chatID}/history`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `HTTP ${res.status}`);
+        }
+      }
+
+      // Sau khi xóa lịch sử, ẩn chat khỏi danh sách local
+      setChats((prev) => prev.filter((c) => c.chatID !== deletingChat.chatID));
+      setStrangerChats((prev) => prev.filter((c) => c.chatID !== deletingChat.chatID));
+
+      // Nếu đang mở chat đó thì đóng lại + clear messages
+      if (selectedChat?.chatID === deletingChat.chatID) {
+        setSelectedChat(null);
+        setMessages([]); // Clear messages để không còn thấy tin nhắn cũ
+      }
+
+      setDeletingChat(null);
+      Alert.alert('Thành công', 'Đã xóa cuộc trò chuyện khỏi danh sách của bạn');
+    } catch (err: any) {
+      console.error('❌ Delete chat error:', err?.message || err);
+      Alert.alert(
+        'Không thể xóa',
+        err?.message || 'Đã xảy ra lỗi. Vui lòng thử lại.'
+      );
+    } finally {
+      setIsDeletingChat(false);
+    }
   };
 
   const handleUnfriend = async () => {
@@ -2000,19 +2073,50 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
   };
 
   const handlePickFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true });
-    if (!result.canceled && result.assets.length > 0) {
-      await uploadFiles(result.assets.map(a => ({ uri: a.uri, type: 'file', name: a.name })));
+    try {
+      const result = await safePickDocument({
+        type: '*/*',
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await uploadFiles(
+          result.assets.map((a) => ({
+            uri: a.uri,
+            type: 'file',
+            name: a.name,
+            mimeType: a.mimeType,
+          }))
+        );
+      }
+    } catch (err: any) {
+      console.error('❌ handlePickFile error:', err);
+      const msg = err?.message || '';
+      // Bỏ qua lỗi "in progress" vì đã retry trong safePickDocument
+      if (!msg.includes('in progress') && !msg.includes('Different document')) {
+        Alert.alert('Lỗi', 'Không thể chọn tệp. Vui lòng thử lại.');
+      } else {
+        Alert.alert(
+          'Đang bận',
+          'Bộ chọn tệp đang bị kẹt. Vui lòng đóng app và mở lại để dùng được tính năng này.'
+        );
+      }
     }
   };
 
-  const uploadFiles = async (files: { uri: string; type: string; name?: string }[]) => {
+  const uploadFiles = async (files: { uri: string; type: string; name?: string; mimeType?: string }[]) => {
     if (!selectedChat || !user) return;
 
     console.log('📤 uploadFiles called:', {
       fileCount: files.length,
       chatType: selectedChat.type,
       chatID: selectedChat.chatID,
+      firstFile: {
+        uri: files[0]?.uri,
+        name: files[0]?.name,
+        mimeType: files[0]?.mimeType,
+        type: files[0]?.type,
+      },
     });
 
     setIsUploading(true);
@@ -2020,14 +2124,26 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       const token = await AsyncStorage.getItem('token');
       const formData = new FormData();
       files.forEach(file => {
-        formData.append('files', {
-          uri: file.uri,
-          name: file.name || `file_${Date.now()}`,
-          type: file.type === 'image'
+        // Ưu tiên mimeType thật từ picker; fallback theo loại
+        const resolvedType =
+          file.mimeType ||
+          (file.type === 'image'
             ? 'image/jpeg'
             : file.type === 'video'
               ? 'video/mp4'
-              : 'application/octet-stream',
+              : 'application/octet-stream');
+
+        // iOS: Bỏ prefix "file://" vì FormData/fetch trên một số thiết bị iOS
+        // không xử lý được. React Native sẽ tự thêm lại nếu cần.
+        let fileUri = file.uri;
+        if (Platform.OS === 'ios' && fileUri.startsWith('file://')) {
+          fileUri = fileUri.replace('file://', '');
+        }
+
+        formData.append('files', {
+          uri: fileUri,
+          name: file.name || `file_${Date.now()}`,
+          type: resolvedType,
         } as any);
       });
 
@@ -3258,7 +3374,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
               renderRightActions={() => (
                 <TouchableOpacity
                   style={styles.swipeDeleteBtn}
-                  onPress={() => confirmDeleteChat(item)}
+                  onPress={() => {
+                    console.log('🗑️ Delete button pressed for:', item.chatID);
+                    confirmDeleteChat(item);
+                  }}
+                  activeOpacity={0.7}
                 >
                   <Ionicons name="trash-outline" size={22} color="#fff" />
                   <Text style={styles.swipeDeleteText}>Xóa</Text>
@@ -4736,28 +4856,63 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       )}
 
       {deletingChat && (
-        <Modal visible={!!deletingChat} transparent animationType="fade" onRequestClose={() => setDeletingChat(null)}>
-          <View style={styles.confirmOverlay}>
-            <View style={styles.confirmBox}>
+        <>
+          {console.log('🎭 Rendering delete confirmation modal for:', deletingChat.chatID)}
+          <View 
+            style={{
+              position: 'absolute',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 9999,
+              elevation: 9999,
+            }}
+          >
+            <TouchableOpacity 
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              activeOpacity={1}
+              onPress={() => {
+                console.log('🔘 Overlay pressed (outside modal)');
+                if (!isDeletingChat) {
+                  setDeletingChat(null);
+                }
+              }}
+            />
+            <View style={[styles.confirmBox, { zIndex: 10000, elevation: 10000 }]}>
               <Text style={styles.confirmTitle}>Xóa cuộc trò chuyện</Text>
               <Text style={styles.confirmMsg}>
-                Xóa cuộc trò chuyện với{' '}
-                <Text style={{ fontWeight: '700' }}>
-                  {getChatDisplayName(deletingChat)}
-                </Text>
-                ? Hành động này không thể hoàn tác.
+                Toàn bộ nội dung trò chuyện sẽ bị xóa khỏi danh sách chat của bạn.{'\n\n'}
+                <Text style={{ fontWeight: '600' }}>Lưu ý:</Text> Tin nhắn vẫn tồn tại với người khác. 
+                Khi có tin nhắn mới, cuộc trò chuyện sẽ xuất hiện lại nhưng bạn chỉ thấy tin nhắn mới.{'\n\n'}
+                Bạn có chắc chắn muốn xóa?
               </Text>
               <View style={styles.confirmBtns}>
-                <TouchableOpacity style={styles.confirmBtnCancel} onPress={() => setDeletingChat(null)}>
+                <TouchableOpacity
+                  style={styles.confirmBtnCancel}
+                  onPress={() => {
+                    console.log('❌ Cancel button pressed');
+                    setDeletingChat(null);
+                  }}
+                  disabled={isDeletingChat}
+                >
                   <Text style={styles.confirmBtnCancelText}>Hủy</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.confirmBtnDelete} onPress={handleDeleteChat}>
-                  <Text style={styles.confirmBtnDeleteText}>Xóa</Text>
+                <TouchableOpacity
+                  style={[styles.confirmBtnDelete, isDeletingChat && { opacity: 0.6 }]}
+                  onPress={handleDeleteChat}
+                  disabled={isDeletingChat}
+                >
+                  {isDeletingChat ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.confirmBtnDeleteText}>Xóa</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
           </View>
-        </Modal>
+        </>
       )}
 
       {otherProfile && (
@@ -4870,7 +5025,14 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: Math.max(insets.bottom, 16) }}>
             <View style={{ width: 36, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 8 }} />
             {[
-              { icon: 'attach-outline', label: 'Gửi tệp', onPress: () => { setShowMoreMenu(false); handlePickFile(); } },
+              {
+                icon: 'attach-outline', label: 'Gửi tệp', onPress: () => {
+                  setShowMoreMenu(false);
+                  // Đợi modal đóng xong (animation iOS ~350ms) rồi mới mở picker
+                  // tránh conflict animation gây treo Promise vĩnh viễn
+                  setTimeout(() => { handlePickFile(); }, 450);
+                }
+              },
               {
                 icon: 'notifications-outline', label: 'Nhắc hẹn', onPress: () => {
                   setShowMoreMenu(false);
