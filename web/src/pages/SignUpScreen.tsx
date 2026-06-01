@@ -5,7 +5,6 @@ import toast, { Toaster } from 'react-hot-toast';
 
 const SignUpScreen = () => {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
   const [sdt, setSDT] = useState('');
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState('');
@@ -15,36 +14,65 @@ const SignUpScreen = () => {
     try {
       setLoading(true);
       setError('');
+      // Kiểm tra SĐT đã tồn tại chưa
       const responseSDT = await axiosInstance.post('/users/checksdt', { sdt });
       if (responseSDT.data.exists) {
         setError('Số điện thoại đã được đăng ký!');
-        toast.error('Số điện thoại đã được đăng ký!', { duration: 3000, position: 'top-center', style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
+        toast.error('Số điện thoại đã được đăng ký!', {
+          duration: 3000,
+          position: 'top-center',
+          style: {
+            background: '#ef4444',
+            color: '#fff',
+            fontWeight: '600',
+            padding: '16px',
+            borderRadius: '12px',
+          },
+        });
         return;
       }
 
-      const responseEmail = await axiosInstance.post('/users/email', { email });
-      if (responseEmail.data.exists) {
-        setError('Email đã được đăng ký!');
-        toast.error('Email đã được đăng ký!', { duration: 3000, position: 'top-center', style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
-        return;
-      }
-
-      await axiosInstance.post('/send-otp', { email });
-      toast.success('Mã OTP đã được gửi đến email của bạn! 📧', { duration: 2000, position: 'top-center', style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
-      setTimeout(() => navigate('/verify-otp', { state: { email, sdt } }), 1000);
-    } catch (_err) {
-      setError('Có lỗi xảy ra: ' + (_err as Error).message);
-      toast.error('Có lỗi xảy ra, vui lòng thử lại!', { duration: 3000, position: 'top-center', style: { background: '#ef4444', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' } });
+      // Gửi OTP qua SMS (InfiniReach)
+      await axiosInstance.post('/send-otp-sms', { sdt });
+      toast.success('Mã OTP đã được gửi qua SMS!', {
+        duration: 2000,
+        position: 'top-center',
+        style: {
+          background: '#10b981',
+          color: '#fff',
+          fontWeight: '600',
+          padding: '16px',
+          borderRadius: '12px',
+        },
+      });
+      setTimeout(() => navigate('/verify-otp', { state: { sdt } }), 1000);
+    } catch (_err: any) {
+      const errorMsg =
+        _err?.response?.data?.error ||
+        _err?.response?.data?.message ||
+        _err?.message ||
+        'Có lỗi xảy ra';
+      setError('Có lỗi: ' + errorMsg);
+      toast.error(errorMsg, {
+        duration: 4000,
+        position: 'top-center',
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+          fontWeight: '600',
+          padding: '16px',
+          borderRadius: '12px',
+        },
+      });
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const phoneRegex = /^(0[35789])[0-9]{8}$/;
-    setEnabled(phoneRegex.test(sdt) && emailRegex.test(email));
-  }, [sdt, email]);
+    setEnabled(phoneRegex.test(sdt));
+  }, [sdt]);
 
   return (
     <>
@@ -168,36 +196,6 @@ const SignUpScreen = () => {
                     className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-800 text-sm placeholder-gray-400 transition-all duration-300 focus:outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 hover:border-gray-300"
                     value={sdt}
                     onChange={(e) => setSDT(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <svg
-                      className="w-5 h-5 text-gray-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75"
-                      />
-                    </svg>
-                  </div>
-                  <input
-                    id="email-input"
-                    type="email"
-                    placeholder="Nhập email của bạn"
-                    className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-800 text-sm placeholder-gray-400 transition-all duration-300 focus:outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 hover:border-gray-300"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
               </div>

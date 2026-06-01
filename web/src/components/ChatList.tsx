@@ -7,6 +7,9 @@ import ContactsPanel from './ContactsPanel';
 import StrangerFolderItem from './StrangerFolderItem';
 import StrangerChatList from './StrangerChatList';
 import axiosInstance from '../utils/axios';
+import { DeleteChatDialog } from './DeleteChatDialog';
+import { getToken } from '../utils/auth';
+import toast from 'react-hot-toast';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 
@@ -209,8 +212,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     Record<string, { userID: string; userName: string }[]>
   >({});
   const [menuChatId, setMenuChatId] = useState<string | null>(null);
-  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
-  const [deleteConfirmChatId, setDeleteConfirmChatId] = useState<string | null>(null);
+  const [deletingChat, setDeletingChat] = useState<Chat | null>(null);
+  const [isDeletingChat, setIsDeletingChat] = useState(false);
   const [deletedChatIds, setDeletedChatIds] = useState<Set<string>>(new Set());
   const [showStrangerList, setShowStrangerList] = useState(false);
   const [strangerSummary, setStrangerSummary] = useState<{
@@ -279,8 +282,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
           const existingIds = new Set(prev.map((c) => c.chatID));
           const newGroups = groupChats.filter((g) => !existingIds.has(g.chatID));
           return [...prev, ...newGroups].sort((a, b) => {
-            const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
-            const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
+            const aT = a.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
+            const bT = b.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
             return new Date(bT).getTime() - new Date(aT).getTime();
           });
         });
@@ -316,8 +319,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       console.log(`✅ Loaded ${friendChats.length} friend chats + ${strangers.length} stranger chats`);
       
       const sorted = [...friendChats].sort((a, b) => {
-        const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
-        const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
+        const aT = a.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
+        const bT = b.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
         return new Date(bT).getTime() - new Date(aT).getTime();
       });
       
@@ -386,8 +389,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         });
         
         return [...updated].sort((a, b) => {
-          const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
-          const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
+          const aT = a.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
+          const bT = b.lastMessage?.slice(-1)[0]?.timestamp || new Date().toISOString();
           return new Date(bT).getTime() - new Date(aT).getTime();
         });
       });
@@ -505,6 +508,17 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     socket.on('typing_start', onTypingStart);
     socket.on('typing_stop', onTypingStop);
 
+    // Lắng nghe giải tán nhóm (real-time từ mobile/web khác)
+    socket.on('group_dissolved', (data: { groupID: string; message: string }) => {
+      console.log('💥 [WEB] group_dissolved event received:', data);
+      // Xóa nhóm khỏi danh sách chat
+      setChats((prev) => prev.filter((c) => c.chatID !== data.groupID));
+      // Nếu đang mở nhóm đó → đóng lại
+      if (selectedChatId === data.groupID) {
+        onSelectChat(null as any);
+      }
+    });
+
     return () => {
       socket.off('connect', handleConnect);
       socket.off('ChatByUserID');
@@ -522,6 +536,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.off('new_group_created');
       socket.off('typing_start', onTypingStart);
       socket.off('typing_stop', onTypingStop);
+      socket.off('group_dissolved');
     };
   }, [user?.userID, selectedChatId, deletedChatIds]);
 
@@ -531,47 +546,69 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     setChats((prev) => prev.map((c) => (c.chatID === chat.chatID ? { ...c, unreadCount: 0 } : c)));
   };
 
-  const handleDeleteChat = async (chatID: string) => {
-    setDeletingChatId(chatID);
+  const confirmDeleteChat = (chat: Chat) => {
+    console.log('🗑️ confirmDeleteChat called for:', chat.chatID, chat.name);
+    setDeletingChat(chat);
+    setMenuChatId(null);
+  };
+
+  const handleDeleteChat = async () => {
+    if (!deletingChat || isDeletingChat) return;
+
+    setIsDeletingChat(true);
     
     // Đánh dấu chat này đã bị xóa để ignore socket updates
-    setDeletedChatIds((prev) => new Set(prev).add(chatID));
-    
-    // Xóa khỏi danh sách local ngay lập tức
-    setChats((prev) => prev.filter((c) => c.chatID !== chatID));
-    
-    // Nếu đang xem chat này thì đóng nó
-    if (selectedChatId === chatID) {
-      onSelectChat(null as any);
-    }
+    setDeletedChatIds((prev) => new Set(prev).add(deletingChat.chatID));
     
     try {
-      // Gọi endpoint xóa trò chuyện (ẩn khỏi danh sách)
-      const res = await axiosInstance.delete(`/chats/${chatID}`);
-      
-      if (!res.ok) {
-        console.error('Delete chat failed');
-        // Nếu lỗi thì remove khỏi deletedChatIds và reload
-        setDeletedChatIds((prev) => {
-          const next = new Set(prev);
-          next.delete(chatID);
-          return next;
+      const token = getToken();
+
+      if (deletingChat.type === 'group') {
+        // Group: xóa lịch sử
+        const res = await fetch(`http://localhost:5000/api/groups/${deletingChat.chatID}/history`, {
+          method: 'DELETE',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
-        socket.emit('getChat', user?.userID);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `HTTP ${res.status}`);
+        }
+      } else {
+        // Chat 1-1: xóa lịch sử
+        const res = await fetch(`http://localhost:5000/api/chats/${deletingChat.chatID}/history`, {
+          method: 'DELETE',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `HTTP ${res.status}`);
+        }
       }
-    } catch (err) {
-      console.error('Delete chat error:', err);
+
+      // Sau khi xóa lịch sử, ẩn chat khỏi danh sách local
+      setChats((prev) => prev.filter((c) => c.chatID !== deletingChat.chatID));
+
+      // Nếu đang mở chat đó thì đóng lại
+      if (selectedChatId === deletingChat.chatID) {
+        onSelectChat(null as any);
+      }
+
+      setDeletingChat(null);
+      toast.success('Đã xóa cuộc trò chuyện khỏi danh sách của bạn');
+    } catch (err: any) {
+      console.error('❌ Delete chat error:', err?.message || err);
+      
       // Nếu lỗi thì remove khỏi deletedChatIds và reload
       setDeletedChatIds((prev) => {
         const next = new Set(prev);
-        next.delete(chatID);
+        next.delete(deletingChat.chatID);
         return next;
       });
       socket.emit('getChat', user?.userID);
+      
+      toast.error(err?.message || 'Đã xảy ra lỗi. Vui lòng thử lại.');
     } finally {
-      setDeletingChatId(null);
-      setMenuChatId(null);
-      setDeleteConfirmChatId(null);
+      setIsDeletingChat(false);
     }
   };
 
@@ -751,10 +788,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
                 >
                   <button
                     className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors rounded-lg mx-0.5"
-                    onClick={() => {
-                      setDeleteConfirmChatId(chat.chatID);
-                      setMenuChatId(null);
-                    }}
+                    onClick={() => confirmDeleteChat(chat)}
                   >
                     <FaTrash className="text-xs shrink-0" />
                     Xóa trò chuyện
@@ -785,49 +819,14 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         />
       )}
 
-      {/* Delete Confirm Modal */}
-      {deleteConfirmChatId && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" 
-          onClick={() => setDeleteConfirmChatId(null)}
-        >
-          <div 
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-[340px] mx-4 p-6 flex flex-col gap-4" 
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex flex-col items-center gap-2 text-center">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                <FaTrash className="text-red-500 text-lg" />
-              </div>
-              <h3 className="text-[15px] font-bold text-gray-900">Xóa trò chuyện</h3>
-              <p className="text-[13px] text-gray-500">
-                Cuộc trò chuyện sẽ bị xóa khỏi danh sách của bạn. Bạn có thể nhắn tin lại để khôi phục.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setDeleteConfirmChatId(null)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={() => {
-                  const chatId = deleteConfirmChatId;
-                  setDeleteConfirmChatId(null); // Đóng modal TRƯỚC
-                  if (chatId) {
-                    handleDeleteChat(chatId); // Sau đó mới xóa
-                  }
-                }}
-                disabled={deletingChatId === deleteConfirmChatId}
-                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-50"
-              >
-                {deletingChatId === deleteConfirmChatId ? 'Đang xóa...' : 'Xóa'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Delete Chat Dialog */}
+      <DeleteChatDialog
+        visible={!!deletingChat}
+        chatName={deletingChat ? getChatName(deletingChat) : ''}
+        isDeleting={isDeletingChat}
+        onConfirm={handleDeleteChat}
+        onCancel={() => setDeletingChat(null)}
+      />
     </div>
   );
 };

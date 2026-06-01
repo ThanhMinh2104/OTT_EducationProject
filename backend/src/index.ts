@@ -143,7 +143,14 @@ io.on('connection', (socket) => {
   socket.on('updateUser', (user: any) => {
     console.log('🔄 Socket: updateUser received (index.ts):', user);
     if (user && user.userID) {
+      // update_user: CHỈ gửi cho chính user (HomePage/HomeScreen setUser không check userID
+      // nên KHÔNG được broadcast, tránh ghi đè session người khác)
+      io.to(user.userID).emit('update_user', user);
+
+      // userUpdated + updatee_user: broadcast cho mọi người để cập nhật
+      // tên/avatar đã cache (các handler này đều check userID trước khi áp dụng)
       io.emit('userUpdated', user);
+      io.emit('updatee_user', user);
     }
   });
 

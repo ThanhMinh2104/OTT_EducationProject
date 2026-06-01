@@ -22,12 +22,13 @@ interface Props {
   onRecall?: () => void;
   onEditAlias?: () => void;
   onStatusChange?: (status: string) => void;
+  groupID?: string;
 }
 
 const OtherProfileModal = ({
   user, currentUser, onClose, onBack, onStartChat, onAddFriend,
   onOpenSelfProfile, onAccept, onReject, onRecall, onEditAlias,
-  onStatusChange
+  onStatusChange, groupID
 }: Props) => {
   const [showFriendMenu, setShowFriendMenu] = useState(false);
   const [showRequestMenu, setShowRequestMenu] = useState(false);

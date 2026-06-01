@@ -7,6 +7,7 @@ import Otp from '../models/Otp';
 import Session from '../models/Session';
 import LoginHistory from '../models/LoginHistory';
 import sendOtpEmail from '../services/emailService';
+import { sendOtpSMS } from '../services/smsService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { uploadToCloudinary } from '../services/uploadService';
 
@@ -26,7 +27,7 @@ const generateUserID = async (): Promise<string> => {
 router.post('/registerUser', async (req: Request, res: Response) => {
   const { sdt, name, ngaySinh, matKhau, email, gioTinh, dongYDieuKhoan } = req.body;
 
-  if (!sdt || !name || !ngaySinh || !matKhau || !email) {
+  if (!sdt || !name || !ngaySinh || !matKhau) {
     return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' }) as any;
   }
 
@@ -48,7 +49,7 @@ router.post('/registerUser', async (req: Request, res: Response) => {
   const user = await Users.create({
     name,
     userID: userid,
-    email,
+    ...(email ? { email } : {}),
     anhDaiDien:
       'https://res.cloudinary.com/dgqppqcbd/image/upload/v1741595806/anh-dai-dien-hai-1_b33sa3.jpg',
     trangThai: 'offline',
@@ -256,6 +257,55 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
     const otpRecord = await Otp.findOne({ email, otp });
 
     console.log(otpRecord);
+
+    if (!otpRecord) {
+      return res.json({ message: 'Mã OTP không đúng hoặc đã hết hạn', verified: false }) as any;
+    }
+
+    await Otp.deleteOne({ _id: otpRecord._id });
+
+    res.status(200).json({ message: 'Xác thực OTP thành công', verified: true });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi xác thực OTP', error: error.message });
+  }
+});
+
+// Gửi OTP qua SMS (InfiniReach)
+router.post('/send-otp-sms', async (req: Request, res: Response) => {
+  const { sdt } = req.body;
+  if (!sdt) return res.status(400).json({ message: 'Thiếu số điện thoại' }) as any;
+
+  // Validate SĐT (10 số, bắt đầu bằng 0)
+  if (!/^0\d{9}$/.test(sdt)) {
+    return res.status(400).json({ message: 'Số điện thoại không hợp lệ' }) as any;
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  try {
+    // Xóa OTP cũ của SĐT này (nếu có)
+    await Otp.deleteMany({ sdt });
+
+    // Lưu OTP mới vào database
+    await Otp.create({ sdt, otp });
+
+    // Trả response ngay (gửi SMS ở background để không bắt user đợi)
+    res.status(200).json({ message: 'Đã gửi mã OTP qua SMS' });
+
+    // Gửi SMS ở background (fire-and-forget)
+    sendOtpSMS(sdt, otp).catch(() => {
+      // Bỏ qua lỗi background - đã có timeout/retry trong service
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Gửi OTP thất bại', error: error.message });
+  }
+});
+
+// Xác thực OTP từ SMS
+router.post('/verify-otp-sms', async (req: Request, res: Response) => {
+  const { sdt, otp } = req.body;
+  try {
+    const otpRecord = await Otp.findOne({ sdt, otp });
 
     if (!otpRecord) {
       return res.json({ message: 'Mã OTP không đúng hoặc đã hết hạn', verified: false }) as any;

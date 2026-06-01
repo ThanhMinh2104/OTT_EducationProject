@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 export default function VerifyOTPDK() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { email, sdt } = location.state;
+  const { sdt } = location.state;
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [log, setLog] = useState('');
@@ -32,7 +32,7 @@ export default function VerifyOTPDK() {
     try {
       setLoading(true);
       setLog('');
-      const responseData = await axiosInstance.post('/verify-otp', { email, otp });
+      const responseData = await axiosInstance.post('/verify-otp-sms', { sdt, otp });
 
       const verified: boolean = responseData.data.verified;
       if (!verified) {
@@ -40,7 +40,7 @@ export default function VerifyOTPDK() {
         return;
       }
 
-      navigate('/signup-info', { state: { email, sdt } });
+      navigate('/signup-info', { state: { sdt } });
     } catch (error) {
       setLog('Có lỗi xảy ra, vui lòng thử lại');
       console.log(error);
@@ -53,9 +53,9 @@ export default function VerifyOTPDK() {
     try {
       setResendLoading(true);
       setLog('');
-      await axiosInstance.post('/send-otp', { email });
+      await axiosInstance.post('/send-otp-sms', { sdt });
       setResendTimer(60);
-      toast.success('Mã OTP mới đã được gửi đến email của bạn! 📧', {
+      toast.success('Mã OTP mới đã được gửi qua SMS!', {
         duration: 3000,
         position: 'top-center',
         style: {
@@ -173,7 +173,7 @@ export default function VerifyOTPDK() {
           <div className="bg-white rounded-3xl shadow-xl shadow-primary-200/50 border border-primary-100/50 p-8 sm:p-10 animate-pulse-glow">
             <div className="text-center mb-8">
               <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Xác nhận mã OTP</h2>
-              <p className="text-gray-400 text-sm">Mã OTP đã được gửi đến {email}</p>
+              <p className="text-gray-400 text-sm">Mã OTP đã được gửi qua SMS đến {sdt}</p>
             </div>
 
             <div className="space-y-5">

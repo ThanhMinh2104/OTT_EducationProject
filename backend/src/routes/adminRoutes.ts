@@ -66,6 +66,12 @@ router.post('/users/unlock/send-otp', async (req: Request, res: Response) => {
     }
 
     // Tạo và gửi OTP
+    if (!user.email) {
+      return res.status(400).json({
+        message: 'Tài khoản này không có email đăng ký. Vui lòng liên hệ hỗ trợ.',
+      }) as any;
+    }
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     await Otp.deleteMany({ email: user.email });
     await Otp.create({ email: user.email, otp });
@@ -152,6 +158,12 @@ router.post(
 
       // Xóa tất cả sessions của user
       await Session.deleteMany({ userID });
+
+      // Buộc đăng xuất real-time trên mọi thiết bị (web + mobile)
+      const io = req.app.get('io');
+      if (io) {
+        io.to(userID).emit('forceLogout', { userID, reason: lyDoKhoa });
+      }
 
       res.status(200).json({
         message: 'Đã khóa tài khoản thành công',

@@ -38,12 +38,15 @@ router.post('/groups/create', authMiddleware, async (req: AuthRequest, res) => {
 
     const groupID = `grp_${uuidv4()}`;
 
+    // Default avatar: dùng DiceBear API tạo ảnh nhóm nếu user không chọn
+    const defaultGroupAvatar = `https://api.dicebear.com/7.x/shapes/png?seed=${groupID}&size=200`;
+
     // Tạo group
     const group = new Group({
       groupID,
       name,
       description,
-      avatar,
+      avatar: avatar || defaultGroupAvatar,
       ownerID: userID,
     });
     await group.save();
@@ -508,6 +511,14 @@ router.post('/groups/:groupID/members', authMiddleware, async (req: AuthRequest,
         adderName,
         addedName,
       });
+
+      // Emit đến personal room của user mới để họ nhận được nhóm mới
+      io.to(newUserID).emit('added_to_group', {
+        groupID,
+        groupName: group?.name || '',
+        addedBy: userID,
+        adderName,
+      });
     }
 
     res.json({ message: 'Thêm thành viên thành công' });
@@ -576,6 +587,15 @@ router.delete('/groups/:groupID/members/:targetUserID', authMiddleware, async (r
 
       // Gửi event member_kicked
       io.to(groupID).emit('member_kicked', {
+        groupID,
+        kickedUserID: targetUserID,
+        kickedBy: userID,
+        kickerName,
+        kickedName,
+      });
+
+      // Emit đến personal room của user bị kick (vì có thể đã rời group room)
+      io.to(targetUserID).emit('member_kicked', {
         groupID,
         kickedUserID: targetUserID,
         kickedBy: userID,
@@ -734,6 +754,31 @@ router.put('/groups/:groupID/members/:targetUserID/role', authMiddleware, async 
   }
 });
 
+// 9.5. Xóa lịch sử trò chuyện nhóm (chỉ ẩn messages cho user hiện tại)
+router.delete('/groups/:groupID/history', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID!;
+
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member) {
+      res.status(403).json({ message: 'Bạn không trong nhóm này' });
+      return;
+    }
+
+    // Set historyDeletedAt cho member này để ẩn messages cũ
+    member.historyDeletedAt = new Date();
+    await member.save();
+
+    console.log(`User ${userID} deleted history for group ${groupID}`);
+
+    res.json({ success: true, message: 'Đã xóa lịch sử trò chuyện nhóm' });
+  } catch (error: any) {
+    console.error('Delete group history error:', error);
+    res.status(500).json({ message: 'Lỗi xóa lịch sử', error: error.message });
+  }
+});
+
 // 10. Xóa nhóm (chỉ owner)
 router.delete('/groups/:groupID', authMiddleware, async (req: AuthRequest, res) => {
   try {
@@ -801,6 +846,11 @@ router.get('/groups/:groupID/messages', authMiddleware, async (req: AuthRequest,
     const timeFilter: Record<string, unknown> = {};
     if (!group?.settings?.allowNewMembersReadHistory) {
       timeFilter.timestamp = { $gte: member.joinedAt };
+    }
+
+    // Nếu user đã xóa lịch sử → chỉ lấy tin nhắn sau thời điểm xóa
+    if (member.historyDeletedAt) {
+      timeFilter.timestamp = { $gt: member.historyDeletedAt };
     }
 
     const messages = await GroupMessage.find({
@@ -1956,6 +2006,7 @@ router.post('/groups/:groupID/polls/:pollID/vote', authMiddleware, async (req: A
         }))
       };
       io.to(groupID).emit('poll_updated', pollForEmit);
+      io.to(groupID).emit('poll_voted', pollForEmit); // Mobile lắng nghe poll_voted
 
       // [NEW] Gửi thông báo hệ thống khi có người bình chọn (toggle)
       const user = await Users.findOne({ userID });
@@ -2060,6 +2111,7 @@ router.post('/groups/:groupID/polls/:pollID/add-option', authMiddleware, async (
         }))
       };
       io.to(groupID).emit('poll_updated', pollForEmit);
+      io.to(groupID).emit('poll_voted', pollForEmit); // Mobile lắng nghe poll_voted
 
       // [NEW] Gửi thông báo hệ thống khi thêm phương án mới
       const user = await Users.findOne({ userID });
@@ -2201,6 +2253,7 @@ router.post('/groups/:groupID/polls/:pollID/lock', authMiddleware, async (req: A
     const io = req.app.get('io');
     if (io) {
       io.to(groupID).emit('poll_updated', updatedPoll);
+      io.to(groupID).emit('poll_voted', updatedPoll); // Mobile lắng nghe poll_voted
 
       // Gửi thông báo hệ thống khóa bình chọn
       const lockNotifID = `gmsg_${uuidv4()}`;
@@ -2330,6 +2383,7 @@ router.post('/groups/:groupID/polls/:pollID/toggle-pin', authMiddleware, async (
     const io = req.app.get('io');
     if (io) {
       io.to(groupID).emit('poll_updated', pollObj);
+      io.to(groupID).emit('poll_voted', pollObj); // Mobile lắng nghe poll_voted
     }
 
     res.json({ message: poll.isPinned ? 'Đã ghim bình chọn' : 'Đã bỏ ghim bình chọn', poll: pollObj });
