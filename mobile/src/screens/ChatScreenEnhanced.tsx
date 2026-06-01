@@ -665,39 +665,53 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       const stored = await AsyncStorage.getItem('user');
       if (!stored) return;
       const me = JSON.parse(stored);
-      // Chỉ cập nhật chat list, không emit getChat để tránh reset selectedChat
-      setChats((prev: any[]) =>
-        prev.map((c: any) =>
-          c.chatID === data.groupID
-            ? { ...c, members: (c.members || []).filter((m: any) => m.userID !== data.kickedUserID) }
-            : c
-        )
-      );
+
+      if (data.kickedUserID === me.userID) {
+        // Chính mình bị kick → xóa nhóm khỏi danh sách
+        console.log('💥 [MOBILE] Bị kick khỏi nhóm:', data.groupID);
+        setChats((prev) => prev.filter((c) => c.chatID !== data.groupID));
+
+        // Nếu đang mở nhóm đó → đóng lại
+        if (selectedChat?.chatID === data.groupID) {
+          Alert.alert(
+            'Đã bị xóa khỏi nhóm',
+            `Bạn đã bị ${data.kickerName} xóa khỏi nhóm`,
+            [{ text: 'OK', onPress: () => setSelectedChat(null) }]
+          );
+        }
+      } else {
+        // Người khác bị kick → chỉ update members list
+        setChats((prev: any[]) =>
+          prev.map((c: any) =>
+            c.chatID === data.groupID
+              ? { ...c, members: (c.members || []).filter((m: any) => m.userID !== data.kickedUserID) }
+              : c
+          )
+        );
+      }
     });
 
     // Lắng nghe group_dissolved ở global level để reload chat list và xóa nhóm
+    // Dùng Set để dedup (backend emit 2 lần: group room + personal room)
+    const dissolvedGroupIds = new Set<string>();
     socket.on('group_dissolved', async (data: { groupID: string; message: string }) => {
+      // Dedup: chỉ xử lý 1 lần cho mỗi groupID
+      if (dissolvedGroupIds.has(data.groupID)) return;
+      dissolvedGroupIds.add(data.groupID);
       console.log('💥 [MOBILE] Global group_dissolved event received:', data);
+
+      // Xóa nhóm khỏi danh sách local ngay lập tức
+      setChats((prev) => prev.filter((c) => c.chatID !== data.groupID));
 
       const stored = await AsyncStorage.getItem('user');
       if (!stored) return;
       const me = JSON.parse(stored);
 
-      // Nếu đang xem nhóm bị giải tán, đóng chat
-      if (selectedChat?.chatID === data.groupID) {
-        Alert.alert('Thông báo', data.message, [
-          {
-            text: 'OK',
-            onPress: () => {
-              setSelectedChat(null);
-            }
-          }
-        ]);
+      // Chỉ hiện Alert nếu KHÔNG đang mở nhóm đó (tránh duplicate với onGroupDissolved trong chat)
+      if (selectedChat?.chatID !== data.groupID) {
+        // Không hiện Alert ở đây, chỉ reload list
+        socket.emit('getChat', me.userID);
       }
-
-      console.log('🔄 [MOBILE] Reloading chat list after group_dissolved...');
-      // Reload chat list để xóa nhóm đã giải tán
-      socket.emit('getChat', me.userID);
     });
 
     // Lắng nghe new_group_created để reload chat list khi có nhóm mới
@@ -713,6 +727,20 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       socket.emit('getChat', me.userID);
     });
 
+    // Lắng nghe added_to_group khi được thêm vào nhóm (từ web/mobile khác)
+    socket.on('added_to_group', async (data: { groupID: string; groupName: string; adderName: string }) => {
+      console.log('📥 [MOBILE] added_to_group event received:', data);
+
+      const stored = await AsyncStorage.getItem('user');
+      if (!stored) return;
+      const me = JSON.parse(stored);
+
+      // Reload chat list để hiển thị nhóm mới
+      socket.emit('getChat', me.userID);
+      // Join group room để nhận tin nhắn mới
+      socket.emit('join_chat', data.groupID);
+    });
+
     return () => {
       socket.off('ChatByUserID');
       socket.off('call-made');
@@ -725,6 +753,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       socket.off('member_kicked');
       socket.off('group_dissolved');
       socket.off('new_group_created');
+      socket.off('added_to_group');
       socket.off('friend_status_update');
       socket.off('group-call-incoming');
     };
@@ -1349,24 +1378,16 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     };
 
     // Handler khi nhóm bị giải tán
+    let groupDissolvedHandled = false;
     const onGroupDissolved = (data: { groupID: string; message: string }) => {
+      // Dedup: chỉ xử lý 1 lần
+      if (groupDissolvedHandled) return;
       console.log('💥 [ChatScreenEnhanced] Group dissolved:', data);
       if (data.groupID === chatID) {
-        Alert.alert(
-          'Thông báo',
-          data.message,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Quay về màn hình chat list
-                setSelectedChat(null);
-                // Reload chat list để xóa nhóm đã giải tán
-                socket.emit('getChat', user.userID);
-              }
-            }
-          ]
-        );
+        groupDissolvedHandled = true;
+        // Chỉ xử lý logic, KHÔNG hiện Alert (Alert đã hiện từ nơi gọi API)
+        setSelectedChat(null);
+        socket.emit('getChat', user.userID);
       }
     };
 
@@ -3345,9 +3366,18 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     );
   };
 
-  const filteredChats = chats.filter(c =>
-    c.name.toLowerCase().includes(searchText.toLowerCase())
-  );
+  const filteredChats = chats
+    .filter(c =>
+      (c.name || '').toLowerCase().includes(searchText.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Sort theo thời gian tin nhắn cuối cùng (mới nhất lên đầu)
+      const aLastMsg = a.lastMessage?.[a.lastMessage.length - 1];
+      const bLastMsg = b.lastMessage?.[b.lastMessage.length - 1];
+      const aTime = aLastMsg ? new Date(aLastMsg.timestamp).getTime() : Date.now(); // Chưa có message → coi như mới nhất
+      const bTime = bLastMsg ? new Date(bLastMsg.timestamp).getTime() : Date.now();
+      return bTime - aTime; // Mới nhất lên đầu
+    });
 
   // ===== CHAT LIST VIEW =====
   if (!selectedChat) {
