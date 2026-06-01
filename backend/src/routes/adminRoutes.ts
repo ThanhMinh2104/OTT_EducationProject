@@ -159,6 +159,12 @@ router.post(
       // Xóa tất cả sessions của user
       await Session.deleteMany({ userID });
 
+      // Buộc đăng xuất real-time trên mọi thiết bị (web + mobile)
+      const io = req.app.get('io');
+      if (io) {
+        io.to(userID).emit('forceLogout', { userID, reason: lyDoKhoa });
+      }
+
       res.status(200).json({
         message: 'Đã khóa tài khoản thành công',
         user: {
