@@ -44,7 +44,7 @@ import {
 } from '../hooks/useReminderChecker';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
-const API = 'http://localhost:5000/api';
+const API = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api';
 
 interface Member {
   userID: string;
