@@ -7,11 +7,13 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -22,26 +24,44 @@
         "NSLocalNetworkUsageDescription": "App cần truy cập mạng nội bộ để kết nối với server backend khi phát triển."
       }
     },
+
     "android": {
+      "package": "com.otteducation.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA"
+      ]
     },
+
     "web": {
       "favicon": "./assets/favicon.png"
     },
+
     "plugins": [
       "expo-audio",
-      "expo-barcode-scanner",
       [
         "expo-camera",
         {
           "cameraPermission": "Ứng dụng cần quyền camera để quét mã QR kết bạn."
         }
-      ]
-    ]
+      ],
+      "expo-video"
+    ],
+
+    "extra": {
+      "eas": {
+        "projectId": "ef27feca-ffaa-4e8c-a491-8ebc06103f49"
+      }
+    },
+
+    "owner": "taitai2"
   }
 }

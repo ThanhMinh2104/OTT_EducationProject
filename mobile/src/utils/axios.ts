@@ -27,10 +27,22 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      try {
-        await AsyncStorage.clear();
-      } catch (e) {
-        console.error('Error clearing storage:', e);
+      const message = error.response?.data?.message || '';
+      // Chỉ logout khi session thực sự không hợp lệ, không phải mọi 401
+      if (
+        message.includes('Phiên đăng nhập không hợp lệ') ||
+        message.includes('Token không hợp lệ') ||
+        message.includes('Token hết hạn') ||
+        message.includes('Không có token xác thực') ||
+        message.includes('Tài khoản không tồn tại') ||
+        message.includes('jwt expired') ||
+        message.includes('invalid token')
+      ) {
+        try {
+          await AsyncStorage.clear();
+        } catch (e) {
+          console.error('Error clearing storage:', e);
+        }
       }
     }
     return Promise.reject(error);
