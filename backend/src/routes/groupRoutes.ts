@@ -700,6 +700,20 @@ router.delete('/groups/:groupID/members/:targetUserID', authMiddleware, async (r
       { isActive: false, leftAt: new Date() }
     );
 
+    // ⭐ XÓA TẤT CẢ GROUP REMINDER CỦA USER BỊ KICK TRONG GROUP NÀY
+    const GroupReminder = (await import('../models/GroupReminder')).default;
+    
+    // Xóa reminders mà user bị kick tạo ra
+    const deletedCreated = await GroupReminder.deleteMany({ groupID, creatorID: targetUserID });
+    
+    // Remove user bị kick khỏi participants của các reminders khác
+    await GroupReminder.updateMany(
+      { groupID, 'participants.userID': targetUserID },
+      { $pull: { participants: { userID: targetUserID } } }
+    );
+    
+    console.log(`🗑️ User ${targetUserID} kicked from group ${groupID}: deleted ${deletedCreated.deletedCount} reminders and removed from all participant lists`);
+
     // Lấy thông tin người kick và người bị kick
     const kicker = await Users.findOne({ userID });
     const kicked = await Users.findOne({ userID: targetUserID });
@@ -772,6 +786,20 @@ router.post('/groups/:groupID/leave', authMiddleware, async (req: AuthRequest, r
     member.isActive = false;
     member.leftAt = new Date();
     await member.save();
+
+    // ⭐ XÓA TẤT CẢ GROUP REMINDER CỦA USER TRONG GROUP NÀY
+    const GroupReminder = (await import('../models/GroupReminder')).default;
+    
+    // Xóa reminders mà user tạo ra
+    const deletedCreated = await GroupReminder.deleteMany({ groupID, creatorID: userID });
+    
+    // Remove user khỏi participants của các reminders khác
+    await GroupReminder.updateMany(
+      { groupID, 'participants.userID': userID },
+      { $pull: { participants: { userID } } }
+    );
+    
+    console.log(`🗑️ User ${userID} left group ${groupID}: deleted ${deletedCreated.deletedCount} reminders and removed from all participant lists`);
 
     // Lấy thông tin người rời nhóm
     const user = await Users.findOne({ userID });
@@ -911,6 +939,23 @@ router.delete('/groups/:groupID/history', authMiddleware, async (req: AuthReques
     // Set historyDeletedAt cho member này để ẩn messages cũ
     member.historyDeletedAt = new Date();
     await member.save();
+
+    // ⭐ XÓA TẤT CẢ GROUP REMINDER CỦA USER TRONG GROUP NÀY
+    // Có 2 loại: 
+    // 1. Reminder mà user là creator
+    // 2. Reminder mà user là participant
+    const GroupReminder = (await import('../models/GroupReminder')).default;
+    
+    // Xóa reminders mà user tạo ra
+    const deletedCreated = await GroupReminder.deleteMany({ groupID, creatorID: userID });
+    
+    // Xóa reminders mà user là participant (remove khỏi participants array)
+    await GroupReminder.updateMany(
+      { groupID, 'participants.userID': userID },
+      { $pull: { participants: { userID } } }
+    );
+    
+    console.log(`🗑️ User ${userID} deleted ${deletedCreated.deletedCount} group reminders (as creator) and removed from all participant lists in group ${groupID}`);
 
     console.log(`User ${userID} deleted history for group ${groupID}`);
 
