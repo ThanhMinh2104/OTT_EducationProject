@@ -45,7 +45,10 @@ import MentionDropdown, { MentionDropdownHandle } from './MentionDropdown';
 import { getCaretCoordinates } from '../utils/caretPosition';
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
-const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:5000/api';
+const API_BASE = import.meta.env.PROD
+  ? ''
+  : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
+const API = `${API_BASE}/api`;
 
 // Giphy API key cho gợi ý @GIF
 const GIPHY_API_KEY = 'iw8DsJkjCByct4EHovySloueKpn6ljwK';

@@ -53,7 +53,10 @@ import { GroupSearchModal } from './GroupSearchModal';
 import GroupReminderModal from './GroupReminderModal';
 import type { GroupReminder as GroupReminderType } from './GroupReminderModal';
 
-const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:5000/api';
+const API_BASE = import.meta.env.PROD
+  ? ''
+  : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
+const API = `${API_BASE}/api`;
 
 const authHeaders = (): Record<string, string> => {
   const token = getToken();
@@ -1334,6 +1337,12 @@ export const GroupChatWindow = ({
       console.log('📥 [GroupChatWindow] member_added → refreshing group data');
       fetchGroupData(false);
     });
+
+    socket.on('member_joined_group', (data: { groupID: string; userID: string; userName: string }) => {
+      if (data.groupID !== groupID) return;
+      console.log('📥 [GroupChatWindow] member_joined_group via QR:', data.userName);
+      fetchGroupData(false);
+    });
     socket.on('new_join_request', () => fetchJoinRequests());
     socket.on('join_request_resolved', (data: { requestID: string }) => {
       setJoinRequests((prev) => prev.filter((r) => r.requestID !== data.requestID));
@@ -1393,6 +1402,7 @@ export const GroupChatWindow = ({
       socket.off('member_kicked', handleMemberKicked);
       socket.off('member_left', handleMemberLeft);
       socket.off('member_added');
+      socket.off('member_joined_group');
       socket.off('new_join_request');
       socket.off('join_request_resolved');
       socket.off('new_join_request_notification');

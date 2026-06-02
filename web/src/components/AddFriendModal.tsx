@@ -3,11 +3,13 @@ import {
   FaTimes,
   FaChevronLeft,
   FaPen,
-  FaCommentDots
+  FaCommentDots,
+  FaQrcode
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
 import OtherProfileModal from './OtherProfileModal';
+import QRCodeModal from './QRCodeModal';
 import socket from '../utils/socket';
 
 interface Props {
@@ -35,6 +37,7 @@ type Step = 'search' | 'profile' | 'add_friend';
 const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
   const [step, setStep] = useState<Step>('search');
   const [phone, setPhone] = useState('');
+  const [showQRModal, setShowQRModal] = useState(false);
 
   // Khởi tạo danh sách tìm kiếm gần đây từ localStorage
   const [recentFound, setRecentFound] = useState<FoundUser[]>(() => {
@@ -272,9 +275,23 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
         {/* Tiêu đề */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <h3 className="text-[15px] font-semibold">Thêm bạn</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 transition-colors">
-            <FaTimes className="text-xl" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Nút QR */}
+            <button
+              onClick={() => {
+                console.log('🔵 QR button clicked, currentUser:', currentUser);
+                setShowQRModal(true);
+                console.log('🔵 showQRModal set to true');
+              }}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-[#0068FF] transition-colors"
+              title="Quét mã QR"
+            >
+              <FaQrcode className="text-lg" />
+            </button>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700 transition-colors">
+              <FaTimes className="text-xl" />
+            </button>
+          </div>
         </div>
 
         {/* Ô nhập số điện thoại */}
@@ -459,6 +476,31 @@ const AddFriendModal = ({ onClose, currentUser, onStartChat }: Props) => {
 
   return (
     <>
+      {/* QR Code Modal */}
+      {showQRModal && (
+        <QRCodeModal
+          currentUser={currentUser}
+          onClose={() => setShowQRModal(false)}
+          onUserFound={(user) => {
+            // Thêm vào recent và mở profile
+            setRecentFound(prev => {
+              const filtered = prev.filter(u => u.userID !== user.userID);
+              const newUser: FoundUser = {
+                ...user,
+                alias: user.name,
+                friendStatus: (user.friendStatus as FoundUser['friendStatus']) || 'none',
+              };
+              return [newUser, ...filtered].slice(0, 10);
+            });
+            handleUserClick({
+              ...user,
+              alias: user.name,
+              friendStatus: (user.friendStatus as FoundUser['friendStatus']) || 'none',
+            });
+          }}
+        />
+      )}
+
       {/* Wrapper backdrop chỉ hiển thị cho search và add_friend */}
       {/* OtherProfileModal đã có backdrop riêng nên KHÔNG đặt bên trong wrapper này */}
       {(step === 'search' || step === 'add_friend') && (
