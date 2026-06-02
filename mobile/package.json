@@ -20,7 +20,6 @@
     "expo": "~54.0.33",
     "expo-audio": "~1.1.1",
     "expo-av": "~16.0.8",
-    "expo-barcode-scanner": "^13.0.1",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-dev-client": "~6.0.20",
