@@ -719,7 +719,12 @@ export default function chatRoutes(io: Server) {
       // ⭐ XÓA TẤT CẢ REMINDER CỦA USER TRONG CHAT NÀY
       const Reminder = (await import('../models/Reminder')).default;
       const deletedReminders = await Reminder.deleteMany({ chatID, userID });
-      console.log(`🗑️ Deleted ${deletedReminders.deletedCount} reminders for user ${userID} in chat ${chatID}`);
+      
+      // ⭐ XÓA TẤT CẢ REMINDER EVENTS CỦA USER TRONG CHAT NÀY
+      const ReminderEvent = (await import('../models/ReminderEvent')).default;
+      const deletedEvents = await ReminderEvent.deleteMany({ chatID, userID });
+      
+      console.log(`🗑️ Deleted ${deletedReminders.deletedCount} reminders and ${deletedEvents.deletedCount} reminder events for user ${userID} in chat ${chatID}`);
 
       console.log(`User ${userID} deleted history for chat ${chatID}`);
 
@@ -747,7 +752,12 @@ export default function chatRoutes(io: Server) {
       // ⭐ XÓA TẤT CẢ REMINDER CỦA USER TRONG CHAT NÀY
       const Reminder = (await import('../models/Reminder')).default;
       const deletedReminders = await Reminder.deleteMany({ chatID, userID });
-      console.log(`🗑️ Deleted ${deletedReminders.deletedCount} reminders for user ${userID} in chat ${chatID}`);
+      
+      // ⭐ XÓA TẤT CẢ REMINDER EVENTS CỦA USER TRONG CHAT NÀY
+      const ReminderEvent = (await import('../models/ReminderEvent')).default;
+      const deletedEvents = await ReminderEvent.deleteMany({ chatID, userID });
+      
+      console.log(`🗑️ Deleted ${deletedReminders.deletedCount} reminders and ${deletedEvents.deletedCount} reminder events for user ${userID} in chat ${chatID}`);
 
       console.log(`Hide chat ${chatID} for user ${userID}:`, result);
 
