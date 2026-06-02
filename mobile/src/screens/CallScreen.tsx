@@ -187,11 +187,23 @@ const CallScreen = ({
   };
 
   const handleHangup = () => {
-    socket.emit('call-cancelled', {
-      to: remoteUserID,
-      from: currentUser.userID,
-      chatID,
-    });
+    if (callState === 'connected') {
+      // Cuộc gọi đã kết nối → emit call-ended để backend lưu lịch sử
+      socket.emit('call-ended', {
+        to: remoteUserID,
+        from: currentUser.userID,
+        chatID,
+        duration,
+        callType,
+      });
+    } else {
+      // Đang đổ chuông / chưa kết nối → emit call-cancelled
+      socket.emit('call-cancelled', {
+        to: remoteUserID,
+        from: currentUser.userID,
+        chatID,
+      });
+    }
     cleanup();
     onClose();
   };

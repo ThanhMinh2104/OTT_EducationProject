@@ -4546,10 +4546,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             setIncomingCall(null);
           }}
           onReject={() => {
-            socket.emit('call-cancelled', {
+            socket.emit('call-rejected', {
               to: incomingCall.from,
               from: user?.userID,
               chatID: selectedChat?.chatID,
+              callerInfo: { name: user?.name, avatar: user?.anhDaiDien },
             });
             setIncomingCall(null);
           }}
@@ -4855,9 +4856,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             setIncomingCall(null);
           }}
           onReject={() => {
-            socket.emit('call-cancelled', {
+            socket.emit('call-rejected', {
               to: incomingCall.from,
               from: user?.userID,
+              chatID: selectedChat?.chatID,
+              callerInfo: { name: user?.name, avatar: user?.anhDaiDien },
             });
             setIncomingCall(null);
           }}
