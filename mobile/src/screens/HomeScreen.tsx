@@ -9,6 +9,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -74,10 +75,21 @@ const HomeScreen = ({ navigation }: Props) => {
       }
     });
 
+    socket.on("reminder_due", (payload: { type: string; title: string; groupID?: string; chatID?: string }) => {
+      const label = payload.type === 'group' ? 'Nhóm' : 'Chat';
+      Alert.alert(
+        '⏰ Nhắc hẹn',
+        `${label}: ${payload.title}`,
+        [{ text: 'OK' }],
+        { cancelable: true }
+      );
+    });
+
     return () => {
       socket.off("update_user");
       socket.off("userUpdated");
       socket.off("forceLogout");
+      socket.off("reminder_due");
     };
   }, [navigation]);
 
