@@ -44,25 +44,22 @@ jobs:
             cd ~/OTT_EducationProject
             git checkout main
             git pull origin main
-
-            # Ghi lại toàn bộ file .env từ secrets
-            cat > ~/OTT_EducationProject/backend/.env << ENVEOF
-PORT=${PORT:-5000}
-NODE_ENV=${NODE_ENV:-production}
-MONGO_URI=${MONGO_URI}
-JWT_SECRET=${JWT_SECRET}
-JWT_EXPIRES=${JWT_EXPIRES:-7d}
-CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
-CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
-CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
-EMAIL_USER=${EMAIL_USER}
-EMAIL_PASS=${EMAIL_PASS}
-GEMINI_API_KEY=${GEMINI_API_KEY}
-GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash-lite}
-INFINIREACH_API_KEY=${INFINIREACH_API_KEY}
-INFINIREACH_FROM_PHONE=${INFINIREACH_FROM_PHONE}
-ENVEOF
-
+            ENV_FILE=~/OTT_EducationProject/backend/.env
+            printf "PORT=%s\nNODE_ENV=%s\nMONGO_URI=%s\nJWT_SECRET=%s\nJWT_EXPIRES=%s\nCLOUDINARY_CLOUD_NAME=%s\nCLOUDINARY_API_KEY=%s\nCLOUDINARY_API_SECRET=%s\nEMAIL_USER=%s\nEMAIL_PASS=%s\nGEMINI_API_KEY=%s\nGEMINI_MODEL=%s\nINFINIREACH_API_KEY=%s\nINFINIREACH_FROM_PHONE=%s\n" \
+              "${PORT:-5000}" \
+              "${NODE_ENV:-production}" \
+              "$MONGO_URI" \
+              "$JWT_SECRET" \
+              "${JWT_EXPIRES:-7d}" \
+              "$CLOUDINARY_CLOUD_NAME" \
+              "$CLOUDINARY_API_KEY" \
+              "$CLOUDINARY_API_SECRET" \
+              "$EMAIL_USER" \
+              "$EMAIL_PASS" \
+              "$GEMINI_API_KEY" \
+              "${GEMINI_MODEL:-gemini-2.0-flash-lite}" \
+              "$INFINIREACH_API_KEY" \
+              "$INFINIREACH_FROM_PHONE" > "$ENV_FILE"
             cd backend
             docker compose down
             docker compose up -d --build
