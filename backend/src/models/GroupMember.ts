@@ -10,6 +10,7 @@ export interface IGroupMember extends Document {
   leftAt?: Date;
   isActive: boolean;
   historyDeletedAt?: Date; // Thời điểm user xóa lịch sử chat
+  deletedAt?: Date; // Thời điểm user ẩn group khỏi danh sách
 }
 
 const GroupMemberSchema = new Schema<IGroupMember>(
@@ -21,6 +22,7 @@ const GroupMemberSchema = new Schema<IGroupMember>(
     leftAt: { type: Date },
     isActive: { type: Boolean, default: true },
     historyDeletedAt: { type: Date }, // Thời điểm user xóa lịch sử chat
+    deletedAt: { type: Date }, // Thời điểm user ẩn group khỏi danh sách
   },
   { versionKey: false }
 );

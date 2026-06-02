@@ -794,11 +794,12 @@ export const GroupChatWindow = ({
               joinedAt: member.joinedAt,
               isActive: member.isActive,
             };
-          } catch {
+          } catch (err: any) {
+            console.warn(`User ${member.userID} not found:`, err?.response?.status);
             return {
               _id: member._id,
               userID: member.userID,
-              name: member.userID,
+              name: 'Người dùng đã xóa',
               avatar: undefined,
               role: member.role,
               joinedAt: member.joinedAt,
@@ -926,11 +927,12 @@ export const GroupChatWindow = ({
               joinedAt: member.joinedAt,
               isActive: member.isActive,
             };
-          } catch {
+          } catch (err: any) {
+            console.warn(`User ${member.userID} not found:`, err?.response?.status);
             return {
               _id: member._id,
               userID: member.userID,
-              name: member.userID,
+              name: 'Người dùng đã xóa',
               avatar: undefined,
               role: member.role,
               joinedAt: member.joinedAt,
@@ -2422,8 +2424,22 @@ export const GroupChatWindow = ({
       const memberInfo = members.find((m) => m.userID === targetUserID);
 
       // 2. Fetch thông tin đầy đủ từ server
-      const userRes = await axiosInstance.post('/usersID', { userID: targetUserID });
-      const fullUserData = userRes.data;
+      let fullUserData;
+      try {
+        const userRes = await axiosInstance.post('/usersID', { userID: targetUserID });
+        fullUserData = userRes.data;
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          // User không tồn tại, dùng fallback
+          fullUserData = {
+            userID: targetUserID,
+            name: 'Người dùng đã xóa',
+            anhDaiDien: null,
+          };
+        } else {
+          throw err;
+        }
+      }
 
       // 3. Fetch trạng thái bạn bè
       const statusRes = await axiosInstance.get(`/contacts/friend-status/${targetUserID}`);
