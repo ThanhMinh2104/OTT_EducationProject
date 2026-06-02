@@ -716,6 +716,16 @@ export default function chatRoutes(io: Server) {
         { $set: { 'members.$.historyDeletedAt': new Date() } }
       );
 
+      // ⭐ XÓA TẤT CẢ REMINDER CỦA USER TRONG CHAT NÀY
+      const Reminder = (await import('../models/Reminder')).default;
+      const deletedReminders = await Reminder.deleteMany({ chatID, userID });
+      
+      // ⭐ XÓA TẤT CẢ REMINDER EVENTS CỦA USER TRONG CHAT NÀY
+      const ReminderEvent = (await import('../models/ReminderEvent')).default;
+      const deletedEvents = await ReminderEvent.deleteMany({ chatID, userID });
+      
+      console.log(`🗑️ Deleted ${deletedReminders.deletedCount} reminders and ${deletedEvents.deletedCount} reminder events for user ${userID} in chat ${chatID}`);
+
       console.log(`User ${userID} deleted history for chat ${chatID}`);
 
       res.json({ success: true, message: 'Đã xóa lịch sử trò chuyện' });
@@ -738,6 +748,16 @@ export default function chatRoutes(io: Server) {
         { chatID, 'members.userID': userID },
         { $set: { 'members.$.deletedAt': new Date() } }
       );
+
+      // ⭐ XÓA TẤT CẢ REMINDER CỦA USER TRONG CHAT NÀY
+      const Reminder = (await import('../models/Reminder')).default;
+      const deletedReminders = await Reminder.deleteMany({ chatID, userID });
+      
+      // ⭐ XÓA TẤT CẢ REMINDER EVENTS CỦA USER TRONG CHAT NÀY
+      const ReminderEvent = (await import('../models/ReminderEvent')).default;
+      const deletedEvents = await ReminderEvent.deleteMany({ chatID, userID });
+      
+      console.log(`🗑️ Deleted ${deletedReminders.deletedCount} reminders and ${deletedEvents.deletedCount} reminder events for user ${userID} in chat ${chatID}`);
 
       console.log(`Hide chat ${chatID} for user ${userID}:`, result);
 
