@@ -200,6 +200,20 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
     if (tab === 'requests') fetchRequests();
   }, [tab]);
 
+  // Xử lý scannedUser từ QRScannerScreen
+  useEffect(() => {
+    const scannedUser = route?.params?.scannedUser;
+    if (!scannedUser) return;
+    setSelectedProfile({
+      userID: scannedUser.userID,
+      name: scannedUser.name,
+      sdt: scannedUser.sdt,
+      anhDaiDien: scannedUser.anhDaiDien,
+      anhBia: scannedUser.anhBia,
+      friendStatus: scannedUser.friendStatus ?? 'none',
+    });
+  }, [route?.params?.scannedUser]);
+
   const handleAccept = async (req: FriendRequest) => {
     try {
       const token = await getToken();
@@ -225,8 +239,27 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
     } catch { /* ignore */ }
   };
 
-  const handleCancelSent = async () => {
-    if (!recallTarget) return;
+  const handleSendFriendRequest = async (recipientID: string, recipientSdt: string) => {
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_URL}/api/contacts/send-friend-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ recipientPhone: recipientSdt }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        Alert.alert('Lỗi', err.message || 'Không thể gửi lời mời kết bạn');
+        return;
+      }
+      Alert.alert('Thành công', 'Đã gửi lời mời kết bạn!');
+      fetchRequests();
+    } catch {
+      Alert.alert('Lỗi', 'Không thể gửi lời mời kết bạn');
+    }
+  };
+
+  const handleCancelSent = async () => {    if (!recallTarget) return;
     try {
       const token = await getToken();
       await fetch(`${API_URL}/api/contacts/cancel-friend-request`, {
@@ -655,12 +688,15 @@ const ContactsScreen = ({ navigation, route, user: propsUser, onStartChat: props
           onClose={() => setSelectedProfile(null)}
           onStartChat={(chat) => { onStartChat(chat); setSelectedProfile(null); }}
           onAddFriend={() => {
-            if (selectedProfile.friendStatus === 'pending_received') {
+            if (selectedProfile.friendStatus === 'none') {
+              handleSendFriendRequest(selectedProfile.userID, selectedProfile.sdt || '');
+            } else if (selectedProfile.friendStatus === 'pending_received') {
               handleAccept({ contactID: selectedProfile.userID, name: selectedProfile.name } as any);
+              setSelectedProfile(null);
             } else if (selectedProfile.friendStatus === 'pending_sent') {
               setRecallTarget({ recipientID: selectedProfile.userID, name: selectedProfile.name } as any);
+              setSelectedProfile(null);
             }
-            setSelectedProfile(null);
           }}
           onStatusChange={(status) => {
             if (status === 'none') setFriends(prev => prev.filter(f => f.userID !== selectedProfile.userID));

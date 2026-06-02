@@ -3,39 +3,31 @@ import { useNavigate } from 'react-router-dom';
 import axiosInstance from '../utils/axios';
 
 const isPhone = (v: string) => /^(0[35789])[0-9]{8}$/.test(v);
-const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
-  const [identity, setIdentity] = useState('');
+  const [sdt, setSdt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const isPhone_ = isPhone(identity);
-  const isEmail_ = isEmail(identity);
-  const isValid = isPhone_ || isEmail_;
+  const isValid = isPhone(sdt);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     if (!isValid) {
-      setError('Vui lòng nhập số điện thoại (VD: 0912345678) hoặc email hợp lệ.');
+      setError('Vui lòng nhập số điện thoại hợp lệ (VD: 0912345678).');
       return;
     }
     setIsLoading(true);
     try {
-      const res = await axiosInstance.post('/users/find-by-identity', { identity });
-      const { email, sdt } = res.data;
-
-      await axiosInstance.post('/send-otp', { email });
-
+      await axiosInstance.post('/send-otp-sms', { sdt, checkExists: true });
       sessionStorage.setItem('resetSdt', sdt);
-      sessionStorage.setItem('resetEmail', email);
       navigate('/verify-code');
     } catch (err: unknown) {
       const e = err as { response?: { status?: number } };
       if (e.response?.status === 404) {
-        setError('Không tìm thấy tài khoản với thông tin này!');
+        setError('Không tìm thấy tài khoản với số điện thoại này!');
       } else {
         setError('Có lỗi xảy ra, vui lòng thử lại!');
       }
@@ -63,11 +55,11 @@ const ForgotPassword = () => {
             <div className="space-y-4">
               <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3">
                 <span className="text-xl">📱</span>
-                <span className="text-white/90 text-sm font-medium">Nhập SĐT hoặc email đã đăng ký</span>
+                <span className="text-white/90 text-sm font-medium">Nhập SĐT đã đăng ký</span>
               </div>
               <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3">
-                <span className="text-xl">📧</span>
-                <span className="text-white/90 text-sm font-medium">OTP sẽ gửi tới email đã đăng ký</span>
+                <span className="text-xl">💬</span>
+                <span className="text-white/90 text-sm font-medium">OTP sẽ gửi qua tin nhắn SMS</span>
               </div>
             </div>
           </div>
@@ -84,38 +76,32 @@ const ForgotPassword = () => {
           <div className="bg-white rounded-3xl shadow-xl border border-primary-100/50 p-8 sm:p-10">
             <div className="mb-8">
               <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Quên mật khẩu?</h2>
-              <p className="text-gray-400 text-sm">Nhập SĐT hoặc email — hệ thống sẽ gửi OTP về email đã đăng ký.</p>
+              <p className="text-gray-400 text-sm">Nhập SĐT — hệ thống sẽ gửi OTP qua tin nhắn SMS.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2 text-left">
-                  Số điện thoại hoặc Email
+                  Số điện thoại
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    {isEmail_ ? (
-                      <svg className="w-5 h-5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
-                      </svg>
-                    )}
+                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
+                    </svg>
                   </div>
                   <input
                     type="text"
-                    placeholder="VD: 0912345678 hoặc example@gmail.com"
+                    placeholder="VD: 0912345678"
                     className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-gray-800 text-sm placeholder-gray-400 transition-all duration-300 focus:outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 hover:border-gray-300"
-                    value={identity}
-                    onChange={(e) => setIdentity(e.target.value.trim())}
+                    value={sdt}
+                    onChange={(e) => setSdt(e.target.value.trim())}
                     autoComplete="off"
                   />
                 </div>
-                {identity.length > 0 && (
+                {sdt.length > 0 && (
                   <p className={`text-xs mt-1.5 text-left ${isValid ? 'text-green-500' : 'text-gray-400'}`}>
-                    {isPhone_ ? '✓ Số điện thoại hợp lệ' : isEmail_ ? '✓ Email hợp lệ' : 'Nhập SĐT (10 số) hoặc địa chỉ email'}
+                    {isValid ? '✓ Số điện thoại hợp lệ' : 'Nhập SĐT hợp lệ (10 số, bắt đầu 03/05/07/08/09)'}
                   </p>
                 )}
               </div>
@@ -131,7 +117,7 @@ const ForgotPassword = () => {
 
               <button
                 type="submit"
-                disabled={isLoading || !identity}
+                disabled={isLoading || !sdt}
                 className="w-full bg-gradient-to-r from-primary-400 via-primary-500 to-primary-600 text-white py-3.5 rounded-xl font-semibold text-sm shadow-lg shadow-primary-300/40 transition-all duration-300 hover:shadow-xl hover:shadow-primary-400/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isLoading ? (

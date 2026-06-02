@@ -41,7 +41,8 @@
         {
           "cameraPermission": "Ứng dụng cần quyền camera để quét mã QR kết bạn."
         }
-      ]
+      ],
+      "expo-video"
     ]
   }
 }
