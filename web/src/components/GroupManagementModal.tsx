@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   FaTimes, FaUserShield, FaTrash, FaSearch, FaCrown, FaEllipsisV, FaInfoCircle, FaCopy, FaShare,
-  FaUsers, FaKey,
+  FaUsers, FaKey, FaQrcode,
 } from 'react-icons/fa';
 import axiosInstance from '../utils/axios';
 import toast from 'react-hot-toast';
 import socket from '../utils/socket';
 import ConfirmModal from './ConfirmModal';
+import GroupQRModal from './GroupQRModal';
 
 interface GroupMember {
   _id: string;
@@ -118,7 +119,9 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
   const isOwner = currentMember?.role === 'owner';
   const isAdmin = currentMember?.role === 'admin';
   
-  const groupInviteLink = `zalo.me/g/${groupInfo.groupID.substring(0, 10)}`;
+  const groupInviteLink = `ott-edu://join-group/${groupInfo.groupID}`;
+  const groupInviteLinkDisplay = `ott-edu.app/g/${groupInfo.groupID.substring(0, 10)}`;
+  const [showGroupQR, setShowGroupQR] = useState(false);
 
   // Load settings từ groupInfo khi component mount HOẶC khi groupInfo thay đổi
   useEffect(() => {
@@ -1047,7 +1050,7 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
 
                   {settings.allowInviteLink && (
                     <div className="flex items-center gap-2 bg-gray-100/50 rounded-lg px-3 py-2.5">
-                      <span className="flex-1 text-sm text-blue-400 truncate font-mono">{groupInviteLink}</span>
+                      <span className="flex-1 text-sm text-blue-400 truncate font-mono">{groupInviteLinkDisplay}</span>
                       <button
                         onClick={handleCopyLink}
                         className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors text-gray-900"
@@ -1061,6 +1064,13 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
                         title="Chia sẻ"
                       >
                         <FaShare className="text-sm" />
+                      </button>
+                      <button
+                        onClick={() => setShowGroupQR(true)}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-200 transition-colors text-[#0068FF]"
+                        title="Mã QR"
+                      >
+                        <FaQrcode className="text-sm" />
                       </button>
                     </div>
                   )}
@@ -1300,6 +1310,19 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
         isDanger
         confirmText="Giải tán nhóm"
       />
+
+      {/* Group QR Modal */}
+      {showGroupQR && (
+        <GroupQRModal
+          group={{
+            groupID: groupInfo.groupID,
+            name: groupInfo.name,
+            avatar: groupInfo.avatar,
+            memberCount: groupInfo.members?.length,
+          }}
+          onClose={() => setShowGroupQR(false)}
+        />
+      )}
 
     </>
   );
