@@ -35,18 +35,33 @@ const PollVotersModal = ({ poll, members, userID, groupID, onClose }: PollVoters
     if (targetUserID === userID) return; // bỏ qua xem profile bản thân
     try {
       const memberInfo = getMember(targetUserID);
-      const [userRes, statusRes] = await Promise.all([
-        axiosInstance.post('/usersID', { userID: targetUserID }),
-        axiosInstance.get(`/contacts/friend-status/${targetUserID}`),
-      ]);
-      setSelectedUser({
-        ...userRes.data,
-        userID: targetUserID,
-        name: userRes.data.name || memberInfo?.name || targetUserID,
-        avatar: userRes.data.anhDaiDien || memberInfo?.avatar,
-        anhDaiDien: userRes.data.anhDaiDien || memberInfo?.avatar,
-        friendStatus: statusRes.data.friendStatus || 'none',
-      });
+      try {
+        const [userRes, statusRes] = await Promise.all([
+          axiosInstance.post('/usersID', { userID: targetUserID }),
+          axiosInstance.get(`/contacts/friend-status/${targetUserID}`),
+        ]);
+        setSelectedUser({
+          ...userRes.data,
+          userID: targetUserID,
+          name: userRes.data.name || memberInfo?.name || targetUserID,
+          avatar: userRes.data.anhDaiDien || memberInfo?.avatar,
+          anhDaiDien: userRes.data.anhDaiDien || memberInfo?.avatar,
+          friendStatus: statusRes.data.friendStatus || 'none',
+        });
+      } catch (err: any) {
+        // Nếu user không tồn tại, hiển thị thông tin fallback
+        if (err?.response?.status === 404) {
+          setSelectedUser({
+            userID: targetUserID,
+            name: 'Người dùng đã xóa',
+            avatar: memberInfo?.avatar,
+            anhDaiDien: memberInfo?.avatar,
+            friendStatus: 'none',
+          });
+        } else {
+          throw err;
+        }
+      }
     } catch {
       toast.error('Không thể tải thông tin người dùng');
     }

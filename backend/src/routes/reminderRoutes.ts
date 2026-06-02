@@ -9,7 +9,7 @@ const router = express.Router();
 router.get('/chat/:chatID', authMiddleware, async (req, res) => {
   try {
     const { chatID } = req.params;
-    const reminders = await Reminder.find({ chatID, done: false }).sort({ datetime: 1 });
+    const reminders = await Reminder.find({ chatID }).sort({ datetime: 1 });
     res.json(reminders);
   } catch (error) {
     console.error('Error fetching reminders:', error);

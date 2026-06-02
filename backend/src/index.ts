@@ -30,6 +30,7 @@ import { registerNotificationEvents } from './socket/notificationEvents';
 import { registerCallEvents, getActiveCallsMap, clearActiveCallsMap } from './socket/index';
 import { registerGroupChatEvents } from './socket/groupChatEvents';
 import { registerGroupCallEvents } from './socket/groupCallEvents';
+import { startReminderScheduler } from './services/reminderScheduler';
 
 const app = express();
 
@@ -62,6 +63,9 @@ app.use('/api/files', filePreviewRoutes);
 
 // Lưu io vào app để các routes có thể truy cập
 app.set('io', io);
+
+// Khởi động reminder scheduler (real-time notification khi đến giờ)
+startReminderScheduler(io);
 
 // Debug route để xem active calls
 app.get('/api/debug/active-calls', (req, res) => {
