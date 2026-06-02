@@ -58,7 +58,7 @@ const MentionDropdown: React.FC<MentionDropdownProps> = ({
       setFilteredMembers(available.slice(0, 5));
     } else {
       setFilteredMembers(
-        available.filter(m => m.name.toLowerCase().includes(lowerQuery)).slice(0, 5)
+        available.filter(m => (m.name || '').toLowerCase().includes(lowerQuery)).slice(0, 5)
       );
     }
 
@@ -136,7 +136,7 @@ const MentionDropdown: React.FC<MentionDropdownProps> = ({
                     {getRoleBadge(item.role)}
                   </View>
                   <Text style={styles.sub} numberOfLines={1}>
-                    @{item.name.toLowerCase().replace(/\s+/g, '')}
+                    @{(item.name || '').toLowerCase().replace(/\s+/g, '')}
                   </Text>
                 </View>
               </TouchableOpacity>
