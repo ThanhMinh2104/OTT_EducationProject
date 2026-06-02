@@ -89,8 +89,9 @@ const ConfirmPassword = () => {
         sessionStorage.removeItem('resetEmail');
         setShowSuccessModal(true);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Đổi mật khẩu thất bại, vui lòng thử lại!');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      setError(e.response?.data?.message || 'Đổi mật khẩu thất bại, vui lòng thử lại!');
     } finally {
       setIsLoading(false);
     }

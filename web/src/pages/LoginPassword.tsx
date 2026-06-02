@@ -93,10 +93,11 @@ const LoginPassword = () => {
       setTimeout(() => {
         navigate('/home');
       }, 1000);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number; data?: { isLocked?: boolean; reason?: string; canUnlock?: boolean } } };
       // Kiểm tra nếu tài khoản bị khóa
-      if (err.response?.status === 403 && err.response?.data?.isLocked) {
-        const { reason, canUnlock } = err.response.data;
+      if (axiosErr.response?.status === 403 && axiosErr.response?.data?.isLocked) {
+        const { reason, canUnlock } = axiosErr.response.data;
 
         // Kiểm tra xem có phải tự khóa không
         if (canUnlock) {
@@ -142,8 +143,9 @@ const LoginPassword = () => {
       await axios.post(`${API_URL}/api/users/unlock/send-otp`, { sdt });
       setUnlockStep('otp');
       toast.success('Mã OTP đã được gửi qua SMS đến số điện thoại của bạn');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Không thể gửi OTP');
+    } catch (error: unknown) {
+      const e = error as { response?: { data?: { message?: string } } };
+      toast.error(e.response?.data?.message || 'Không thể gửi OTP');
     } finally {
       setIsLoading(false);
     }
@@ -158,7 +160,8 @@ const LoginPassword = () => {
       setOtp('');
       setUnlockStep('confirm');
     } catch (error: unknown) {
-      toast.error(error.response?.data?.message || 'Mã OTP không đúng');
+      const e = error as { response?: { data?: { message?: string } } };
+      toast.error(e.response?.data?.message || 'Mã OTP không đúng');
     } finally {
       setIsLoading(false);
     }

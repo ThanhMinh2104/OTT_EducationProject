@@ -185,8 +185,9 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
           position: 'top-center',
         });
         setPwStep(2);
-      } catch (error: any) {
-        setPwError(error.response?.data?.message || 'Gửi OTP thất bại');
+      } catch (error: unknown) {
+        const e = error as { response?: { data?: { message?: string } } };
+        setPwError(e.response?.data?.message || 'Gửi OTP thất bại');
       } finally {
         setPwLoading(false);
       }
@@ -253,8 +254,9 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
           sessionStorage.clear();
           navigate('/login');
         }, 1500);
-      } catch (error: any) {
-        setPwError(error.response?.data?.message || 'Lỗi hệ thống, vui lòng thử lại.');
+      } catch (error: unknown) {
+        const e = error as { response?: { data?: { message?: string } } };
+        setPwError(e.response?.data?.message || 'Lỗi hệ thống, vui lòng thử lại.');
       } finally {
         setPwLoading(false);
       }
