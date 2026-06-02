@@ -6,8 +6,8 @@ import toast, { Toaster } from 'react-hot-toast';
 const VerifyCode = () => {
   const navigate = useNavigate();
 
-  // Lấy email từ sessionStorage (được lưu ở bước ForgotPassword)
-  const email = sessionStorage.getItem('resetEmail') || '';
+  // Lấy sdt từ sessionStorage (được lưu ở bước ForgotPassword)
+  const sdt = sessionStorage.getItem('resetSdt') || '';
 
   const [otp, setOtp] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +19,6 @@ const VerifyCode = () => {
     e.preventDefault();
     setError(null);
 
-    // Kiểm tra OTP phải đúng 6 chữ số
     if (!/^\d{6}$/.test(otp)) {
       setError('Mã OTP phải gồm đúng 6 chữ số!');
       return;
@@ -27,8 +26,7 @@ const VerifyCode = () => {
 
     setIsLoading(true);
     try {
-      // Gọi API xác thực mã OTP
-      const res = await axiosInstance.post('/verify-otp', { email, otp });
+      const res = await axiosInstance.post('/verify-otp-sms', { sdt, otp });
 
       if (res.data.verified) {
         toast.success('Xác thực OTP thành công! ✅', {
@@ -63,10 +61,9 @@ const VerifyCode = () => {
     setError(null);
     setResendSuccess(false);
     try {
-      // Gửi lại OTP về email đã lưu
-      await axiosInstance.post('/send-otp', { email });
+      await axiosInstance.post('/send-otp-sms', { sdt });
       setResendSuccess(true);
-      toast.success('Đã gửi lại mã OTP thành công! 📧', {
+      toast.success('Đã gửi lại mã OTP thành công! 💬', {
         duration: 3000,
         position: 'top-center',
         style: { background: '#10b981', color: '#fff', fontWeight: '600', padding: '16px', borderRadius: '12px' },
@@ -122,7 +119,7 @@ const VerifyCode = () => {
               {[
                 { icon: '📨', text: 'Mã OTP có hiệu lực trong 5 phút' },
                 { icon: '🔒', text: 'Không chia sẻ mã này với ai' },
-                { icon: '🔄', text: 'Có thể gửi lại nếu không nhận được' },
+                { icon: '🔄', text: 'Có thể gửi lại nếu không nhận được SMS' },
               ].map((item, i) => (
                 <div
                   key={i}
@@ -159,15 +156,15 @@ const VerifyCode = () => {
             <div className="text-center mb-8">
               <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-50 rounded-2xl mb-4">
                 <svg className="w-8 h-8 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
                 </svg>
               </div>
               <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Xác thực OTP</h2>
               <p className="text-gray-400 text-sm">
-                Mã xác thực đã được gửi đến email
+                Mã xác thực đã được gửi qua SMS đến
               </p>
-              {/* Hiển thị email người dùng đã nhập */}
-              <p className="text-primary-500 font-semibold text-sm mt-1">{email}</p>
+              {/* Hiển thị sdt người dùng đã nhập */}
+              <p className="text-primary-500 font-semibold text-sm mt-1">{sdt}</p>
             </div>
 
             <form onSubmit={handleVerify} className="space-y-5">

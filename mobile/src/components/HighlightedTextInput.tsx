@@ -49,7 +49,7 @@ function parseSegments(text: string, members: Member[], myID: string): Seg[] {
     if (part.startsWith('@')) {
       const candidate = part.slice(1).toLowerCase();
       const isSpecial = specials.some(s => s.toLowerCase() === candidate);
-      const isMember = members.some(m => m.name.toLowerCase() === candidate);
+      const isMember = members.some(m => (m.name || '').toLowerCase() === candidate);
       if (isSpecial || isMember) return { text: part, isMention: true };
     }
     return { text: part, isMention: false };

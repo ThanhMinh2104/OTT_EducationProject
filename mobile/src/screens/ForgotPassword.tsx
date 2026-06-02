@@ -16,11 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 type Props = { navigation: StackNavigationProp<RootStackParamList, 'ForgotPassword'> };
 
 const isPhone = (v: string) => /^(0[35789])[0-9]{8}$/.test(v);
-const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 const ForgotPasswordScreen = ({ navigation }: Props) => {
   const insets = useSafeAreaInsets();
-  const [identity, setIdentity] = useState('');
+  const [sdt, setSdt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,30 +35,22 @@ const ForgotPasswordScreen = ({ navigation }: Props) => {
     ]).start();
   }, []);
 
-  const isPhone_ = isPhone(identity);
-  const isEmail_ = isEmail(identity);
-  const isValid = isPhone_ || isEmail_;
+  const isValid = isPhone(sdt);
 
   const handleSendOTP = async () => {
     setError('');
     if (!isValid) {
-      setError('Vui lòng nhập số điện thoại hợp lệ (VD: 0912345678) hoặc email hợp lệ.');
+      setError('Vui lòng nhập số điện thoại hợp lệ (VD: 0912345678).');
       return;
     }
     setLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/api/users/find-by-identity`, { identity });
-      const { email, sdt } = res.data;
-
-      await axios.post(`${API_URL}/api/send-otp`, { email });
-
+      await axios.post(`${API_URL}/api/send-otp-sms`, { sdt, checkExists: true });
       await AsyncStorage.setItem('resetSdt', sdt);
-      await AsyncStorage.setItem('resetEmail', email);
-
       navigation.navigate('VerifyOtpReset');
     } catch (err: any) {
       if (err.response?.status === 404) {
-        setError('Không tìm thấy tài khoản với thông tin này!');
+        setError('Không tìm thấy tài khoản với số điện thoại này!');
       } else {
         setError('Có lỗi xảy ra, vui lòng thử lại sau!');
       }
@@ -68,7 +59,7 @@ const ForgotPasswordScreen = ({ navigation }: Props) => {
     }
   };
 
-  const iconName = isEmail_ ? 'mail-outline' : 'phone-portrait-outline';
+  const iconName = 'phone-portrait-outline';
 
   return (
     <>
@@ -91,30 +82,30 @@ const ForgotPasswordScreen = ({ navigation }: Props) => {
           <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Xác thực tài khoản</Text>
-              <Text style={styles.cardSubtitle}>Nhập SĐT hoặc email để nhận mã OTP</Text>
+              <Text style={styles.cardSubtitle}>Nhập SĐT để nhận mã OTP qua tin nhắn</Text>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Số điện thoại hoặc Email</Text>
+              <Text style={styles.label}>Số điện thoại</Text>
               <View style={styles.inputWrapper}>
                 <View style={styles.inputIconContainer}>
                   <Ionicons name={iconName} size={20} color={isValid ? '#3b90f4' : '#9ca3af'} />
                 </View>
                 <TextInput
                   style={styles.input}
-                  placeholder="VD: 0912345678 hoặc email@gmail.com"
+                  placeholder="VD: 0912345678"
                   placeholderTextColor="#9ca3af"
-                  keyboardType="email-address"
+                  keyboardType="phone-pad"
                   autoCapitalize="none"
                   autoCorrect={false}
-                  value={identity}
-                  onChangeText={(t) => setIdentity(t.trim())}
+                  value={sdt}
+                  onChangeText={(t) => setSdt(t.trim())}
                   editable={!loading}
                 />
               </View>
-              {identity.length > 0 && (
+              {sdt.length > 0 && (
                 <Text style={[styles.hint, isValid && styles.hintValid]}>
-                  {isPhone_ ? '✓ Số điện thoại hợp lệ' : isEmail_ ? '✓ Email hợp lệ' : 'Nhập SĐT (10 số) hoặc địa chỉ email'}
+                  {isValid ? '✓ Số điện thoại hợp lệ' : 'Nhập SĐT hợp lệ (10 số, bắt đầu 03/05/07/08/09)'}
                 </Text>
               )}
             </View>
@@ -126,12 +117,12 @@ const ForgotPasswordScreen = ({ navigation }: Props) => {
               </View>
             ) : null}
 
-            <TouchableOpacity onPress={handleSendOTP} disabled={loading || !identity} activeOpacity={0.85}>
+            <TouchableOpacity onPress={handleSendOTP} disabled={loading || !sdt} activeOpacity={0.85}>
               <LinearGradient
                 colors={['#60aef8', '#3b90f4', '#2572e9']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
-                style={[styles.btnPrimary, (loading || !identity) && styles.btnDisabled]}
+                style={[styles.btnPrimary, (loading || !sdt) && styles.btnDisabled]}
               >
                 {loading ? (
                   <View style={styles.loadingContainer}>

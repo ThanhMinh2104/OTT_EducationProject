@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaTimes, FaPen, FaLock } from 'react-icons/fa';
 import socket from '../utils/socket';
-import { authHeaders } from '../utils/auth';
 import toast, { Toaster } from 'react-hot-toast';
 import axiosInstance from '../utils/axios';
 
@@ -176,16 +175,16 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
   const handleChangePassword = async () => {
     setPwError('');
 
-    // Bước 1: Gửi OTP
+    // Bước 1: Gửi OTP qua SMS
     if (pwStep === 1) {
       try {
         setPwLoading(true);
-        await axiosInstance.post('/send-otp', { email: user?.email });
-        toast.success('Mã OTP đã được gửi đến email của bạn', {
+        await axiosInstance.post('/send-otp-sms', { sdt: user?.sdt });
+        toast.success('Mã OTP đã được gửi qua tin nhắn SMS', {
           duration: 3000,
           position: 'top-center',
         });
-        setPwStep(2); // Chuyển sang bước nhập OTP
+        setPwStep(2);
       } catch (error: any) {
         setPwError(error.response?.data?.message || 'Gửi OTP thất bại');
       } finally {
@@ -202,7 +201,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
       }
       try {
         setPwLoading(true);
-        const res = await axiosInstance.post('/verify-otp', { email: user?.email, otp: pwForm.otp });
+        const res = await axiosInstance.post('/verify-otp-sms', { sdt: user?.sdt, otp: pwForm.otp });
         if (!res.data.verified) {
           setPwError('Mã OTP không đúng hoặc đã hết hạn');
           return;
@@ -211,7 +210,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
           duration: 2000,
           position: 'top-center',
         });
-        setPwStep(3); // Chuyển sang bước nhập mật khẩu
+        setPwStep(3);
       } catch {
         setPwError('Lỗi hệ thống, vui lòng thử lại.');
       } finally {
@@ -529,9 +528,9 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                         Xác thực tài khoản
                       </h3>
                       <p className="text-sm text-gray-600">
-                        Để đảm bảo an toàn, chúng tôi sẽ gửi mã OTP đến email:
+                        Để đảm bảo an toàn, chúng tôi sẽ gửi mã OTP qua SMS đến:
                         <br />
-                        <span className="font-semibold text-[#0e9de8]">{user?.email}</span>
+                        <span className="font-semibold text-[#0e9de8]">{user?.sdt}</span>
                       </p>
                     </div>
                     {pwError && (
@@ -555,7 +554,7 @@ const UserProfileModal = ({ onClose, user, setUser }: Props) => {
                     <div className="mb-4 text-center">
                       <h3 className="text-lg font-semibold text-gray-800 mb-2">Nhập mã OTP</h3>
                       <p className="text-sm text-gray-600">
-                        Mã OTP đã được gửi đến email {user?.email}
+                        Mã OTP đã được gửi qua SMS đến {user?.sdt}
                       </p>
                     </div>
                     <div className="mb-3.5">

@@ -2023,7 +2023,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
       selectedChat.members.forEach((m) => {
         const memberInfo = memberCache[m.userID];
         if (memberInfo && m.userID !== user.userID) {
-          if (lowerValue.includes(`@${memberInfo.name.toLowerCase()}`)) {
+          if (memberInfo.name && lowerValue.includes(`@${memberInfo.name.toLowerCase()}`)) {
             if (!newMentions.includes(m.userID)) newMentions.push(m.userID);
           }
         }
@@ -2054,7 +2054,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     } else if (member === 'bot') {
       mentionText = '@Bot ';
     } else {
-      if (inputText.toLowerCase().includes(`@${member.name.toLowerCase()}`)) {
+      if (inputText.toLowerCase().includes(`@${member.name?.toLowerCase() ?? ''}`)) {
         setShowMentionDropdown(false); return;
       }
       mentionText = `@${member.name} `;
@@ -3682,8 +3682,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
 
             // Tìm member khớp từ cache
             const mentionMember = sortedMembers.find(u =>
-              u.name.toLowerCase().trim() === candidate ||
-              (messageMentions && messageMentions.includes(u.userID) && u.name.toLowerCase().trim().includes(candidate))
+              (u.name || '').toLowerCase().trim() === candidate ||
+              (messageMentions && messageMentions.includes(u.userID) && (u.name || '').toLowerCase().trim().includes(candidate))
             );
 
             const isValid = isAll || ['bot', 'gif', 'sticker'].includes(candidate) || !!mentionMember;
