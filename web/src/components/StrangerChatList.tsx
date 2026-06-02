@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
-import { FaArrowLeft, FaSearch } from 'react-icons/fa';
+import { useState, useEffect, useRef } from 'react';
+import { FaArrowLeft, FaSearch, FaEllipsisH, FaTrash } from 'react-icons/fa';
 import socket from '../utils/socket';
 import axiosInstance from '../utils/axios';
+import { getToken } from '../utils/auth';
+import toast from 'react-hot-toast';
+import { DeleteChatDialog } from './DeleteChatDialog';
 
 interface Member {
   userID: string;
@@ -53,7 +56,6 @@ const getLastMsgPreview = (chat: StrangerChat, userID: string): string => {
   if (!last) return 'Chưa có tin nhắn';
   const isMine = last.senderID === userID;
   const prefix = isMine ? 'Bạn: ' : '';
-  // Xử lý thông báo Bình chọn (Poll) - Chuyển ra ngoài switch để bắt được cả khi type là 'text'
   if (last.content?.startsWith('##POLL_')) {
     const parts = last.content.split('|');
     const type = parts[0];
@@ -72,33 +74,24 @@ const getLastMsgPreview = (chat: StrangerChat, userID: string): string => {
   }
   if (last.content?.startsWith('POLL_NOTIF|')) {
     const parts = last.content.split('|');
-    const [_, action, pollID, pollName, userName] = parts;
+    const [, action, , pollName, userName] = parts;
     const isMe = last.senderID === userID;
     const displayName = isMe ? 'Bạn' : userName;
-
     let actionText = 'đã tham gia bình chọn:';
     if (action === 'CREATE') actionText = 'đã tạo bình chọn:';
     if (action === 'LEAVE') actionText = 'đã bỏ bình chọn:';
     if (action === 'CHANGE') actionText = 'đã đổi lựa chọn:';
     if (action === 'LOCK') actionText = 'đã khóa bình chọn:';
     if (action === 'SHARE') actionText = 'đã chia sẻ bình chọn:';
-
     return `${displayName} ${actionText} ${pollName}`;
   }
-
   switch (last.type) {
-    case 'image':
-      return prefix + '[Hình ảnh]';
-    case 'video':
-      return prefix + '[Video]';
-    case 'audio':
-      return prefix + '[Tin nhắn thoại]';
-    case 'file':
-      return prefix + '[File]';
-    case 'emoji':
-      return prefix + (last.content || '');
-    case 'unsend':
-      return isMine ? 'Bạn đã thu hồi tin nhắn' : 'Tin nhắn đã bị thu hồi';
+    case 'image': return prefix + '[Hình ảnh]';
+    case 'video': return prefix + '[Video]';
+    case 'audio': return prefix + '[Tin nhắn thoại]';
+    case 'file': return prefix + '[File]';
+    case 'emoji': return prefix + (last.content || '');
+    case 'unsend': return isMine ? 'Bạn đã thu hồi tin nhắn' : 'Tin nhắn đã bị thu hồi';
     case 'notification':
       if (last.content?.startsWith('##FRIENDSHIP##')) {
         const parts = last.content.split('|');
@@ -106,8 +99,7 @@ const getLastMsgPreview = (chat: StrangerChat, userID: string): string => {
         return `Bạn và ${otherName} đã trở thành bạn bè`;
       }
       return last.content || '';
-    default:
-      return prefix + (last.content || '');
+    default: return prefix + (last.content || '');
   }
 };
 
@@ -117,7 +109,6 @@ const getTime = (chat: StrangerChat): string => {
   );
   const last = msgs[msgs.length - 1];
   if (!last?.timestamp) return '';
-  
   const d = new Date(last.timestamp);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -125,7 +116,6 @@ const getTime = (chat: StrangerChat): string => {
   const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
-  
   if (diffSecs < 60) return 'Vài giây';
   if (diffMins < 60) return diffMins === 1 ? '1 phút' : `${diffMins} phút`;
   if (diffHours < 24) return diffHours === 1 ? '1 giờ' : `${diffHours} giờ`;
@@ -138,24 +128,27 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
   const [strangerChats, setStrangerChats] = useState<StrangerChat[]>([]);
   const [searchText, setSearchText] = useState('');
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
+  const memberCacheRef = useRef<Record<string, User>>({});
   const [loading, setLoading] = useState(true);
+  const [menuChatId, setMenuChatId] = useState<string | null>(null);
+  const [deletingChat, setDeletingChat] = useState<StrangerChat | null>(null);
+  const [isDeletingChat, setIsDeletingChat] = useState(false);
+
+  // Sync memberCache vào ref để tránh stale closure
+  useEffect(() => {
+    memberCacheRef.current = memberCache;
+  }, [memberCache]);
 
   const fetchMember = async (memberID: string) => {
-    if (memberCache[memberID]) return;
+    if (memberCacheRef.current[memberID]) return;
     try {
       const res = await axiosInstance.post('/usersID', { userID: memberID });
+      memberCacheRef.current = { ...memberCacheRef.current, [memberID]: res.data };
       setMemberCache((prev) => ({ ...prev, [memberID]: res.data }));
-    } catch (err: any) {
-      // Nếu user không tồn tại, set fallback data
-      console.warn(`User ${memberID} not found:`, err?.response?.status);
-      setMemberCache((prev) => ({
-        ...prev,
-        [memberID]: {
-          userID: memberID,
-          name: 'Người dùng đã xóa',
-          anhDaiDien: undefined,
-        },
-      }));
+    } catch {
+      const fallback: User = { userID: memberID, name: 'Người dùng đã xóa', anhDaiDien: undefined };
+      memberCacheRef.current = { ...memberCacheRef.current, [memberID]: fallback };
+      setMemberCache((prev) => ({ ...prev, [memberID]: fallback }));
     }
   };
 
@@ -166,16 +159,12 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
       try {
         const res = await axiosInstance.post('/chats/strangers');
         const data = res.data;
-        
         const sorted = [...data].sort((a: StrangerChat, b: StrangerChat) => {
           const aT = a.lastMessage?.slice(-1)[0]?.timestamp || 0;
           const bT = b.lastMessage?.slice(-1)[0]?.timestamp || 0;
           return new Date(bT).getTime() - new Date(aT).getTime();
         });
-        
         setStrangerChats(sorted);
-        
-        // Prefetch member info
         sorted.forEach((c: StrangerChat) => {
           if (c.type === 'private') {
             const otherId = c.members.find((m) => m.userID !== user.userID)?.userID;
@@ -191,7 +180,6 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
 
     loadStrangerChats();
 
-    // Listen for new messages from strangers
     socket.on('new_message', (msg: Message) => {
       setStrangerChats((prev) => {
         const updated = prev.map((c) => {
@@ -223,6 +211,50 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
     onSelectChat(chat);
     socket.emit('read_messages', { chatID: chat.chatID, userID: user?.userID });
     setStrangerChats((prev) => prev.map((c) => (c.chatID === chat.chatID ? { ...c, unreadCount: 0 } : c)));
+    setMenuChatId(null);
+  };
+
+  const handleDeleteChat = async () => {
+    if (!deletingChat || isDeletingChat) return;
+    setIsDeletingChat(true);
+    const chatIDToDelete = deletingChat.chatID;
+
+    try {
+      const token = getToken();
+      const API_BASE = import.meta.env.PROD
+        ? ''
+        : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
+
+      const res = await fetch(`${API_BASE}/api/chats/${chatIDToDelete}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        // 404 = đã xóa rồi → vẫn xóa khỏi UI
+        if (res.status !== 404) {
+          throw new Error(errData.message || `HTTP ${res.status}`);
+        }
+      }
+
+      // Xóa khỏi UI
+      setStrangerChats((prev) => prev.filter((c) => c.chatID !== chatIDToDelete));
+
+      // Nếu đang mở chat đó thì đóng
+      if (selectedChatId === chatIDToDelete) {
+        onSelectChat(null as unknown as StrangerChat);
+      }
+
+      toast.success('Đã xóa cuộc trò chuyện');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Đã xảy ra lỗi. Vui lòng thử lại.';
+      console.error('❌ Delete stranger chat error:', message);
+      toast.error(message);
+    } finally {
+      setIsDeletingChat(false);
+      setDeletingChat(null);
+    }
   };
 
   const getChatAvatar = (chat: StrangerChat): string => {
@@ -243,7 +275,10 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
   );
 
   return (
-    <div className="w-[310px] bg-white border-r border-gray-200 flex flex-col h-screen shrink-0">
+    <div
+      className="w-[310px] bg-white border-r border-gray-200 flex flex-col h-screen shrink-0"
+      onClick={() => setMenuChatId(null)}
+    >
       {/* Header */}
       <div className="flex items-center gap-3 px-3 py-3 border-b border-gray-100">
         <button
@@ -287,11 +322,12 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
             <div
               key={chat.chatID}
               className={`flex items-center px-3.5 py-2.5 cursor-pointer border-b border-gray-50 relative transition-colors group ${
-                selectedChatId === chat.chatID
-                  ? 'bg-blue-50'
-                  : 'hover:bg-gray-50'
+                selectedChatId === chat.chatID ? 'bg-blue-50' : 'hover:bg-gray-50'
               }`}
-              onClick={() => handleSelectChat(chat)}
+              onClick={() => {
+                handleSelectChat(chat);
+                setMenuChatId(null);
+              }}
             >
               <div className="relative mr-3 shrink-0">
                 <img
@@ -308,20 +344,67 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
                   {getLastMsgPreview(chat, user?.userID || '')}
                 </p>
               </div>
-              <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2">
-                <span className="text-[11px] text-gray-400">
+
+              {/* Meta: time + badge + 3 chấm */}
+              <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2 relative">
+                {/* Time — ẩn khi menu mở */}
+                <span
+                  className={`text-[11px] text-gray-400 transition-opacity ${menuChatId === chat.chatID ? 'opacity-0' : 'group-hover:opacity-0'}`}
+                >
                   {getTime(chat)}
                 </span>
-                {(chat.unreadCount ?? 0) > 0 && (
+
+                {/* Badge unread */}
+                {(chat.unreadCount ?? 0) > 0 && menuChatId !== chat.chatID && (
                   <span className="bg-[#0e9de8] text-white text-[11px] font-bold rounded-[10px] px-1.5 py-0.5 min-w-[20px] text-center leading-[1.4]">
                     {chat.unreadCount}
                   </span>
+                )}
+
+                {/* Nút 3 chấm */}
+                <button
+                  className={`absolute top-0 right-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-all ${menuChatId === chat.chatID ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuChatId((prev) => (prev === chat.chatID ? null : chat.chatID));
+                  }}
+                  title="Tùy chọn"
+                >
+                  <FaEllipsisH className="text-[11px]" />
+                </button>
+
+                {/* Dropdown menu */}
+                {menuChatId === chat.chatID && (
+                  <div
+                    className="absolute right-0 top-7 z-30 bg-white rounded-xl shadow-xl border border-gray-100 py-1 min-w-[170px]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors rounded-lg mx-0.5"
+                      onClick={() => {
+                        setDeletingChat(chat);
+                        setMenuChatId(null);
+                      }}
+                    >
+                      <FaTrash className="text-xs shrink-0" />
+                      Xóa trò chuyện
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
           ))
         )}
       </div>
+
+      {/* Delete Chat Dialog */}
+      <DeleteChatDialog
+        visible={!!deletingChat}
+        chatName={deletingChat ? getChatName(deletingChat) : ''}
+        isDeleting={isDeletingChat}
+        onConfirm={handleDeleteChat}
+        onCancel={() => setDeletingChat(null)}
+      />
     </div>
   );
 };
