@@ -10,7 +10,9 @@ import {
   Linking,
   Alert,
   Platform,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -29,6 +31,7 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   fileUrl,
   onClose,
 }) => {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -268,7 +271,8 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>

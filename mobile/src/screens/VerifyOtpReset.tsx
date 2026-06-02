@@ -28,7 +28,7 @@ type VerifyOtpResetProps = {
 const VerifyOtpResetScreen = ({ navigation }: VerifyOtpResetProps) => {
   const insets = useSafeAreaInsets();
   const [otp, setOtp] = useState('');
-  const [email, setEmail] = useState('');
+  const [sdt, setSdt] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
@@ -59,11 +59,11 @@ const VerifyOtpResetScreen = ({ navigation }: VerifyOtpResetProps) => {
       }),
     ]).start();
 
-    const getStoredEmail = async () => {
-      const storedEmail = await AsyncStorage.getItem('resetEmail');
-      if (storedEmail) setEmail(storedEmail);
+    const getStoredSdt = async () => {
+      const storedSdt = await AsyncStorage.getItem('resetSdt');
+      if (storedSdt) setSdt(storedSdt);
     };
-    getStoredEmail();
+    getStoredSdt();
   }, []);
 
   const handleVerify = async () => {
@@ -76,10 +76,9 @@ const VerifyOtpResetScreen = ({ navigation }: VerifyOtpResetProps) => {
 
     setLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/api/verify-otp`, { email, otp });
+      const res = await axios.post(`${API_URL}/api/verify-otp-sms`, { sdt, otp });
       if (res.data.verified) {
-        const sdt = await AsyncStorage.getItem('resetSdt');
-        navigation.navigate('ConfirmPassword', { sdt: sdt || '' });
+        navigation.navigate('ConfirmPassword', { sdt });
       } else {
         setError('Mã OTP không đúng hoặc đã hết hạn!');
       }
@@ -95,8 +94,8 @@ const VerifyOtpResetScreen = ({ navigation }: VerifyOtpResetProps) => {
     setError('');
     setResendMsg('');
     try {
-      await axios.post(`${API_URL}/api/send-otp`, { email });
-      setResendMsg('Đã gửi lại mã OTP mới vào email của bạn!');
+      await axios.post(`${API_URL}/api/send-otp-sms`, { sdt });
+      setResendMsg('Đã gửi lại mã OTP mới qua tin nhắn!');
     } catch (err) {
       setError('Gửi lại OTP thất bại!');
     } finally {
@@ -129,11 +128,11 @@ const VerifyOtpResetScreen = ({ navigation }: VerifyOtpResetProps) => {
 
             <Animated.View style={[styles.brandingContainer, { transform: [{ scale: logoScale }] }]}>
               <View style={styles.logoContainer}>
-                <Ionicons name="mail-unread-outline" size={32} color="#fff" />
+                <Ionicons name="chatbubble-ellipses-outline" size={32} color="#fff" />
               </View>
               <Text style={styles.appTitle}>Xác minh OTP</Text>
               <Text style={styles.appSubtitle}>
-                Vui lòng nhập mã xác thực đã được gửi đến email đăng ký của bạn.
+                Vui lòng nhập mã xác thực đã được gửi qua tin nhắn SMS đến số điện thoại của bạn.
               </Text>
             </Animated.View>
           </LinearGradient>
@@ -142,7 +141,7 @@ const VerifyOtpResetScreen = ({ navigation }: VerifyOtpResetProps) => {
           <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Nhập mã OTP</Text>
-              <Text style={styles.cardSubtitle}>Mã được gửi đến: <Text style={styles.emailHighlight}>{email}</Text></Text>
+              <Text style={styles.cardSubtitle}>Mã được gửi đến: <Text style={styles.emailHighlight}>{sdt}</Text></Text>
             </View>
 
             <View style={styles.inputGroup}>
