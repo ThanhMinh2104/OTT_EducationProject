@@ -877,10 +877,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     try {
       const token = await AsyncStorage.getItem('token');
 
+      // ⭐ XÓA CHAT (không phải xóa lịch sử)
+      // Đây là endpoint để ẩn chat khỏi danh sách của user
       if (deletingChat.type === 'group') {
-        // Group: xóa lịch sử + ẩn khỏi danh sách
-        // Gọi API xóa lịch sử group (cần tạo API mới hoặc dùng logic tương tự chat 1-1)
-        const res = await fetch(`${API_URL}/api/groups/${deletingChat.chatID}/history`, {
+        // Group: ẩn group khỏi danh sách
+        const res = await fetch(`${API_URL}/api/groups/${deletingChat.chatID}/leave`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -889,8 +890,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           throw new Error(errData.message || `HTTP ${res.status}`);
         }
       } else {
-        // Chat 1-1: xóa lịch sử
-        const res = await fetch(`${API_URL}/api/chats/${deletingChat.chatID}/history`, {
+        // Chat 1-1: ẩn khỏi danh sách
+        const res = await fetch(`${API_URL}/api/chats/${deletingChat.chatID}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -900,7 +901,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         }
       }
 
-      // Sau khi xóa lịch sử, ẩn chat khỏi danh sách local
+      // Sau khi xóa chat khỏi danh sách, ẩn khỏi UI
       setChats((prev) => prev.filter((c) => c.chatID !== deletingChat.chatID));
       setStrangerChats((prev) => prev.filter((c) => c.chatID !== deletingChat.chatID));
 

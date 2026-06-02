@@ -410,8 +410,9 @@ const GroupManagementModal = ({ groupInfo, currentUserID, onClose, onUpdate, onD
           try {
             const res = await axiosInstance.post('/usersID', { userID: uid });
             return { userID: uid, name: res.data.name || uid, avatar: res.data.anhDaiDien };
-          } catch {
-            return { userID: uid, name: uid, avatar: undefined };
+          } catch (err: any) {
+            console.warn(`User ${uid} not found:`, err?.response?.status);
+            return { userID: uid, name: 'Người dùng đã xóa', avatar: undefined };
           }
         })
       );

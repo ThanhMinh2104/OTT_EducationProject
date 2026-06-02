@@ -208,6 +208,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [memberCache, setMemberCache] = useState<Record<string, User>>({});
+  // Ref để fetchMember luôn đọc cache mới nhất (tránh stale closure)
+  const memberCacheRef = useRef<Record<string, User>>({});
   const [typingMap, setTypingMap] = useState<
     Record<string, { userID: string; userName: string }[]>
   >({});
@@ -215,6 +217,8 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
   const [deletingChat, setDeletingChat] = useState<Chat | null>(null);
   const [isDeletingChat, setIsDeletingChat] = useState(false);
   const [deletedChatIds, setDeletedChatIds] = useState<Set<string>>(new Set());
+  // useRef để các socket callback luôn đọc được deletedChatIds mới nhất (tránh stale closure)
+  const deletedChatIdsRef = useRef<Set<string>>(new Set());
   const [showStrangerList, setShowStrangerList] = useState(false);
   const [strangerSummary, setStrangerSummary] = useState<{
     count: number;
@@ -222,6 +226,16 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     lastMessageTime: string | null;
   }>({ count: 0, unreadCount: 0, lastMessageTime: null });
   const notifAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Sync memberCache state vào ref
+  useEffect(() => {
+    memberCacheRef.current = memberCache;
+  }, [memberCache]);
+
+  // Sync deletedChatIds state vào ref để socket callbacks luôn đọc được giá trị mới nhất
+  useEffect(() => {
+    deletedChatIdsRef.current = deletedChatIds;
+  }, [deletedChatIds]);
 
   // Khởi tạo audio notification
   useEffect(() => {
@@ -251,12 +265,15 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
 
   // Lấy thông tin member cho chat private
   const fetchMember = async (memberID: string) => {
-    if (memberCache[memberID]) return;
+    if (memberCacheRef.current[memberID]) return; // dùng ref để tránh stale closure
     try {
       const res = await axiosInstance.post('/usersID', { userID: memberID });
+      memberCacheRef.current = { ...memberCacheRef.current, [memberID]: res.data };
       setMemberCache((prev) => ({ ...prev, [memberID]: res.data }));
     } catch {
-      /* ignore */
+      const fallback: User = { userID: memberID, name: 'Người dùng đã xóa', anhDaiDien: undefined };
+      memberCacheRef.current = { ...memberCacheRef.current, [memberID]: fallback };
+      setMemberCache((prev) => ({ ...prev, [memberID]: fallback }));
     }
   };
 
@@ -325,7 +342,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       });
       
       // Filter out chats that were just deleted by user
-      const filtered = sorted.filter((c) => !deletedChatIds.has(c.chatID));
+      const filtered = sorted.filter((c) => !deletedChatIdsRef.current.has(c.chatID));
       
       setChats(filtered);
       
@@ -538,7 +555,7 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
       socket.off('typing_stop', onTypingStop);
       socket.off('group_dissolved');
     };
-  }, [user?.userID, selectedChatId, deletedChatIds]);
+  }, [user?.userID, selectedChatId]);
 
   const handleSelectChat = (chat: Chat) => {
     onSelectChat(chat);
@@ -556,9 +573,12 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     if (!deletingChat || isDeletingChat) return;
 
     setIsDeletingChat(true);
+    const chatIDToDelete = deletingChat.chatID;
     
     // Đánh dấu chat này đã bị xóa để ignore socket updates
-    setDeletedChatIds((prev) => new Set(prev).add(deletingChat.chatID));
+    // Sync ref ngay lập tức (không chờ useEffect) để tránh race condition với socket
+    deletedChatIdsRef.current = new Set(deletedChatIdsRef.current).add(chatIDToDelete);
+    setDeletedChatIds((prev) => new Set(prev).add(chatIDToDelete));
     
     try {
       const token = getToken();
@@ -566,52 +586,85 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
         ? ''
         : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
+      // ⭐ XÓA CHAT (không phải xóa lịch sử)
+      // Đây là endpoint để ẩn chat khỏi danh sách của user
+      console.log(`🗑️ Deleting chat: type=${deletingChat.type}, chatID=${chatIDToDelete}`);
       if (deletingChat.type === 'group') {
-        // Group: xóa lịch sử
-        const res = await fetch(`${API_BASE}/api/groups/${deletingChat.chatID}/history`, {
+        // Group: ẩn group khỏi danh sách
+        const res = await fetch(`${API_BASE}/api/groups/${deletingChat.chatID}/leave`, {
           method: 'DELETE',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
+          console.error(`❌ Group leave failed: ${res.status}`, errData);
           throw new Error(errData.message || `HTTP ${res.status}`);
         }
       } else {
-        // Chat 1-1: xóa lịch sử
-        const res = await fetch(`${API_BASE}/api/chats/${deletingChat.chatID}/history`, {
+        // Chat 1-1: ẩn khỏi danh sách
+        const res = await fetch(`${API_BASE}/api/chats/${deletingChat.chatID}`, {
           method: 'DELETE',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
+          console.error(`❌ Chat delete failed: ${res.status}`, errData);
           throw new Error(errData.message || `HTTP ${res.status}`);
         }
       }
 
-      // Sau khi xóa lịch sử, ẩn chat khỏi danh sách local
-      setChats((prev) => prev.filter((c) => c.chatID !== deletingChat.chatID));
+      // Sau khi xóa thành công, remove khỏi UI
+      setChats((prev) => prev.filter((c) => c.chatID !== chatIDToDelete));
 
       // Nếu đang mở chat đó thì đóng lại
-      if (selectedChatId === deletingChat.chatID) {
+      if (selectedChatId === chatIDToDelete) {
         onSelectChat(null as any);
       }
 
       setDeletingChat(null);
       toast.success('Đã xóa cuộc trò chuyện khỏi danh sách của bạn');
+      
+      // Xóa chatID khỏi deletedChatIds sau khi đã filter xong
+      // (không cần giữ nữa vì setChats đã loại bỏ nó)
+      deletedChatIdsRef.current.delete(chatIDToDelete);
+      setDeletedChatIds((prev) => {
+        const next = new Set(prev);
+        next.delete(chatIDToDelete);
+        return next;
+      });
     } catch (err: any) {
       console.error('❌ Delete chat error:', err?.message || err);
       
-      // Nếu lỗi thì remove khỏi deletedChatIds và reload
-      setDeletedChatIds((prev) => {
-        const next = new Set(prev);
-        next.delete(deletingChat.chatID);
-        return next;
-      });
-      socket.emit('getChat', user?.userID);
-      
-      toast.error(err?.message || 'Đã xảy ra lỗi. Vui lòng thử lại.');
+      // 404 = chat không tồn tại trên server → vẫn xóa khỏi UI (đã không còn tồn tại)
+      // 403 = không có quyền → giữ lại để user biết
+      if (err?.message?.includes('404') || err?.message?.includes('403')) {
+        if (err?.message?.includes('404')) {
+          setChats((prev) => prev.filter((c) => c.chatID !== chatIDToDelete));
+        }
+        deletedChatIdsRef.current.delete(chatIDToDelete);
+        setDeletedChatIds((prev) => {
+          const next = new Set(prev);
+          next.delete(chatIDToDelete);
+          return next;
+        });
+        if (err?.message?.includes('404')) {
+          toast.success('Chat đã được xóa');
+        } else {
+          toast.error('Không có quyền xóa cuộc trò chuyện này');
+        }
+      } else {
+        // Lỗi khác: khôi phục lại để user có thể retry
+        deletedChatIdsRef.current.delete(chatIDToDelete);
+        setDeletedChatIds((prev) => {
+          const next = new Set(prev);
+          next.delete(chatIDToDelete);
+          return next;
+        });
+        toast.error(err?.message || 'Đã xảy ra lỗi. Vui lòng thử lại.');
+      }
     } finally {
       setIsDeletingChat(false);
+      setDeletingChat(null);
     }
   };
 

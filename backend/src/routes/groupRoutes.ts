@@ -966,6 +966,38 @@ router.delete('/groups/:groupID/history', authMiddleware, async (req: AuthReques
   }
 });
 
+// 9.6. Ẩn group khỏi danh sách của user (chỉ ẩn, không xóa dữ liệu) - ⭐ PHẢI TRƯỚC DELETE /:groupID!
+router.delete('/groups/:groupID/leave', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const { groupID } = req.params;
+    const userID = req.userID;
+
+    // Kiểm tra user có trong group không
+    const member = await GroupMember.findOne({ groupID, userID });
+    if (!member) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    // ✅ Idempotent: nếu đã ẩn rồi thì trả success luôn, không cần update lại
+    if (!member.isActive && member.deletedAt) {
+      return res.json({ success: true, deletedAt: member.deletedAt.toISOString() });
+    }
+
+    // ✅ Set deletedAt + isActive: false để ẩn group khỏi danh sách
+    const result = await GroupMember.updateOne(
+      { groupID, userID },
+      { $set: { deletedAt: new Date(), isActive: false } }  // ⭐ Thêm isActive: false
+    );
+
+    console.log(`Hide group ${groupID} for user ${userID}:`, result);
+
+    res.json({ success: true, deletedAt: new Date().toISOString() });
+  } catch (e: any) {
+    console.error('Hide group error:', e);
+    res.status(500).json({ message: e.message });
+  }
+});
+
 // 10. Xóa nhóm (chỉ owner)
 router.delete('/groups/:groupID', authMiddleware, async (req: AuthRequest, res) => {
   try {

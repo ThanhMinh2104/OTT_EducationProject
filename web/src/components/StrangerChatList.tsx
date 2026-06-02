@@ -145,8 +145,17 @@ const StrangerChatList = ({ user, onBack, onSelectChat, selectedChatId }: Props)
     try {
       const res = await axiosInstance.post('/usersID', { userID: memberID });
       setMemberCache((prev) => ({ ...prev, [memberID]: res.data }));
-    } catch {
-      /* ignore */
+    } catch (err: any) {
+      // Nếu user không tồn tại, set fallback data
+      console.warn(`User ${memberID} not found:`, err?.response?.status);
+      setMemberCache((prev) => ({
+        ...prev,
+        [memberID]: {
+          userID: memberID,
+          name: 'Người dùng đã xóa',
+          anhDaiDien: undefined,
+        },
+      }));
     }
   };
 
