@@ -562,7 +562,9 @@ const ChatList = ({ user, onSelectChat, selectedChatId, activeTab = 'chats' }: P
     
     try {
       const token = getToken();
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const API_BASE = import.meta.env.PROD
+        ? ''
+        : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
       if (deletingChat.type === 'group') {
         // Group: xóa lịch sử

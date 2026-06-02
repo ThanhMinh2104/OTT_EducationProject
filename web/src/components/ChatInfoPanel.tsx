@@ -9,7 +9,12 @@ import socket from '../utils/socket';
 import ConfirmModal from './ConfirmModal';
 import toast from 'react-hot-toast';
 
-const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:5000/api';
+// Use axiosInstance which already has correct baseURL configuration
+// No need to manually construct API URL
+const API_BASE = import.meta.env.PROD
+  ? ''
+  : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
+const API = `${API_BASE}/api`;
 
 interface User {
   userID: string;
