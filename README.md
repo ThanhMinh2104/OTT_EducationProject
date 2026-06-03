@@ -9,7 +9,7 @@
  ╚═════╝    ╚═╝      ╚═╝       ╚══════╝╚═════╝  ╚═════╝
 ```
 
-# 🎓 OTT Education - Hệ thống nhắn tin thời gian thực cho giáo dục
+# 🎓 OTT Education - Hệ thống nhắn tin thời gian thực cho giáo dục.
 
 **Đồ án môn học:** Công nghệ mới trong phát triển ứng dụng CNTT  
 **Học kỳ:** HK2 - 2025-2026 | **Lớp:** DHKTPM18 | **Trường:** IUH
