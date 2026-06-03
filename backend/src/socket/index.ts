@@ -347,7 +347,7 @@ export const registerCallEvents = (io: Server, socket: Socket) => {
           });
           await callMessage.save();
 
-          // Lấy danh sách thành viên trong chat
+          // Lấy danh sách thành viên trong chat //Get DS thanh vien
           const chatMemberDoc = await ChatMember.findOne({ chatID: data.chatID });
           const memberIDs = chatMemberDoc?.members.map((m) => m.userID) || [];
 
