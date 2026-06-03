@@ -264,7 +264,7 @@ export const registerGroupCallEvents = (io: Server, socket: Socket) => {
         return;
       }
 
-      // Lưu info của người mới được mời
+      // Lưu info của người mới được mời //Getinfo person
       (newMemberInfos || []).forEach((u) =>
         session.userInfoMap.set(u.userID, { name: u.name, avatar: u.avatar })
       );
