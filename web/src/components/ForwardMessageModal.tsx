@@ -70,17 +70,8 @@ const ForwardMessageModal = ({ message, onClose, user }: Props) => {
               const res = await axiosInstance.post('/usersID', { userID: otherId });
               const info: MemberInfo = res.data;
               setMemberCache((prev) => ({ ...prev, [otherId]: info }));
-            } catch (err: any) {
-              // Nếu user không tồn tại, set fallback data
-              console.warn(`User ${otherId} not found:`, err?.response?.status);
-              setMemberCache((prev) => ({
-                ...prev,
-                [otherId]: {
-                  userID: otherId,
-                  name: 'Người dùng đã xóa',
-                  anhDaiDien: undefined,
-                } as MemberInfo,
-              }));
+            } catch {
+              /* ignore */
             }
           })
         );

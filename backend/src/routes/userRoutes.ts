@@ -272,7 +272,7 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
 
 // Gửi OTP qua SMS (InfiniReach)
 router.post('/send-otp-sms', async (req: Request, res: Response) => {
-  const { sdt, checkExists } = req.body;
+  const { sdt } = req.body;
   if (!sdt) return res.status(400).json({ message: 'Thiếu số điện thoại' }) as any;
 
   // Validate SĐT (10 số, bắt đầu bằng 0)
@@ -283,14 +283,6 @@ router.post('/send-otp-sms', async (req: Request, res: Response) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
   try {
-    // Khi dùng cho quên mật khẩu: kiểm tra user tồn tại
-    if (checkExists) {
-      const userExists = await Users.findOne({ sdt });
-      if (!userExists) {
-        return res.status(404).json({ message: 'Số điện thoại chưa được đăng ký' }) as any;
-      }
-    }
-
     // Xóa OTP cũ của SĐT này (nếu có)
     await Otp.deleteMany({ sdt });
 

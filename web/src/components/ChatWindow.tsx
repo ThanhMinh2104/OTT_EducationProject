@@ -601,15 +601,7 @@ const ChatWindow = ({ selectedChat, user, onStartVideoCall }: Props) => {
       if (otherId) {
         axiosInstance.post('/usersID', { userID: otherId })
           .then((res) => setMemberInfo(res.data))
-          .catch((err) => {
-            // Nếu user không tồn tại, set fallback data
-            console.warn(`User ${otherId} not found:`, err?.response?.status);
-            setMemberInfo({
-              userID: otherId,
-              name: 'Người dùng đã xóa',
-              anhDaiDien: undefined,
-            });
-          });
+          .catch(() => { });
 
         // Check stranger status & mutual groups
         axiosInstance.get(`/contacts/friend-status/${otherId}`)

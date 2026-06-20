@@ -3,7 +3,6 @@ import Users from '../models/User';
 import Session from '../models/Session';
 import Otp from '../models/Otp';
 import sendOtpEmail from '../services/emailService';
-import { sendOtpSMS } from '../services/smsService';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -66,17 +65,22 @@ router.post('/users/unlock/send-otp', async (req: Request, res: Response) => {
       }) as any;
     }
 
-    // Gửi OTP qua SMS
+    // Tạo và gửi OTP
+    if (!user.email) {
+      return res.status(400).json({
+        message: 'Tài khoản này không có email đăng ký. Vui lòng liên hệ hỗ trợ.',
+      }) as any;
+    }
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    await Otp.deleteMany({ sdt });
-    await Otp.create({ sdt, otp });
+    await Otp.deleteMany({ email: user.email });
+    await Otp.create({ email: user.email, otp });
+    await sendOtpEmail(user.email, otp);
 
     res.status(200).json({
-      message: 'Mã OTP đã được gửi qua SMS đến số điện thoại của bạn',
+      message: 'Mã OTP đã được gửi đến email của bạn',
+      email: user.email,
     });
-
-    // Gửi SMS ở background
-    sendOtpSMS(sdt, otp).catch(() => {});
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi khi gửi OTP', error: error.message });
   }
@@ -92,8 +96,8 @@ router.post('/users/unlock/verify-otp', async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Số điện thoại không tồn tại' }) as any;
     }
 
-    // Kiểm tra OTP qua SMS
-    const otpRecord = await Otp.findOne({ sdt, otp });
+    // Kiểm tra OTP
+    const otpRecord = await Otp.findOne({ email: user.email, otp });
     if (!otpRecord) {
       return res.status(400).json({ message: 'Mã OTP không đúng hoặc đã hết hạn' }) as any;
     }

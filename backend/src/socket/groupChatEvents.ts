@@ -155,28 +155,6 @@ export const registerGroupChatEvents = (io: Server, socket: Socket) => {
 
       const saved = await newMsg.save();
 
-      // ✅ Khôi phục group nếu đã bị ẩn (undelete khi có tin nhắn mới)
-      const groupMemberDocs = await GroupMember.find({ groupID });
-      const updates = groupMemberDocs.map((m) => {
-        if (m.deletedAt) {
-          console.log(`🔄 Undeleting group ${groupID} for user ${m.userID}`);
-          return { ...m, deletedAt: undefined };
-        }
-        return m;
-      });
-      
-      // Only update if there are changes needed
-      if (updates.some((u, i) => u.deletedAt !== groupMemberDocs[i].deletedAt)) {
-        for (let i = 0; i < groupMemberDocs.length; i++) {
-          if (updates[i].deletedAt !== groupMemberDocs[i].deletedAt) {
-            await GroupMember.updateOne(
-              { groupID, userID: groupMemberDocs[i].userID },
-              { $unset: { deletedAt: '' } }
-            );
-          }
-        }
-      }
-
       // Lấy thông tin người gửi
       const sender = await Users.findOne({ userID: senderID });
 

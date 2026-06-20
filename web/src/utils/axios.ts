@@ -19,10 +19,6 @@ axiosInstance.interceptors.response.use(
     // Xử lý tài khoản bị khóa (403)
     if (error.response?.status === 403) {
       const data = error.response?.data;
-      // Bỏ qua nếu là response từ login (có isLocked field) — LoginPassword.tsx tự xử lý
-      if (data?.isLocked) {
-        return Promise.reject(error);
-      }
       if (data?.message?.includes('bị khóa')) {
         const reason = data.reason || 'Vi phạm điều khoản';
         toast.error(`Tài khoản đã bị khóa\nLý do: ${reason}`, {

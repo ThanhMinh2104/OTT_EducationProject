@@ -14,7 +14,6 @@ import GroupIncomingCallModal from '../components/GroupIncomingCallModal';
 import { showZaloToast } from '../components/ZaloToast';
 import { getToken } from '../utils/auth';
 import axiosInstance from '../utils/axios';
-import { useReminderNotification } from '../hooks/useReminderNotification';
 
 interface User {
   userID: string;
@@ -57,7 +56,6 @@ interface Chat {
 
 const HomePage = () => {
   const navigate = useNavigate();
-  useReminderNotification(); // Lắng nghe reminder_due real-time
   const [user, setUser] = useState<User | null>(() => {
     const stored = sessionStorage.getItem('user');
     return stored ? JSON.parse(stored) : null;

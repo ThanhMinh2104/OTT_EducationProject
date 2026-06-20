@@ -13,10 +13,10 @@ import {
 
 // Helper: tạo messageID tự động
 const generateMessageID = async (): Promise<string> => {
-  // Dùng timestamp + random để đảm bảo unique, tránh duplicate key error
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 9);
-  return `msg_${timestamp}_${random}`;
+  const last = await Message.findOne().sort({ messageID: -1 }).limit(1);
+  if (!last) return 'msg001';
+  const n = parseInt(last.messageID.replace('msg', ''), 10);
+  return `msg${(n + 1).toString().padStart(3, '0')}`;
 };
 
 export const registerMessageEvents = (io: Server, socket: Socket) => {

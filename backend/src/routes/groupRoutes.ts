@@ -700,20 +700,6 @@ router.delete('/groups/:groupID/members/:targetUserID', authMiddleware, async (r
       { isActive: false, leftAt: new Date() }
     );
 
-    // ⭐ XÓA TẤT CẢ GROUP REMINDER CỦA USER BỊ KICK TRONG GROUP NÀY
-    const GroupReminder = (await import('../models/GroupReminder')).default;
-    
-    // Xóa reminders mà user bị kick tạo ra
-    const deletedCreated = await GroupReminder.deleteMany({ groupID, creatorID: targetUserID });
-    
-    // Remove user bị kick khỏi participants của các reminders khác
-    await GroupReminder.updateMany(
-      { groupID, 'participants.userID': targetUserID },
-      { $pull: { participants: { userID: targetUserID } } }
-    );
-    
-    console.log(`🗑️ User ${targetUserID} kicked from group ${groupID}: deleted ${deletedCreated.deletedCount} reminders and removed from all participant lists`);
-
     // Lấy thông tin người kick và người bị kick
     const kicker = await Users.findOne({ userID });
     const kicked = await Users.findOne({ userID: targetUserID });
@@ -786,20 +772,6 @@ router.post('/groups/:groupID/leave', authMiddleware, async (req: AuthRequest, r
     member.isActive = false;
     member.leftAt = new Date();
     await member.save();
-
-    // ⭐ XÓA TẤT CẢ GROUP REMINDER CỦA USER TRONG GROUP NÀY
-    const GroupReminder = (await import('../models/GroupReminder')).default;
-    
-    // Xóa reminders mà user tạo ra
-    const deletedCreated = await GroupReminder.deleteMany({ groupID, creatorID: userID });
-    
-    // Remove user khỏi participants của các reminders khác
-    await GroupReminder.updateMany(
-      { groupID, 'participants.userID': userID },
-      { $pull: { participants: { userID } } }
-    );
-    
-    console.log(`🗑️ User ${userID} left group ${groupID}: deleted ${deletedCreated.deletedCount} reminders and removed from all participant lists`);
 
     // Lấy thông tin người rời nhóm
     const user = await Users.findOne({ userID });
@@ -940,61 +912,12 @@ router.delete('/groups/:groupID/history', authMiddleware, async (req: AuthReques
     member.historyDeletedAt = new Date();
     await member.save();
 
-    // ⭐ XÓA TẤT CẢ GROUP REMINDER CỦA USER TRONG GROUP NÀY
-    // Có 2 loại: 
-    // 1. Reminder mà user là creator
-    // 2. Reminder mà user là participant
-    const GroupReminder = (await import('../models/GroupReminder')).default;
-    
-    // Xóa reminders mà user tạo ra
-    const deletedCreated = await GroupReminder.deleteMany({ groupID, creatorID: userID });
-    
-    // Xóa reminders mà user là participant (remove khỏi participants array)
-    await GroupReminder.updateMany(
-      { groupID, 'participants.userID': userID },
-      { $pull: { participants: { userID } } }
-    );
-    
-    console.log(`🗑️ User ${userID} deleted ${deletedCreated.deletedCount} group reminders (as creator) and removed from all participant lists in group ${groupID}`);
-
     console.log(`User ${userID} deleted history for group ${groupID}`);
 
     res.json({ success: true, message: 'Đã xóa lịch sử trò chuyện nhóm' });
   } catch (error: any) {
     console.error('Delete group history error:', error);
     res.status(500).json({ message: 'Lỗi xóa lịch sử', error: error.message });
-  }
-});
-
-// 9.6. Ẩn group khỏi danh sách của user (chỉ ẩn, không xóa dữ liệu) - ⭐ PHẢI TRƯỚC DELETE /:groupID!
-router.delete('/groups/:groupID/leave', authMiddleware, async (req: AuthRequest, res) => {
-  try {
-    const { groupID } = req.params;
-    const userID = req.userID;
-
-    // Kiểm tra user có trong group không
-    const member = await GroupMember.findOne({ groupID, userID });
-    if (!member) {
-      return res.status(403).json({ message: 'Forbidden' });
-    }
-
-    // ✅ Idempotent: nếu đã ẩn rồi thì trả success luôn, không cần update lại
-    if (!member.isActive && member.deletedAt) {
-      return res.json({ success: true, deletedAt: member.deletedAt.toISOString() });
-    }
-
-    // ✅ Set deletedAt + isActive: false để ẩn group khỏi danh sách
-    const result = await GroupMember.updateOne(
-      { groupID, userID },
-      { $set: { deletedAt: new Date(), isActive: false } }  // ⭐ Thêm isActive: false
-    );
-
-    console.log(`Hide group ${groupID} for user ${userID}:`, result);
-
-    res.json({ success: true, deletedAt: new Date().toISOString() });
-  } catch (e: any) {
-    console.error('Hide group error:', e);
-    res.status(500).json({ message: e.message });
   }
 });
 
