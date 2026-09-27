@@ -16,8 +16,6 @@ import * as ImagePicker from "expo-image-picker";
 import { API_URL } from "../utils/config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import socket from "../utils/socket";
-import { useNavigation } from "@react-navigation/native";
-import { StackNavigationProp } from "@react-navigation/stack";
 
 const isValidPhone = (p: string) =>
   /^(0[35789][0-9]{8}|(\+84)[35789][0-9]{8})$/.test(p);
@@ -66,7 +64,6 @@ const years = Array.from({ length: 100 }, (_, i) =>
 );
 
 const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
-  const navigation = useNavigation<StackNavigationProp<any>>();
   const [activeTab, setActiveTab] = useState<"info" | "password">("info");
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -202,21 +199,21 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
   const handleChangePassword = async () => {
     setPwError("");
 
-    // Bước 1: Gửi OTP qua SMS
+    // Bước 1: Gửi OTP
     if (pwStep === 1) {
       try {
         setPwLoading(true);
-        const res = await fetch(`${API_URL}/api/send-otp-sms`, {
+        const res = await fetch(`${API_URL}/api/send-otp`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sdt: user?.sdt }),
+          body: JSON.stringify({ email: user?.email }),
         });
         const data = await res.json();
         if (!res.ok) {
           setPwError(data.message || "Gửi OTP thất bại");
           return;
         }
-        Alert.alert("Thành công", "Mã OTP đã được gửi qua SMS đến số điện thoại của bạn");
+        Alert.alert("Thành công", "Mã OTP đã được gửi đến email của bạn");
         setPwStep(2);
       } catch {
         setPwError("Lỗi hệ thống, vui lòng thử lại.");
@@ -234,10 +231,10 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
       }
       try {
         setPwLoading(true);
-        const res = await fetch(`${API_URL}/api/verify-otp-sms`, {
+        const res = await fetch(`${API_URL}/api/verify-otp`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sdt: user?.sdt, otp: pwForm.otp }),
+          body: JSON.stringify({ email: user?.email, otp: pwForm.otp }),
         });
         const data = await res.json();
         if (!data.verified) {
@@ -296,16 +293,8 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
         Alert.alert(
           "Thành công",
           "Đổi mật khẩu thành công! Vui lòng đăng nhập lại.",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                onClose();
-                navigation.reset({ index: 0, routes: [{ name: "Login" }] });
-              },
-            },
-          ],
         );
+        onClose();
       } catch {
         setPwError("Lỗi hệ thống, vui lòng thử lại.");
       } finally {
@@ -591,7 +580,7 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
                           marginBottom: 5,
                         }}
                       >
-                        Để đảm bảo an toàn, chúng tôi sẽ gửi mã OTP qua SMS đến:
+                        Để đảm bảo an toàn, chúng tôi sẽ gửi mã OTP đến email:
                       </Text>
                       <Text
                         style={{
@@ -601,7 +590,7 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
                           marginBottom: 20,
                         }}
                       >
-                        {user?.sdt}
+                        {user?.email}
                       </Text>
                       {pwError ? (
                         <View style={[styles.errorBox, { marginBottom: 15 }]}>
@@ -641,7 +630,7 @@ const UserProfileModal = ({ visible, onClose, user, setUser }: Props) => {
                             textAlign: "center",
                           }}
                         >
-                          Mã OTP đã được gửi qua SMS đến {user?.sdt}
+                          Mã OTP đã được gửi đến email {user?.email}
                         </Text>
                       </View>
                       <View style={styles.fieldGroup}>

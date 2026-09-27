@@ -877,11 +877,10 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
     try {
       const token = await AsyncStorage.getItem('token');
 
-      // ⭐ XÓA CHAT (không phải xóa lịch sử)
-      // Đây là endpoint để ẩn chat khỏi danh sách của user
       if (deletingChat.type === 'group') {
-        // Group: ẩn group khỏi danh sách
-        const res = await fetch(`${API_URL}/api/groups/${deletingChat.chatID}/leave`, {
+        // Group: xóa lịch sử + ẩn khỏi danh sách
+        // Gọi API xóa lịch sử group (cần tạo API mới hoặc dùng logic tương tự chat 1-1)
+        const res = await fetch(`${API_URL}/api/groups/${deletingChat.chatID}/history`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -890,8 +889,8 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
           throw new Error(errData.message || `HTTP ${res.status}`);
         }
       } else {
-        // Chat 1-1: ẩn khỏi danh sách
-        const res = await fetch(`${API_URL}/api/chats/${deletingChat.chatID}`, {
+        // Chat 1-1: xóa lịch sử
+        const res = await fetch(`${API_URL}/api/chats/${deletingChat.chatID}/history`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -901,7 +900,7 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
         }
       }
 
-      // Sau khi xóa chat khỏi danh sách, ẩn khỏi UI
+      // Sau khi xóa lịch sử, ẩn chat khỏi danh sách local
       setChats((prev) => prev.filter((c) => c.chatID !== deletingChat.chatID));
       setStrangerChats((prev) => prev.filter((c) => c.chatID !== deletingChat.chatID));
 
@@ -4547,10 +4546,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             setIncomingCall(null);
           }}
           onReject={() => {
-            socket.emit('call-cancelled', {
+            socket.emit('call-rejected', {
               to: incomingCall.from,
               from: user?.userID,
               chatID: selectedChat?.chatID,
+              callerInfo: { name: user?.name, avatar: user?.anhDaiDien },
             });
             setIncomingCall(null);
           }}
@@ -4856,9 +4856,11 @@ const ChatScreenEnhanced = ({ navigation, onChatOpen, onChatClose, pendingChat, 
             setIncomingCall(null);
           }}
           onReject={() => {
-            socket.emit('call-cancelled', {
+            socket.emit('call-rejected', {
               to: incomingCall.from,
               from: user?.userID,
+              chatID: selectedChat?.chatID,
+              callerInfo: { name: user?.name, avatar: user?.anhDaiDien },
             });
             setIncomingCall(null);
           }}

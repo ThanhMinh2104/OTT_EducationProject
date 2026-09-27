@@ -44,8 +44,6 @@ const generateChatID = async (): Promise<string> => {
 // Helper: lấy danh sách chat đầy đủ cho user (bao gồm 1-1 chats và group chats)
 export const getChatsForUser = async (userID: string, includeStrangers: boolean = false) => {
   // ===== FETCH 1-1 CHATS =====
-  // ✅ Chỉ lấy ChatMember records mà user CHƯA xóa
-  // Lấy tất cả rồi filter trong code để handle cả null và undefined
   const memberDocs = await ChatMember.find({ 'members.userID': userID }).lean();
   console.log(`  → Found ${memberDocs.length} ChatMember records for ${userID}`);
 
@@ -85,16 +83,6 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
     membersByChat[doc.chatID] = doc.members.map((m) => ({ userID: m.userID, role: m.role }));
   });
 
-  // Batch kiểm tra tất cả memberIDs có thực sự tồn tại trong DB không
-  // (tránh gọi /usersID cho những user đã xóa tài khoản → 404 spam)
-  const allMemberIDs = [...new Set(
-    Object.values(membersByChat).flat().map((m) => m.userID).filter((id) => id !== userID)
-  )];
-  const existingUsers = allMemberIDs.length > 0
-    ? await Users.find({ userID: { $in: allMemberIDs } }).select('userID').lean()
-    : [];
-  const existingUserIDSet = new Set(existingUsers.map((u) => u.userID));
-
   // Batch load tất cả contacts của user 1 lần thay vì query từng cái
   const allContacts = await Contacts.find({
     $or: [{ userID }, { contactID: userID }],
@@ -126,21 +114,13 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
   const myRepliedSet = new Set(myRepliedChats.map((m: any) => m._id));
 
   // Filter out chats where current user has deletedAt set
-  // Đồng thời ẩn chat private nếu người kia không còn tồn tại trong DB
   const filteredChats = chats
     .filter((c) => {
       const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
       const currentMember = memberDoc?.members.find((m) => m.userID === userID);
       const hasDeletedAt = !!currentMember?.deletedAt;
-      if (hasDeletedAt) return false;
-
-      // Với chat private: ẩn nếu người kia đã xóa tài khoản
-      if (c.type === 'private') {
-        const otherMember = membersByChat[c.chatID]?.find((m) => m.userID !== userID);
-        if (otherMember && !existingUserIDSet.has(otherMember.userID)) return false;
-      }
-
-      return true;
+      // Đã xóa log debug
+      return !hasDeletedAt;
     })
     .map((c) => {
       const memberDoc = memberDocs.find((m) => m.chatID === c.chatID);
@@ -236,35 +216,26 @@ export const getChatsForUser = async (userID: string, includeStrangers: boolean 
   });
 
   // Convert groups to chat format
-  const groupChats = groups
-    .filter((g) => {
-      // Filter out groups where current user has deletedAt set
-      const groupMember = allGroupMembers.find(
-        (m) => m.groupID === g.groupID && m.userID === userID
-      );
-      const hasDeletedAt = !!groupMember?.deletedAt;
-      return !hasDeletedAt;
-    })
-    .map((g) => {
-      const messages = msgByGroup[g.groupID] || [];
-      const unreadCount = messages.filter(
-        (msg) => msg.senderID !== userID && !msg.seenBy?.some((s: any) => s.userID === userID)
-      ).length;
+  const groupChats = groups.map((g) => {
+    const messages = msgByGroup[g.groupID] || [];
+    const unreadCount = messages.filter(
+      (msg) => msg.senderID !== userID && !msg.seenBy?.some((s: any) => s.userID === userID)
+    ).length;
 
-      return {
-        chatID: g.groupID,
-        type: 'group',
-        name: g.name,
-        avatar: g.avatar || '',
-        description: g.description || '',
-        lastMessage: messages,
-        members: membersByGroup[g.groupID] || [],
-        unreadCount,
-        isStranger: false, // Group chats are never strangers
-        createdAt: g.createdAt,
-        updatedAt: g.updatedAt,
-      };
-    });
+    return {
+      chatID: g.groupID,
+      type: 'group',
+      name: g.name,
+      avatar: g.avatar || '',
+      description: g.description || '',
+      lastMessage: messages,
+      members: membersByGroup[g.groupID] || [],
+      unreadCount,
+      isStranger: false, // Group chats are never strangers
+      createdAt: g.createdAt,
+      updatedAt: g.updatedAt,
+    };
+  });
 
   // ===== MERGE 1-1 AND GROUP CHATS =====
   const allChats = [...filteredChats, ...groupChats];
@@ -745,16 +716,6 @@ export default function chatRoutes(io: Server) {
         { $set: { 'members.$.historyDeletedAt': new Date() } }
       );
 
-      // ⭐ XÓA TẤT CẢ REMINDER CỦA USER TRONG CHAT NÀY
-      const Reminder = (await import('../models/Reminder')).default;
-      const deletedReminders = await Reminder.deleteMany({ chatID, userID });
-      
-      // ⭐ XÓA TẤT CẢ REMINDER EVENTS CỦA USER TRONG CHAT NÀY
-      const ReminderEvent = (await import('../models/ReminderEvent')).default;
-      const deletedEvents = await ReminderEvent.deleteMany({ chatID, userID });
-      
-      console.log(`🗑️ Deleted ${deletedReminders.deletedCount} reminders and ${deletedEvents.deletedCount} reminder events for user ${userID} in chat ${chatID}`);
-
       console.log(`User ${userID} deleted history for chat ${chatID}`);
 
       res.json({ success: true, message: 'Đã xóa lịch sử trò chuyện' });
@@ -772,28 +733,11 @@ export default function chatRoutes(io: Server) {
       const memberDoc = await ChatMember.findOne({ chatID, 'members.userID': userID });
       if (!memberDoc) return res.status(403).json({ message: 'Forbidden' });
 
-      const currentMember = memberDoc.members.find((m) => m.userID === userID);
-
-      // Idempotent: nếu đã xóa rồi thì trả success luôn
-      if (currentMember?.deletedAt) {
-        return res.json({ success: true, deletedAt: currentMember.deletedAt.toISOString() });
-      }
-
       // Set deletedAt cho member này để ẩn chat khỏi danh sách
       const result = await ChatMember.updateOne(
         { chatID, 'members.userID': userID },
         { $set: { 'members.$.deletedAt': new Date() } }
       );
-
-      // ⭐ XÓA TẤT CẢ REMINDER CỦA USER TRONG CHAT NÀY
-      const Reminder = (await import('../models/Reminder')).default;
-      const deletedReminders = await Reminder.deleteMany({ chatID, userID });
-      
-      // ⭐ XÓA TẤT CẢ REMINDER EVENTS CỦA USER TRONG CHAT NÀY
-      const ReminderEvent = (await import('../models/ReminderEvent')).default;
-      const deletedEvents = await ReminderEvent.deleteMany({ chatID, userID });
-      
-      console.log(`🗑️ Deleted ${deletedReminders.deletedCount} reminders and ${deletedEvents.deletedCount} reminder events for user ${userID} in chat ${chatID}`);
 
       console.log(`Hide chat ${chatID} for user ${userID}:`, result);
 

@@ -1,13 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import axiosInstance from '../utils/axios';
 import socket from '../utils/socket';
 import toast, { Toaster } from 'react-hot-toast';
-
-const API_URL = import.meta.env.PROD
-  ? ''
-  : (import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
 // Không cần tạo socket mới nữa, đã import từ utils/socket.ts
 
@@ -24,6 +19,7 @@ const LoginPassword = () => {
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [unlockStep, setUnlockStep] = useState<'confirm' | 'otp'>('confirm');
   const [otp, setOtp] = useState('');
+  const [userEmail, setUserEmail] = useState('');
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -93,11 +89,10 @@ const LoginPassword = () => {
       setTimeout(() => {
         navigate('/home');
       }, 1000);
-    } catch (err: unknown) {
-      const axiosErr = err as { response?: { status?: number; data?: { isLocked?: boolean; reason?: string; canUnlock?: boolean } } };
+    } catch (err: any) {
       // Kiểm tra nếu tài khoản bị khóa
-      if (axiosErr.response?.status === 403 && axiosErr.response?.data?.isLocked) {
-        const { reason, canUnlock } = axiosErr.response.data;
+      if (err.response?.status === 403 && err.response?.data?.isLocked) {
+        const { reason, canUnlock } = err.response.data;
 
         // Kiểm tra xem có phải tự khóa không
         if (canUnlock) {
@@ -140,12 +135,12 @@ const LoginPassword = () => {
   const handleSendUnlockOTP = async () => {
     try {
       setIsLoading(true);
-      await axios.post(`${API_URL}/api/users/unlock/send-otp`, { sdt });
+      const response = await axiosInstance.post('/users/unlock/send-otp', { sdt });
+      setUserEmail(response.data.email);
       setUnlockStep('otp');
-      toast.success('Mã OTP đã được gửi qua SMS đến số điện thoại của bạn');
-    } catch (error: unknown) {
-      const e = error as { response?: { data?: { message?: string } } };
-      toast.error(e.response?.data?.message || 'Không thể gửi OTP');
+      toast.success('Mã OTP đã được gửi đến email của bạn');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể gửi OTP');
     } finally {
       setIsLoading(false);
     }
@@ -154,14 +149,13 @@ const LoginPassword = () => {
   const handleVerifyUnlockOTP = async () => {
     try {
       setIsLoading(true);
-      await axios.post(`${API_URL}/api/users/unlock/verify-otp`, { sdt, otp });
+      await axiosInstance.post('/users/unlock/verify-otp', { sdt, otp });
       toast.success('Tài khoản đã được mở khóa! Bạn có thể đăng nhập lại.');
       setShowUnlockModal(false);
       setOtp('');
       setUnlockStep('confirm');
-    } catch (error: unknown) {
-      const e = error as { response?: { data?: { message?: string } } };
-      toast.error(e.response?.data?.message || 'Mã OTP không đúng');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Mã OTP không đúng');
     } finally {
       setIsLoading(false);
     }
@@ -494,7 +488,7 @@ const LoginPassword = () => {
                     Tài khoản của bạn đã bị vô hiệu hóa. Bạn có muốn mở lại tài khoản không?
                   </p>
                   <p className="text-gray-500 text-xs mt-2">
-                    Chúng tôi sẽ gửi mã OTP qua SMS đến số điện thoại của bạn để xác nhận.
+                    Chúng tôi sẽ gửi mã OTP đến email của bạn để xác nhận.
                   </p>
                 </div>
                 <div className="flex gap-3">
@@ -532,8 +526,8 @@ const LoginPassword = () => {
                     </svg>
                   </div>
                   <h3 className="text-xl font-bold text-gray-800 mb-2">Xác nhận OTP</h3>
-                  <p className="text-gray-600 text-sm">Mã OTP đã được gửi qua SMS đến</p>
-                  <p className="text-primary-600 font-medium text-sm mt-1">{sdt}</p>
+                  <p className="text-gray-600 text-sm">Mã OTP đã được gửi đến email</p>
+                  <p className="text-primary-600 font-medium text-sm mt-1">{userEmail}</p>
                 </div>
                 <div className="mb-6">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
